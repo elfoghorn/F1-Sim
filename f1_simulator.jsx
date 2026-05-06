@@ -1,45 +1,4 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>F1 SIM — 2027 Season</title>
-  <meta name="description" content="F1 2027 Season Simulator — Qualifying, Sprints, Races, Croft & Brundle AI Commentary and Championship Tracker">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏎️</text></svg>">
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <style>
-    body { margin: 0; background: #0C0C0F; font-family: sans-serif; }
-    #loading {
-      min-height: 100vh; display: flex; flex-direction: column;
-      align-items: center; justify-content: center; gap: 16px;
-      background: #0C0C0F; color: #E8002D;
-    }
-    #loading .brand { font-size: 28px; font-weight: 900; letter-spacing: 8px; }
-    #loading .sub { font-size: 11px; color: #333; letter-spacing: 3px; }
-    @keyframes loadpulse { 0%,100%{opacity:.2} 50%{opacity:1} }
-    #loading .dot { animation: loadpulse 1.2s ease-in-out infinite; }
-    #loading .dot:nth-child(2) { animation-delay: .15s; }
-    #loading .dot:nth-child(3) { animation-delay: .3s; }
-  </style>
-</head>
-<body>
-  <div id="root">
-    <div id="loading">
-      <div class="brand">F1 ▶ SIM</div>
-      <div style="display:flex;gap:6px">
-        <div class="dot" style="width:8px;height:8px;background:#E8002D;border-radius:50%"></div>
-        <div class="dot" style="width:8px;height:8px;background:#E8002D;border-radius:50%"></div>
-        <div class="dot" style="width:8px;height:8px;background:#E8002D;border-radius:50%"></div>
-      </div>
-      <div class="sub">LOADING 2027 SEASON DATA...</div>
-    </div>
-  </div>
-
-  <script type="text/babel" data-presets="react">
-    const { useState } = React;
-
+import { useState, useRef } from "react";
 
 // ===================== DATA =====================
 
@@ -546,11 +505,9 @@ const STAGE_DEFS=[
 
 // ===================== MAIN APP =====================
 
-function F1Sim(){
-  const [apiKey,setApiKey]=useState(()=>localStorage.getItem("f1sim_ak")||"");
-  const [apiKeyInput,setApiKeyInput]=useState("");
-  const [drivers,setDrivers]=useState(()=>{try{const s=localStorage.getItem("f1sim_drivers");return s?JSON.parse(s):DRIVERS;}catch{return DRIVERS;}});
-  const [teams,setTeams]=useState(()=>{try{const s=localStorage.getItem("f1sim_teams");return s?JSON.parse(s):TEAMS;}catch{return TEAMS;}});
+export default function F1Sim(){
+  const [drivers,setDrivers]=useState(DRIVERS);
+  const [teams,setTeams]=useState(TEAMS);
   const [track,setTrack]=useState(TRACKS[0]);
   const [view,setView]=useState("garage");
   const [gTab,setGTab]=useState("drivers");
@@ -635,7 +592,7 @@ function F1Sim(){
   };
 
   const doCommentary=async()=>{
-    if(!race||!apiKey) return;
+    if(!race) return;
     setIsGen(true); setStages(null); setActiveS(0); setView("commentary");
     setGenMsg("Wiring up the commentary booth…");
     const grid=qual.grid.map((e,i)=>`P${i+1}: ${e.driver.name} (${e.team.name})`).join("\n");
@@ -676,7 +633,7 @@ Return ONLY valid JSON — no markdown, nothing else:
 ]}`;
     setGenMsg("Croft and Brundle are at the microphone…");
     try{
-      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:3500,messages:[{role:"user",content:prompt}]})});
+      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:3500,messages:[{role:"user",content:prompt}]})});
       const data=await res.json();
       const raw=data.content?.map(c=>c.text||"").join("")||"";
       setGenMsg("Feeding broadcast to the studio…");
@@ -694,21 +651,8 @@ Return ONLY valid JSON — no markdown, nothing else:
     finally{setIsGen(false);setGenMsg("");}
   };
 
-  const saveApiKey=()=>{ if(apiKeyInput.startsWith("sk-")){localStorage.setItem("f1sim_ak",apiKeyInput);setApiKey(apiKeyInput);setApiKeyInput("");} };
-  const clearApiKey=()=>{ localStorage.removeItem("f1sim_ak");setApiKey("");setApiKeyInput(""); };
-  const saveDriver=d=>{
-    const next=drivers.find(x=>x.id===d.id)?drivers.map(x=>x.id===d.id?d:x):[...drivers,{...d,id:`c_${Date.now()}`}];
-    setDrivers(next); try{localStorage.setItem("f1sim_drivers",JSON.stringify(next));}catch{} setModal(null);
-  };
-  const saveTeam=t=>{
-    const next=teams.find(x=>x.id===t.id)?teams.map(x=>x.id===t.id?t:x):[...teams,{...t,id:`c_${Date.now()}`}];
-    setTeams(next); try{localStorage.setItem("f1sim_teams",JSON.stringify(next));}catch{} setModal(null);
-  };
-  const resetGarage=()=>{
-    if(!window.confirm("Reset all drivers and teams to 2027 defaults? Your edits will be lost.")) return;
-    localStorage.removeItem("f1sim_drivers"); localStorage.removeItem("f1sim_teams");
-    setDrivers(DRIVERS); setTeams(TEAMS);
-  };
+  const saveDriver=d=>{if(drivers.find(x=>x.id===d.id))setDrivers(p=>p.map(x=>x.id===d.id?d:x));else setDrivers(p=>[...p,{...d,id:`c_${Date.now()}`}]);setModal(null);};
+  const saveTeam=t=>{if(teams.find(x=>x.id===t.id))setTeams(p=>p.map(x=>x.id===t.id?t:x));else setTeams(p=>[...p,{...t,id:`c_${Date.now()}`}]);setModal(null);};
 
   const surnameMap=buildSurnameMap(drivers,teams);
 
@@ -759,7 +703,6 @@ Return ONLY valid JSON — no markdown, nothing else:
                 ))}
                 <button onClick={()=>setModal({type:"driver",data:{name:"",abbr:"",num:99,teamId:teams[0]?.id||"",pace:78,consistency:78,wet:75,overtaking:75,defense:75,experience:65,mental:7,flag:"🏁",goodTracks:[],badTracks:[]}})} style={{background:"#E8002D",color:"#fff",border:"none",padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>+ DRIVER</button>
                 <button onClick={()=>setModal({type:"team",data:{name:"",abbr:"",color:"#888",tc:"#fff",carPace:70,reliability:75,pitSpeed:78,engine:"Customer"}})} style={{background:"#2A2A30",color:"#ccc",border:"none",padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>+ TEAM</button>
-                <button onClick={resetGarage} title="Reset all drivers & teams to 2027 defaults" style={{background:"transparent",color:"#444",border:"1px solid #2A2A30",padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1,borderRadius:3}}>↺ DEFAULTS</button>
               </div>
             </div>
 
@@ -954,7 +897,7 @@ Return ONLY valid JSON — no markdown, nothing else:
               <button onClick={saveToChampionship} disabled={raceSaved} style={{background:raceSaved?"#1A2A1A":"#44CC88",color:raceSaved?"#44CC88":"#000",border:`1px solid ${raceSaved?"#44CC8844":"transparent"}`,padding:"10px 18px",cursor:raceSaved?"default":"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1.5,borderRadius:3,opacity:raceSaved?0.7:1}}>
                 {raceSaved?"✓ SAVED":"💾 SAVE TO CHAMPIONSHIP"}
               </button>
-              <button onClick={()=>setView("commentary")} style={{background:"#CC44FF",color:"#fff",border:"none",padding:"10px 24px",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:700,letterSpacing:2,borderRadius:3}}>🎙️ CROFT & BRUNDLE →</button>
+              <button onClick={doCommentary} style={{background:"#CC44FF",color:"#fff",border:"none",padding:"10px 24px",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:700,letterSpacing:2,borderRadius:3}}>🎙️ CROFT & BRUNDLE →</button>
             </div>
           </div>
         )}
@@ -962,23 +905,6 @@ Return ONLY valid JSON — no markdown, nothing else:
         {/* ══ COMMENTARY ══ */}
         {view==="commentary"&&(
           <div style={{animation:"fadeIn 0.2s ease"}}>
-            {!apiKey&&(
-              <div style={{background:"#18140A",border:"1px solid #FFC90644",borderLeft:"4px solid #FFC906",borderRadius:"0 6px 6px 0",padding:"14px 18px",marginBottom:16}}>
-                <div style={{fontSize:12,color:"#FFC906",fontWeight:700,marginBottom:6,letterSpacing:1}}>🔑 API KEY REQUIRED FOR AI COMMENTARY</div>
-                <div style={{fontSize:11,color:"#777",marginBottom:10}}>Enter your Anthropic API key to enable Croft & Brundle. Get one free at <span style={{color:"#4488FF"}}>console.anthropic.com</span></div>
-                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                  <input type="password" placeholder="sk-ant-api03-..." value={apiKeyInput} onChange={e=>setApiKeyInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveApiKey()}
-                    style={{flex:1,minWidth:220,background:"#0C0C0F",border:"1px solid #555",color:"#F0F0F0",padding:"8px 12px",fontFamily:"inherit",fontSize:12,borderRadius:3}}/>
-                  <button onClick={saveApiKey} style={{background:"#FFC906",color:"#000",border:"none",padding:"8px 18px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1,borderRadius:3}}>SAVE KEY</button>
-                </div>
-                <div style={{fontSize:9,color:"#444",marginTop:6}}>Stored in your browser only. Only sent to Anthropic's API. Never shared.</div>
-              </div>
-            )}
-            {apiKey&&(
-              <div style={{display:"flex",justifyContent:"flex-end",marginBottom:4}}>
-                <button onClick={clearApiKey} style={{background:"none",border:"none",color:"#333",cursor:"pointer",fontFamily:"inherit",fontSize:9,letterSpacing:1}}>× CLEAR API KEY</button>
-              </div>
-            )}
             <div style={{marginBottom:16}}>
               <div style={{fontSize:22,fontWeight:700,letterSpacing:3}}>CROFT & BRUNDLE</div>
               <div style={{display:"flex",gap:14,marginTop:8,alignItems:"center",flexWrap:"wrap"}}>
@@ -1103,26 +1029,22 @@ Return ONLY valid JSON — no markdown, nothing else:
               </div>
             ):(
               <>
-                {/* Tab bar */}
                 <div style={{display:"flex",gap:3,marginBottom:16,background:"#111115",border:"1px solid #1E1E22",borderRadius:5,padding:5}}>
                   {[["drivers","👤 DRIVERS"],["constructors","🏗️ CONSTRUCTORS"],["history","📋 RACE HISTORY"]].map(([k,l])=>(
                     <button key={k} onClick={()=>setChampTab(k)} style={{flex:1,background:champTab===k?"#2A2A30":"transparent",color:champTab===k?"#F0F0F0":"#555",border:`1px solid ${champTab===k?"#444":"transparent"}`,padding:"8px 0",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1,borderRadius:3,transition:"all 0.15s"}}>{l}</button>
                   ))}
                 </div>
 
-                {/* DRIVERS TAB */}
                 {champTab==="drivers"&&(
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))",gap:5,maxHeight:620,overflowY:"auto"}}>
                     {getStandings().map((s,i)=>{
                       const team=teams.find(t=>t.id===s.driver.teamId);
-                      const hasRaced=s.pts>0||championship.length===0;
                       return(
                         <div key={s.driver.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",background:i<3&&s.pts>0?"#181810":"#161618",border:`1px solid ${i<3&&s.pts>0?"#FFC90622":"#1E1E22"}`,borderLeft:`3px solid ${team?.color||"#555"}`,borderRadius:3,opacity:s.pts===0?0.45:1}}>
                           <div style={{width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",background:i===0&&s.pts>0?"#FFC906":i===1&&s.pts>0?"#888":i===2&&s.pts>0?"#CD7F32":"transparent",color:i<3&&s.pts>0?"#000":"#666",fontSize:10,fontWeight:700,borderRadius:2,border:!(i<3&&s.pts>0)?"1px solid #2A2A30":"none",flexShrink:0}}>{i+1}</div>
                           <div style={{flex:1,minWidth:0}}>
                             <div style={{fontSize:13,fontWeight:700}}>{s.driver.flag} {s.driver.name}</div>
-                            <div style={{fontSize:9,color:team?.color||"#888",letterSpacing:1}}>
-                              {team?.name||""}{s.wins>0?` · ${s.wins} WIN${s.wins>1?"S":""}`:""}</div>
+                            <div style={{fontSize:9,color:team?.color||"#888",letterSpacing:1}}>{team?.name||""}{s.wins>0?` · ${s.wins} WIN${s.wins>1?"S":""}`:""}</div>
                             {s.sprintPts>0&&<div style={{fontSize:9,color:"#555",marginTop:1}}>🏁 {s.racePts} · ⚡ {s.sprintPts}</div>}
                           </div>
                           <div style={{textAlign:"right",flexShrink:0}}>
@@ -1135,7 +1057,6 @@ Return ONLY valid JSON — no markdown, nothing else:
                   </div>
                 )}
 
-                {/* CONSTRUCTORS TAB */}
                 {champTab==="constructors"&&(
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))",gap:6}}>
                     {getConstructorStandings().map((s,i)=>(
@@ -1162,23 +1083,20 @@ Return ONLY valid JSON — no markdown, nothing else:
                         </div>
                         {s.sprintPts>0&&<div style={{fontSize:9,color:"#555"}}>🏁 {s.racePts} race · ⚡ {s.sprintPts} sprint</div>}
                         <div style={{marginTop:6,height:3,background:"#1A1A1A",borderRadius:2}}>
-                          <div style={{height:3,width:`${getConstructorStandings()[0]?.pts>0?(s.pts/getConstructorStandings()[0].pts)*100:0}%`,background:s.team.color,borderRadius:2,transition:"width 0.4s ease"}}/>
+                          <div style={{height:3,width:`${getConstructorStandings()[0]?.pts>0?(s.pts/getConstructorStandings()[0].pts)*100:0}%`,background:s.team.color,borderRadius:2}}/>
                         </div>
                       </div>
                     ))}
                   </div>
                 )}
 
-                {/* HISTORY TAB */}
                 {champTab==="history"&&(
                   <div style={{maxHeight:620,overflowY:"auto"}}>
                     {[...championship].reverse().map((r)=>(
                       <div key={r.id} style={{background:"#161618",border:"1px solid #1E1E22",borderRadius:4,padding:"12px 14px",marginBottom:6}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
                           <span style={{fontSize:10,color:"#555",letterSpacing:1}}>ROUND {r.round}</span>
-                          <div style={{display:"flex",gap:5}}>
-                            {r.hasSprint&&<span style={{fontSize:8,color:"#FFC906",background:"#FFC90620",padding:"1px 5px",borderRadius:2,fontWeight:700}}>⚡ SPRINT</span>}
-                          </div>
+                          {r.hasSprint&&<span style={{fontSize:8,color:"#FFC906",background:"#FFC90620",padding:"1px 5px",borderRadius:2,fontWeight:700}}>⚡ SPRINT</span>}
                         </div>
                         <div style={{fontSize:14,fontWeight:700}}>{r.trackFlag} {r.trackName}</div>
                         {r.sprintWinner&&(
@@ -1205,6 +1123,7 @@ Return ONLY valid JSON — no markdown, nothing else:
                   </div>
                 )}
               </>
+            )}
           </div>
         )}
       </div>
@@ -1213,10 +1132,3 @@ Return ONLY valid JSON — no markdown, nothing else:
     </div>
   );
 }
-
-
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<F1Sim />);
-  </script>
-</body>
-</html>
