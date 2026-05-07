@@ -4,43 +4,37 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>F1 SIM — 2027 Season</title>
-  <meta name="description" content="F1 2027 Season Simulator — Qualifying, Sprints, Races, Croft & Brundle AI Commentary and Championship Tracker">
+  <meta name="description" content="F1 2027 Season Simulator — Qualifying, Sprints, Races, Championship">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏎️</text></svg>">
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- React 18 + ReactDOM — no Babel needed, JSX pre-compiled -->
+  <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
   <style>
-    body { margin: 0; background: #0C0C0F; font-family: sans-serif; }
-    #loading {
-      min-height: 100vh; display: flex; flex-direction: column;
-      align-items: center; justify-content: center; gap: 16px;
-      background: #0C0C0F; color: #E8002D;
-    }
-    #loading .brand { font-size: 28px; font-weight: 900; letter-spacing: 8px; }
-    #loading .sub { font-size: 11px; color: #333; letter-spacing: 3px; }
-    @keyframes loadpulse { 0%,100%{opacity:.2} 50%{opacity:1} }
-    #loading .dot { animation: loadpulse 1.2s ease-in-out infinite; }
-    #loading .dot:nth-child(2) { animation-delay: .15s; }
-    #loading .dot:nth-child(3) { animation-delay: .3s; }
+    body{margin:0;background:#0C0C0F;font-family:sans-serif}
+    #root{min-height:100vh}
+    #loading{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#0C0C0F}
+    .brand{font-size:28px;font-weight:900;letter-spacing:8px;color:#E8002D}
+    .sub{font-size:11px;color:#333;letter-spacing:3px}
+    @keyframes lp{0%,100%{opacity:.2}50%{opacity:1}}
+    .dot{width:8px;height:8px;background:#E8002D;border-radius:50%;animation:lp 1.2s ease-in-out infinite}
+    .dot:nth-child(2){animation-delay:.15s}.dot:nth-child(3){animation-delay:.3s}
   </style>
 </head>
 <body>
   <div id="root">
     <div id="loading">
-      <div class="brand">F1 ▶ SIM</div>
-      <div style="display:flex;gap:6px">
-        <div class="dot" style="width:8px;height:8px;background:#E8002D;border-radius:50%"></div>
-        <div class="dot" style="width:8px;height:8px;background:#E8002D;border-radius:50%"></div>
-        <div class="dot" style="width:8px;height:8px;background:#E8002D;border-radius:50%"></div>
-      </div>
+      <div class="brand">F1 &#9654; SIM</div>
+      <div style="display:flex;gap:6px"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
       <div class="sub">LOADING 2027 SEASON DATA...</div>
     </div>
   </div>
+  <script>
+    // Pre-compiled from JSX — no Babel required
+    (function() {
+      'use strict';
+      const { useState } = React;
 
-  <script type="text/babel" data-presets="react">
-    const { useState } = React;
-
-
+ function _optionalChain(ops) { let lastAccessLHS = undefined; let value = ops[0]; let i = 1; while (i < ops.length) { const op = ops[i]; const fn = ops[i + 1]; i += 2; if ((op === 'optionalAccess' || op === 'optionalCall') && value == null) { return undefined; } if (op === 'access' || op === 'optionalAccess') { lastAccessLHS = value; value = fn(value); } else if (op === 'call' || op === 'optionalCall') { value = fn((...args) => value.call(lastAccessLHS, ...args)); lastAccessLHS = undefined; } } return value; }
 // ===================== DATA =====================
 
 const TEAMS = [
@@ -252,7 +246,7 @@ function runRace(grid, teams, track) {
     if(!e.dnf&&Math.abs(ch)>=5) events.push({lap:Lf(TL,0.5)+Math.floor(Math.random()*Lf(TL,0.2)),type:ch>0?"charge":"drop",icon:ch>0?"⚡":"📉",text:ch>0?`${e.driver.name} flying — ${ch} places gained from grid!`:`${e.driver.name} drops ${Math.abs(ch)} — tyres gone.`});
   });
   if(finishers.length>=3){
-    const gS=(((final[1]?.gap||5)*0.35)).toFixed(1);
+    const gS=(((_optionalChain([final, 'access', _2 => _2[1], 'optionalAccess', _3 => _3.gap])||5)*0.35)).toFixed(1);
     events.push({lap:TL-Math.floor(Math.random()*5)-4,type:"battle",icon:"🏁",text:`Late in the race: ${finishers[1].driver.name} closing on ${finishers[0].driver.name} — gap ${gS}s!`});
   }
   if(finishers[9]&&finishers[10]) events.push({lap:TL-3,type:"battle",icon:"🔥",text:`LAP ${TL-3}: ${finishers[9].driver.name} vs ${finishers[10].driver.name} — final points position!`});
@@ -281,7 +275,7 @@ function runRace(grid, teams, track) {
   });
 
   events.sort((a,b)=>a.lap-b.lap);
-  return {positions:final,events,fastestLap:flD?.driver||null,isWet,hasSC,scLap,totalLaps:TL};
+  return {positions:final,events,fastestLap:_optionalChain([flD, 'optionalAccess', _4 => _4.driver])||null,isWet,hasSC,scLap,totalLaps:TL};
 }
 
 // ===================== CANVAS DOWNLOAD =====================
@@ -361,7 +355,7 @@ function buildSurnameMap(drivers,teams){
   drivers.forEach(d=>{
     const sn=d.name.split(" ").pop();
     const t=teams.find(t=>t.id===d.teamId);
-    m[sn]=t?.color||"#E8002D";
+    m[sn]=_optionalChain([t, 'optionalAccess', _5 => _5.color])||"#E8002D";
   });
   return m;
 }
@@ -381,39 +375,39 @@ function HighlightedText({text,surnameMap}){
     last=re.lastIndex;
   }
   if(last<text.length) parts.push({t:text.slice(last),c:null});
-  return <span>{parts.map((p,i)=>p.c?<span key={i} style={{color:p.c,fontWeight:700,textShadow:`0 0 14px ${p.c}44`}}>{p.t}</span>:<span key={i}>{p.t}</span>)}</span>;
+  return React.createElement('span', null, parts.map((p,i)=>p.c?React.createElement('span', { key: i, style: {color:p.c,fontWeight:700,textShadow:`0 0 14px ${p.c}44`},}, p.t):React.createElement('span', { key: i,}, p.t)));
 }
 
 function DialogueLine({speaker,text,surnameMap}){
   const ic=speaker==="CROFT";
   return(
-    <div style={{display:"flex",gap:14,marginBottom:16,alignItems:"flex-start"}}>
-      <div style={{flexShrink:0,width:40,height:40,borderRadius:"50%",background:ic?"#E8002D22":"#08081A",border:`2px solid ${ic?"#E8002D":"#4466AA"}`,display:"flex",alignItems:"center",justifyContent:"center"}}>
-        <span style={{fontSize:10,fontWeight:900,color:ic?"#E8002D":"#4466AA"}}>{ic?"DC":"MB"}</span>
-      </div>
-      <div style={{flex:1}}>
-        <div style={{fontSize:10,fontWeight:700,letterSpacing:2,color:ic?"#E8002D":"#6688BB",marginBottom:5}}>{ic?"DAVID CROFT":"MARTIN BRUNDLE"}</div>
-        <div style={{background:ic?"#160A0A":"#0A0A16",border:`1px solid ${ic?"#E8002D22":"#4466AA22"}`,borderLeft:`3px solid ${ic?"#E8002D":"#4466AA"}`,borderRadius:"0 8px 8px 0",padding:"11px 16px",lineHeight:1.78,fontSize:14,color:ic?"#E8D8D8":"#D0D8E8"}}>
-          <HighlightedText text={text} surnameMap={surnameMap}/>
-        </div>
-      </div>
-    </div>
+    React.createElement('div', { style: {display:"flex",gap:14,marginBottom:16,alignItems:"flex-start"},}
+      , React.createElement('div', { style: {flexShrink:0,width:40,height:40,borderRadius:"50%",background:ic?"#E8002D22":"#08081A",border:`2px solid ${ic?"#E8002D":"#4466AA"}`,display:"flex",alignItems:"center",justifyContent:"center"},}
+        , React.createElement('span', { style: {fontSize:10,fontWeight:900,color:ic?"#E8002D":"#4466AA"},}, ic?"DC":"MB")
+      )
+      , React.createElement('div', { style: {flex:1},}
+        , React.createElement('div', { style: {fontSize:10,fontWeight:700,letterSpacing:2,color:ic?"#E8002D":"#6688BB",marginBottom:5},}, ic?"DAVID CROFT":"MARTIN BRUNDLE")
+        , React.createElement('div', { style: {background:ic?"#160A0A":"#0A0A16",border:`1px solid ${ic?"#E8002D22":"#4466AA22"}`,borderLeft:`3px solid ${ic?"#E8002D":"#4466AA"}`,borderRadius:"0 8px 8px 0",padding:"11px 16px",lineHeight:1.78,fontSize:14,color:ic?"#E8D8D8":"#D0D8E8"},}
+          , React.createElement(HighlightedText, { text: text, surnameMap: surnameMap,})
+        )
+      )
+    )
   );
 }
 
 function Bar({val,color="#E8002D",max=100}){
-  return <div style={{height:4,background:"#2A2A30",borderRadius:2,marginTop:3}}><div style={{height:4,width:`${(val/max)*100}%`,background:color,borderRadius:2}}/></div>;
+  return React.createElement('div', { style: {height:4,background:"#2A2A30",borderRadius:2,marginTop:3},}, React.createElement('div', { style: {height:4,width:`${(val/max)*100}%`,background:color,borderRadius:2},}));
 }
 
 function MentalBar({val,color}){
   const mentalColor=val>=8?"#44CC88":val>=6?"#FFC906":val>=4?"#FF8844":"#FF4444";
   return(
-    <div style={{marginBottom:4}}>
-      <div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:"#444",letterSpacing:1}}><span>MENTAL</span><span style={{color:mentalColor}}>{val}/10</span></div>
-      <div style={{height:4,background:"#2A2A30",borderRadius:2,marginTop:2}}>
-        <div style={{height:4,width:`${val*10}%`,background:mentalColor,borderRadius:2}}/>
-      </div>
-    </div>
+    React.createElement('div', { style: {marginBottom:4},}
+      , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",fontSize:9,color:"#444",letterSpacing:1},}, React.createElement('span', null, "MENTAL"), React.createElement('span', { style: {color:mentalColor},}, val, "/10"))
+      , React.createElement('div', { style: {height:4,background:"#2A2A30",borderRadius:2,marginTop:2},}
+        , React.createElement('div', { style: {height:4,width:`${val*10}%`,background:mentalColor,borderRadius:2},})
+      )
+    )
   );
 }
 
@@ -425,22 +419,22 @@ function TrackPicker({goodTracks,badTracks,onChange}){
     else if(badTracks.length<3) onChange({goodTracks,badTracks:[...badTracks,id]});
   };
   return(
-    <div style={{marginBottom:12}}>
-      <div style={{fontSize:9,color:"#555",letterSpacing:1,marginBottom:6}}>
-        CLICK TO TOGGLE: 🟢 GOOD TRACK (+5 PTS) · 🔴 BAD TRACK (−5 PTS) · MAX 3 EACH
-      </div>
-      <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
-        {TRACKS.map(t=>{
+    React.createElement('div', { style: {marginBottom:12},}
+      , React.createElement('div', { style: {fontSize:9,color:"#555",letterSpacing:1,marginBottom:6},}, "CLICK TO TOGGLE: 🟢 GOOD TRACK (+5 PTS) · 🔴 BAD TRACK (−5 PTS) · MAX 3 EACH"
+
+      )
+      , React.createElement('div', { style: {display:"flex",flexWrap:"wrap",gap:3},}
+        , TRACKS.map(t=>{
           const g=goodTracks.includes(t.id),b=badTracks.includes(t.id);
           return(
-            <button key={t.id} onClick={()=>toggle(t.id)} style={{fontSize:9,padding:"3px 6px",cursor:"pointer",fontFamily:"inherit",fontWeight:700,border:"none",borderRadius:2,transition:"all 0.1s",background:g?"#44CC8828":b?"#FF444428":"#2A2A30",color:g?"#44CC88":b?"#FF4444":"#555",outline:g?`1px solid #44CC8866`:b?`1px solid #FF444466`:"none"}}>
-              {t.flag} {t.id.slice(0,3).toUpperCase()}
-            </button>
+            React.createElement('button', { key: t.id, onClick: ()=>toggle(t.id), style: {fontSize:9,padding:"3px 6px",cursor:"pointer",fontFamily:"inherit",fontWeight:700,border:"none",borderRadius:2,transition:"all 0.1s",background:g?"#44CC8828":b?"#FF444428":"#2A2A30",color:g?"#44CC88":b?"#FF4444":"#555",outline:g?`1px solid #44CC8866`:b?`1px solid #FF444466`:"none"},}
+              , t.flag, " " , t.id.slice(0,3).toUpperCase()
+            )
           );
-        })}
-      </div>
-      <div style={{fontSize:9,color:"#555",marginTop:5}}>🟢 {goodTracks.length}/3 favourites · 🔴 {badTracks.length}/3 tough circuits</div>
-    </div>
+        })
+      )
+      , React.createElement('div', { style: {fontSize:9,color:"#555",marginTop:5},}, "🟢 " , goodTracks.length, "/3 favourites · 🔴 "    , badTracks.length, "/3 tough circuits"  )
+    )
   );
 }
 
@@ -450,87 +444,87 @@ function EditModal({type,data,teams,onSave,onClose}){
   const sf=isD?[["pace","Raw Pace"],["consistency","Consistency"],["wet","Wet Weather"],["overtaking","Overtaking"],["defense","Defense"],["experience","Experience"]]:[["carPace","Car Pace"],["reliability","Reliability"],["pitSpeed","Pit Speed"]];
   const inp={background:"#1E1E22",border:"1px solid #333",color:"#F0F0F0",padding:"7px 10px",width:"100%",fontFamily:"inherit",fontSize:13,borderRadius:3};
   return(
-    <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.9)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div style={{background:"#161618",border:"1px solid #2A2A30",borderRadius:8,padding:24,width:460,maxHeight:"88vh",overflowY:"auto"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
-          <span style={{fontSize:13,fontWeight:700,letterSpacing:2,color:"#E8002D"}}>{isD?"EDIT DRIVER":"EDIT TEAM"}</span>
-          <button onClick={onClose} style={{background:"none",border:"none",color:"#888",cursor:"pointer",fontSize:22}}>×</button>
-        </div>
-        {isD?(
-          <>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
-              {[["Full Name","name","text"],["Abbreviation","abbr","text"],["Number","num","number"],["Flag","flag","text"]].map(([l,k,tp])=>(
-                <div key={k}><div style={{fontSize:10,color:"#888",letterSpacing:1,marginBottom:4}}>{l.toUpperCase()}</div>
-                  <input value={f[k]} type={tp} maxLength={k==="abbr"?3:undefined} onChange={e=>setF(p=>({...p,[k]:tp==="number"?parseInt(e.target.value)||0:k==="abbr"?e.target.value.toUpperCase():e.target.value}))} style={inp}/>
-                </div>
-              ))}
-              <div style={{gridColumn:"span 2"}}><div style={{fontSize:10,color:"#888",letterSpacing:1,marginBottom:4}}>TEAM</div>
-                <select value={f.teamId} onChange={e=>setF(p=>({...p,teamId:e.target.value}))} style={{...inp}}>{teams.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select>
-              </div>
-            </div>
-            <div style={{marginBottom:14}}>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-                <span style={{fontSize:11,color:"#888",letterSpacing:1}}>MENTAL STATE</span>
-                <span style={{fontSize:13,fontWeight:700,color:f.mental>=8?"#44CC88":f.mental>=6?"#FFC906":"#FF4444",fontFamily:"monospace"}}>{f.mental}/10</span>
-              </div>
-              <input type="range" min={1} max={10} step={1} value={f.mental} onChange={e=>setF(p=>({...p,mental:parseInt(e.target.value)}))} style={{width:"100%",accentColor:"#44CC88"}}/>
-              <div style={{fontSize:9,color:"#444",marginTop:2}}>1=Struggling · 5=Neutral · 10=Peak Focus</div>
-            </div>
-            <div style={{marginBottom:14,padding:"10px 12px",background:"#111115",borderRadius:4,border:"1px solid #1E1E22"}}>
-              <TrackPicker goodTracks={f.goodTracks} badTracks={f.badTracks} onChange={({goodTracks,badTracks})=>setF(p=>({...p,goodTracks,badTracks}))}/>
-            </div>
-          </>
+    React.createElement('div', { onClick: e=>e.target===e.currentTarget&&onClose(), style: {position:"fixed",inset:0,background:"rgba(0,0,0,0.9)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"},}
+      , React.createElement('div', { style: {background:"#161618",border:"1px solid #2A2A30",borderRadius:8,padding:24,width:460,maxHeight:"88vh",overflowY:"auto"},}
+        , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18},}
+          , React.createElement('span', { style: {fontSize:13,fontWeight:700,letterSpacing:2,color:"#E8002D"},}, isD?"EDIT DRIVER":"EDIT TEAM")
+          , React.createElement('button', { onClick: onClose, style: {background:"none",border:"none",color:"#888",cursor:"pointer",fontSize:22},}, "×")
+        )
+        , isD?(
+          React.createElement(React.Fragment, null
+            , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14},}
+              , [["Full Name","name","text"],["Abbreviation","abbr","text"],["Number","num","number"],["Flag","flag","text"]].map(([l,k,tp])=>(
+                React.createElement('div', { key: k,}, React.createElement('div', { style: {fontSize:10,color:"#888",letterSpacing:1,marginBottom:4},}, l.toUpperCase())
+                  , React.createElement('input', { value: f[k], type: tp, maxLength: k==="abbr"?3:undefined, onChange: e=>setF(p=>({...p,[k]:tp==="number"?parseInt(e.target.value)||0:k==="abbr"?e.target.value.toUpperCase():e.target.value})), style: inp,})
+                )
+              ))
+              , React.createElement('div', { style: {gridColumn:"span 2"},}, React.createElement('div', { style: {fontSize:10,color:"#888",letterSpacing:1,marginBottom:4},}, "TEAM")
+                , React.createElement('select', { value: f.teamId, onChange: e=>setF(p=>({...p,teamId:e.target.value})), style: {...inp},}, teams.map(t=>React.createElement('option', { key: t.id, value: t.id,}, t.name)))
+              )
+            )
+            , React.createElement('div', { style: {marginBottom:14},}
+              , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",marginBottom:4},}
+                , React.createElement('span', { style: {fontSize:11,color:"#888",letterSpacing:1},}, "MENTAL STATE" )
+                , React.createElement('span', { style: {fontSize:13,fontWeight:700,color:f.mental>=8?"#44CC88":f.mental>=6?"#FFC906":"#FF4444",fontFamily:"monospace"},}, f.mental, "/10")
+              )
+              , React.createElement('input', { type: "range", min: 1, max: 10, step: 1, value: f.mental, onChange: e=>setF(p=>({...p,mental:parseInt(e.target.value)})), style: {width:"100%",accentColor:"#44CC88"},})
+              , React.createElement('div', { style: {fontSize:9,color:"#444",marginTop:2},}, "1=Struggling · 5=Neutral · 10=Peak Focus"     )
+            )
+            , React.createElement('div', { style: {marginBottom:14,padding:"10px 12px",background:"#111115",borderRadius:4,border:"1px solid #1E1E22"},}
+              , React.createElement(TrackPicker, { goodTracks: f.goodTracks, badTracks: f.badTracks, onChange: ({goodTracks,badTracks})=>setF(p=>({...p,goodTracks,badTracks})),})
+            )
+          )
         ):(
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
-            {[["Team Name","name","text"],["Abbreviation","abbr","text"],["Engine","engine","text"]].map(([l,k,tp])=>(
-              <div key={k}><div style={{fontSize:10,color:"#888",letterSpacing:1,marginBottom:4}}>{l.toUpperCase()}</div>
-                <input value={f[k]} type={tp} maxLength={k==="abbr"?3:undefined} onChange={e=>setF(p=>({...p,[k]:k==="abbr"?e.target.value.toUpperCase():e.target.value}))} style={inp}/>
-              </div>
-            ))}
-            <div><div style={{fontSize:10,color:"#888",letterSpacing:1,marginBottom:4}}>TEAM COLOUR</div>
-              <input type="color" value={f.color} onChange={e=>setF(p=>({...p,color:e.target.value}))} style={{width:"100%",height:36,background:"#1E1E22",border:"1px solid #333",borderRadius:3,cursor:"pointer"}}/>
-            </div>
-          </div>
-        )}
-        {sf.map(([k,label])=>(
-          <div key={k} style={{marginBottom:12}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
-              <span style={{fontSize:11,color:"#888",letterSpacing:1}}>{label.toUpperCase()}</span>
-              <span style={{fontSize:13,fontWeight:700,color:"#F0F0F0",fontFamily:"monospace"}}>{f[k]}</span>
-            </div>
-            <input type="range" min={40} max={100} step={1} value={f[k]} onChange={e=>setF(p=>({...p,[k]:parseInt(e.target.value)}))} style={{width:"100%",accentColor:"#E8002D"}}/>
-          </div>
-        ))}
-        <div style={{display:"flex",gap:10,marginTop:18}}>
-          <button onClick={()=>onSave(f)} style={{flex:1,background:"#E8002D",color:"#fff",border:"none",padding:11,cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:2,borderRadius:3}}>SAVE</button>
-          <button onClick={onClose} style={{background:"transparent",color:"#888",border:"1px solid #333",padding:"11px 18px",cursor:"pointer",fontFamily:"inherit",fontSize:12,borderRadius:3}}>CANCEL</button>
-        </div>
-      </div>
-    </div>
+          React.createElement('div', { style: {display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14},}
+            , [["Team Name","name","text"],["Abbreviation","abbr","text"],["Engine","engine","text"]].map(([l,k,tp])=>(
+              React.createElement('div', { key: k,}, React.createElement('div', { style: {fontSize:10,color:"#888",letterSpacing:1,marginBottom:4},}, l.toUpperCase())
+                , React.createElement('input', { value: f[k], type: tp, maxLength: k==="abbr"?3:undefined, onChange: e=>setF(p=>({...p,[k]:k==="abbr"?e.target.value.toUpperCase():e.target.value})), style: inp,})
+              )
+            ))
+            , React.createElement('div', null, React.createElement('div', { style: {fontSize:10,color:"#888",letterSpacing:1,marginBottom:4},}, "TEAM COLOUR" )
+              , React.createElement('input', { type: "color", value: f.color, onChange: e=>setF(p=>({...p,color:e.target.value})), style: {width:"100%",height:36,background:"#1E1E22",border:"1px solid #333",borderRadius:3,cursor:"pointer"},})
+            )
+          )
+        )
+        , sf.map(([k,label])=>(
+          React.createElement('div', { key: k, style: {marginBottom:12},}
+            , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",marginBottom:3},}
+              , React.createElement('span', { style: {fontSize:11,color:"#888",letterSpacing:1},}, label.toUpperCase())
+              , React.createElement('span', { style: {fontSize:13,fontWeight:700,color:"#F0F0F0",fontFamily:"monospace"},}, f[k])
+            )
+            , React.createElement('input', { type: "range", min: 40, max: 100, step: 1, value: f[k], onChange: e=>setF(p=>({...p,[k]:parseInt(e.target.value)})), style: {width:"100%",accentColor:"#E8002D"},})
+          )
+        ))
+        , React.createElement('div', { style: {display:"flex",gap:10,marginTop:18},}
+          , React.createElement('button', { onClick: ()=>onSave(f), style: {flex:1,background:"#E8002D",color:"#fff",border:"none",padding:11,cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:2,borderRadius:3},}, "SAVE")
+          , React.createElement('button', { onClick: onClose, style: {background:"transparent",color:"#888",border:"1px solid #333",padding:"11px 18px",cursor:"pointer",fontFamily:"inherit",fontSize:12,borderRadius:3},}, "CANCEL")
+        )
+      )
+    )
   );
 }
 
 function QGrid({entries,gapFrom,posLabel,elimLine,elimColor="#FF4444"}){
   return(
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-      {entries.map((e,i)=>{
+    React.createElement('div', { style: {display:"grid",gridTemplateColumns:"1fr 1fr",gap:6},}
+      , entries.map((e,i)=>{
         const elim=elimLine!==undefined&&i>=elimLine;
         const gap=i===0?null:((gapFrom[0].score-e.score)*0.011);
         return(
-          <div key={e.driver.id} style={{background:elim?"#1A1010":i<3?"#181810":"#161618",border:`1px solid ${elim?`${elimColor}44`:i<3?"#FFC90622":"#1E1E22"}`,borderLeft:`3px solid ${elim?elimColor:e.team.color}`,borderRadius:3,padding:"9px 12px",display:"flex",alignItems:"center",gap:10,opacity:elim?0.55:1}}>
-            <div style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?"#FFC906":i===1?"#888":i===2?"#CD7F32":"transparent",color:i<3?"#000":"#666",fontSize:10,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #2A2A30":"none",flexShrink:0}}>{i+1}</div>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:13,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{e.driver.name}</div>
-              <div style={{fontSize:10,color:e.team.color,letterSpacing:1}}>{e.team.name}</div>
-            </div>
-            <div style={{textAlign:"right",flexShrink:0}}>
-              <div style={{fontSize:12,fontFamily:"monospace",color:i===0?"#FFC906":"#888"}}>{i===0?"POLE":gap?"+"+gap.toFixed(3)+"s":""}</div>
-              {elim&&<div style={{fontSize:9,color:elimColor,fontWeight:700}}>ELIMINATED</div>}
-            </div>
-          </div>
+          React.createElement('div', { key: e.driver.id, style: {background:elim?"#1A1010":i<3?"#181810":"#161618",border:`1px solid ${elim?`${elimColor}44`:i<3?"#FFC90622":"#1E1E22"}`,borderLeft:`3px solid ${elim?elimColor:e.team.color}`,borderRadius:3,padding:"9px 12px",display:"flex",alignItems:"center",gap:10,opacity:elim?0.55:1},}
+            , React.createElement('div', { style: {width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?"#FFC906":i===1?"#888":i===2?"#CD7F32":"transparent",color:i<3?"#000":"#666",fontSize:10,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #2A2A30":"none",flexShrink:0},}, i+1)
+            , React.createElement('div', { style: {flex:1,minWidth:0},}
+              , React.createElement('div', { style: {fontSize:13,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"},}, e.driver.name)
+              , React.createElement('div', { style: {fontSize:10,color:e.team.color,letterSpacing:1},}, e.team.name)
+            )
+            , React.createElement('div', { style: {textAlign:"right",flexShrink:0},}
+              , React.createElement('div', { style: {fontSize:12,fontFamily:"monospace",color:i===0?"#FFC906":"#888"},}, i===0?"POLE":gap?"+"+gap.toFixed(3)+"s":"")
+              , elim&&React.createElement('div', { style: {fontSize:9,color:elimColor,fontWeight:700},}, "ELIMINATED")
+            )
+          )
         );
-      })}
-    </div>
+      })
+    )
   );
 }
 
@@ -547,10 +541,10 @@ const STAGE_DEFS=[
 // ===================== MAIN APP =====================
 
 function F1Sim(){
-  const [apiKey,setApiKey]=useState(()=>localStorage.getItem("f1sim_ak")||"");
+  const [apiKey,setApiKey]=useState(()=>{try{return localStorage.getItem("f1sim_ak")||"";}catch (e2){return "";}});
   const [apiKeyInput,setApiKeyInput]=useState("");
-  const [drivers,setDrivers]=useState(()=>{try{const s=localStorage.getItem("f1sim_drivers");return s?JSON.parse(s):DRIVERS;}catch{return DRIVERS;}});
-  const [teams,setTeams]=useState(()=>{try{const s=localStorage.getItem("f1sim_teams");return s?JSON.parse(s):TEAMS;}catch{return TEAMS;}});
+  const [drivers,setDrivers]=useState(()=>{try{const s=localStorage.getItem("f1sim_drivers");return s?JSON.parse(s):DRIVERS;}catch (e3){return DRIVERS;}});
+  const [teams,setTeams]=useState(()=>{try{const s=localStorage.getItem("f1sim_teams");return s?JSON.parse(s):TEAMS;}catch (e4){return TEAMS;}});
   const [track,setTrack]=useState(TRACKS[0]);
   const [view,setView]=useState("garage");
   const [gTab,setGTab]=useState("drivers");
@@ -565,6 +559,7 @@ function F1Sim(){
   const [activeS,setActiveS]=useState(0);
   const [championship,setChampionship]=useState([]);
   const [raceSaved,setRaceSaved]=useState(false);
+  const [champTab,setChampTab]=useState("drivers");
   const [champTab,setChampTab]=useState("drivers");
 
   const teamDrivers=id=>drivers.filter(d=>d.teamId===id);
@@ -594,11 +589,11 @@ function F1Sim(){
       trackName:track.name,
       trackFlag:track.flag,
       hasSprint:!!sprint,
-      winner:race.positions[0]?.driver.name||"—",
+      winner:_optionalChain([race, 'access', _6 => _6.positions, 'access', _7 => _7[0], 'optionalAccess', _8 => _8.driver, 'access', _9 => _9.name])||"—",
       podium:race.positions.slice(0,3).map(e=>e.driver.name),
       raceResults:race.positions.reduce((a,e)=>({...a,[e.driver.id]:e.points}),{}),
       sprintResults:sprint?sprint.positions.reduce((a,e)=>({...a,[e.driver.id]:e.points}),{}):null,
-      sprintWinner:sprint?sprint.positions.find(e=>!e.dnf)?.driver.name||null:null,
+      sprintWinner:sprint?_optionalChain([sprint, 'access', _10 => _10.positions, 'access', _11 => _11.find, 'call', _12 => _12(e=>!e.dnf), 'optionalAccess', _13 => _13.driver, 'access', _14 => _14.name])||null:null,
       sprintTop8:sprint?sprint.positions.filter(e=>!e.dnf&&e.points>0).map(e=>({name:e.driver.name,pts:e.points})):null,
     };
     setChampionship(prev=>[...prev,entry]);
@@ -609,8 +604,8 @@ function F1Sim(){
     return drivers.map(d=>{
       let pts=0,wins=0,racePts=0,sprintPts=0;
       championship.forEach(r=>{
-        const rp=r.raceResults?.[d.id]||0;
-        const sp=r.sprintResults?.[d.id]||0;
+        const rp=_optionalChain([r, 'access', _15 => _15.raceResults, 'optionalAccess', _16 => _16[d.id]])||0;
+        const sp=_optionalChain([r, 'access', _17 => _17.sprintResults, 'optionalAccess', _18 => _18[d.id]])||0;
         racePts+=rp; sprintPts+=sp; pts+=rp+sp;
         if(r.winner===d.name) wins++;
       });
@@ -624,8 +619,8 @@ function F1Sim(){
       let pts=0,racePts=0,sprintPts=0,wins=0;
       championship.forEach(r=>{
         tds.forEach(d=>{
-          const rp=r.raceResults?.[d.id]||0;
-          const sp=r.sprintResults?.[d.id]||0;
+          const rp=_optionalChain([r, 'access', _19 => _19.raceResults, 'optionalAccess', _20 => _20[d.id]])||0;
+          const sp=_optionalChain([r, 'access', _21 => _21.sprintResults, 'optionalAccess', _22 => _22[d.id]])||0;
           racePts+=rp; sprintPts+=sp; pts+=rp+sp;
         });
         if(tds.some(d=>d.name===r.winner)) wins++;
@@ -659,7 +654,7 @@ HARD RULES:
 
 RACE DATA:
 GRAND PRIX: ${track.name} — ${track.circuit}
-LAPS: ${L} | ${race.isWet?"WET CONDITIONS":"Dry"} | ${race.hasSC?`Safety car lap ${race.scLap}`:"No safety car"} | FL: ${race.fastestLap?.name||"N/A"}
+LAPS: ${L} | ${race.isWet?"WET CONDITIONS":"Dry"} | ${race.hasSC?`Safety car lap ${race.scLap}`:"No safety car"} | FL: ${_optionalChain([race, 'access', _23 => _23.fastestLap, 'optionalAccess', _24 => _24.name])||"N/A"}
 GRID: ${grid}
 RESULT: ${results}
 EVENTS: ${evtLog}
@@ -678,7 +673,7 @@ Return ONLY valid JSON — no markdown, nothing else:
     try{
       const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:3500,messages:[{role:"user",content:prompt}]})});
       const data=await res.json();
-      const raw=data.content?.map(c=>c.text||"").join("")||"";
+      const raw=_optionalChain([data, 'access', _25 => _25.content, 'optionalAccess', _26 => _26.map, 'call', _27 => _27(c=>c.text||""), 'access', _28 => _28.join, 'call', _29 => _29("")])||"";
       setGenMsg("Feeding broadcast to the studio…");
       try{
         const clean=raw.replace(/```json|```/g,"").trim();
@@ -686,29 +681,31 @@ Return ONLY valid JSON — no markdown, nothing else:
         if(parsed.stages&&Array.isArray(parsed.stages)){
           setStages(parsed.stages.map(s=>s.lines&&Array.isArray(s.lines)?s:{...s,lines:[{speaker:"CROFT",text:s.text||""}]}));
         } else setStages([{key:"start",lines:[{speaker:"CROFT",text:raw}]}]);
-      }catch{
+      }catch (e5){
         const paras=raw.split("\n\n").filter(Boolean);
         setStages(STAGE_DEFS.map((s,i)=>({key:s.key,lines:[{speaker:"CROFT",text:paras[i]||paras[0]||"Commentary unavailable."}]})));
       }
-    }catch{setStages([{key:"start",lines:[{speaker:"CROFT",text:"Unable to generate commentary — please check connection and try again."}]}]);}
+    }catch (e6){setStages([{key:"start",lines:[{speaker:"CROFT",text:"Unable to generate commentary — please check connection and try again."}]}]);}
     finally{setIsGen(false);setGenMsg("");}
   };
 
-  const saveApiKey=()=>{ if(apiKeyInput.startsWith("sk-")){localStorage.setItem("f1sim_ak",apiKeyInput);setApiKey(apiKeyInput);setApiKeyInput("");} };
-  const clearApiKey=()=>{ localStorage.removeItem("f1sim_ak");setApiKey("");setApiKeyInput(""); };
   const saveDriver=d=>{
     const next=drivers.find(x=>x.id===d.id)?drivers.map(x=>x.id===d.id?d:x):[...drivers,{...d,id:`c_${Date.now()}`}];
-    setDrivers(next); try{localStorage.setItem("f1sim_drivers",JSON.stringify(next));}catch{} setModal(null);
+    setDrivers(next);try{localStorage.setItem("f1sim_drivers",JSON.stringify(next));}catch (e7){}
+    setModal(null);
   };
   const saveTeam=t=>{
     const next=teams.find(x=>x.id===t.id)?teams.map(x=>x.id===t.id?t:x):[...teams,{...t,id:`c_${Date.now()}`}];
-    setTeams(next); try{localStorage.setItem("f1sim_teams",JSON.stringify(next));}catch{} setModal(null);
+    setTeams(next);try{localStorage.setItem("f1sim_teams",JSON.stringify(next));}catch (e8){}
+    setModal(null);
   };
   const resetGarage=()=>{
-    if(!window.confirm("Reset all drivers and teams to 2027 defaults? Your edits will be lost.")) return;
-    localStorage.removeItem("f1sim_drivers"); localStorage.removeItem("f1sim_teams");
-    setDrivers(DRIVERS); setTeams(TEAMS);
+    if(!window.confirm("Reset all drivers and teams to 2027 defaults?")) return;
+    try{localStorage.removeItem("f1sim_drivers");localStorage.removeItem("f1sim_teams");}catch (e9){}
+    setDrivers(DRIVERS);setTeams(TEAMS);
   };
+  const saveApiKey=()=>{if(apiKeyInput.startsWith("sk-")){try{localStorage.setItem("f1sim_ak",apiKeyInput);}catch (e10){}setApiKey(apiKeyInput);setApiKeyInput("");}};
+  const clearApiKey=()=>{try{localStorage.removeItem("f1sim_ak");}catch (e11){}setApiKey("");setApiKeyInput("");};
 
   const surnameMap=buildSurnameMap(drivers,teams);
 
@@ -724,8 +721,8 @@ Return ONLY valid JSON — no markdown, nothing else:
   const nb=(a,lk)=>({background:a?"#E8002D":"transparent",color:a?"#fff":lk?"#2A2A2A":"#666",border:"none",padding:"0 12px",height:52,cursor:lk?"default":"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1.5,transition:"all 0.15s",borderRight:"1px solid #1A1A1E",pointerEvents:lk?"none":"auto"});
 
   return(
-    <div style={{background:"#0C0C0F",minHeight:"100vh",fontFamily:"'Rajdhani','Segoe UI',sans-serif",color:"#F0F0F0"}}>
-      <style>{`
+    React.createElement('div', { style: {background:"#0C0C0F",minHeight:"100vh",fontFamily:"'Rajdhani','Segoe UI',sans-serif",color:"#F0F0F0"},}
+      , React.createElement('style', null, `
         @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
         ::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:#111}::-webkit-scrollbar-thumb{background:#2A2A30}
@@ -734,489 +731,493 @@ Return ONLY valid JSON — no markdown, nothing else:
         @keyframes pulse{0%,100%{opacity:0.25}50%{opacity:1}}
         @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
         @keyframes slideIn{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}
-      `}</style>
+      `)
 
-      {/* HEADER */}
-      <div style={{background:"#111115",borderBottom:"2px solid #E8002D",display:"flex",alignItems:"center",height:52,paddingLeft:14,overflowX:"auto"}}>
-        <div style={{fontSize:16,fontWeight:700,letterSpacing:4,color:"#E8002D",marginRight:16,flexShrink:0}}>F1 ▶ SIM</div>
-        {NAVS.filter(n=>!n.hidden).map(n=><button key={n.v} onClick={()=>!n.locked&&setView(n.v)} style={nb(view===n.v,n.locked)}>{n.l}</button>)}
-        <div style={{marginLeft:"auto",paddingRight:14,fontSize:10,color:"#333",letterSpacing:1,whiteSpace:"nowrap",flexShrink:0}}>{track.flag} {track.name.toUpperCase()} {track.hasSprint?"⚡":""}</div>
-      </div>
+      /* HEADER */
+      , React.createElement('div', { style: {background:"#111115",borderBottom:"2px solid #E8002D",display:"flex",alignItems:"center",height:52,paddingLeft:14,overflowX:"auto"},}
+        , React.createElement('div', { style: {fontSize:16,fontWeight:700,letterSpacing:4,color:"#E8002D",marginRight:16,flexShrink:0},}, "F1 ▶ SIM"  )
+        , NAVS.filter(n=>!n.hidden).map(n=>React.createElement('button', { key: n.v, onClick: ()=>!n.locked&&setView(n.v), style: nb(view===n.v,n.locked),}, n.l))
+        , React.createElement('div', { style: {marginLeft:"auto",paddingRight:14,fontSize:10,color:"#333",letterSpacing:1,whiteSpace:"nowrap",flexShrink:0},}, track.flag, " " , track.name.toUpperCase(), " " , track.hasSprint?"⚡":"")
+      )
 
-      <div style={{padding:18,maxWidth:1120,margin:"0 auto"}}>
+      , React.createElement('div', { style: {padding:18,maxWidth:1120,margin:"0 auto"},}
 
-        {/* ══ GARAGE ══ */}
-        {view==="garage"&&(
-          <div style={{animation:"fadeIn 0.2s ease"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
-              <div>
-                <div style={{fontSize:22,fontWeight:700,letterSpacing:3}}>2027 F1 GARAGE</div>
-                <div style={{fontSize:11,color:"#444",letterSpacing:1,marginTop:2}}>{drivers.length} DRIVERS · {teams.length} TEAMS · MENTAL STATE · GOOD/BAD TRACKS</div>
-              </div>
-              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                {[["DRIVERS","drivers"],["TEAMS","teams"]].map(([l,t])=>(
-                  <button key={t} onClick={()=>setGTab(t)} style={{background:gTab===t?"#2A2A30":"transparent",color:gTab===t?"#F0F0F0":"#555",border:"1px solid #2A2A30",padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>{l}</button>
-                ))}
-                <button onClick={()=>setModal({type:"driver",data:{name:"",abbr:"",num:99,teamId:teams[0]?.id||"",pace:78,consistency:78,wet:75,overtaking:75,defense:75,experience:65,mental:7,flag:"🏁",goodTracks:[],badTracks:[]}})} style={{background:"#E8002D",color:"#fff",border:"none",padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>+ DRIVER</button>
-                <button onClick={()=>setModal({type:"team",data:{name:"",abbr:"",color:"#888",tc:"#fff",carPace:70,reliability:75,pitSpeed:78,engine:"Customer"}})} style={{background:"#2A2A30",color:"#ccc",border:"none",padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>+ TEAM</button>
-                <button onClick={resetGarage} title="Reset all drivers & teams to 2027 defaults" style={{background:"transparent",color:"#444",border:"1px solid #2A2A30",padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1,borderRadius:3}}>↺ DEFAULTS</button>
-              </div>
-            </div>
+        /* ══ GARAGE ══ */
+        , view==="garage"&&(
+          React.createElement('div', { style: {animation:"fadeIn 0.2s ease"},}
+            , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16},}
+              , React.createElement('div', null
+                , React.createElement('div', { style: {fontSize:22,fontWeight:700,letterSpacing:3},}, "2027 F1 GARAGE"  )
+                , React.createElement('div', { style: {fontSize:11,color:"#444",letterSpacing:1,marginTop:2},}, drivers.length, " DRIVERS · "   , teams.length, " TEAMS · MENTAL STATE · GOOD/BAD TRACKS"       )
+              )
+              , React.createElement('div', { style: {display:"flex",gap:6,flexWrap:"wrap"},}
+                , [["DRIVERS","drivers"],["TEAMS","teams"]].map(([l,t])=>(
+                  React.createElement('button', { key: t, onClick: ()=>setGTab(t), style: {background:gTab===t?"#2A2A30":"transparent",color:gTab===t?"#F0F0F0":"#555",border:"1px solid #2A2A30",padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1.5,borderRadius:3},}, l)
+                ))
+                , React.createElement('button', { onClick: ()=>setModal({type:"driver",data:{name:"",abbr:"",num:99,teamId:_optionalChain([teams, 'access', _30 => _30[0], 'optionalAccess', _31 => _31.id])||"",pace:78,consistency:78,wet:75,overtaking:75,defense:75,experience:65,mental:7,flag:"🏁",goodTracks:[],badTracks:[]}}), style: {background:"#E8002D",color:"#fff",border:"none",padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1.5,borderRadius:3},}, "+ DRIVER" )
+                , React.createElement('button', { onClick: ()=>setModal({type:"team",data:{name:"",abbr:"",color:"#888",tc:"#fff",carPace:70,reliability:75,pitSpeed:78,engine:"Customer"}}), style: {background:"#2A2A30",color:"#ccc",border:"none",padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1.5,borderRadius:3},}, "+ TEAM" )
+                , React.createElement('button', { onClick: resetGarage, style: {background:"transparent",color:"#444",border:"1px solid #2A2A30",padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1,borderRadius:3},}, "↻ DEFAULTS" )
+              )
+            )
 
-            {gTab==="drivers"&&(
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:10}}>
-                {teams.map(team=>teamDrivers(team.id).map(d=>{
-                  const goodNames=d.goodTracks?.map(id=>TRACKS.find(t=>t.id===id)?.flag||"").filter(Boolean)||[];
-                  const badNames=d.badTracks?.map(id=>TRACKS.find(t=>t.id===id)?.flag||"").filter(Boolean)||[];
+            , gTab==="drivers"&&(
+              React.createElement('div', { style: {display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:10},}
+                , teams.map(team=>teamDrivers(team.id).map(d=>{
+                  const goodNames=_optionalChain([d, 'access', _32 => _32.goodTracks, 'optionalAccess', _33 => _33.map, 'call', _34 => _34(id=>_optionalChain([TRACKS, 'access', _35 => _35.find, 'call', _36 => _36(t=>t.id===id), 'optionalAccess', _37 => _37.flag])||""), 'access', _38 => _38.filter, 'call', _39 => _39(Boolean)])||[];
+                  const badNames=_optionalChain([d, 'access', _40 => _40.badTracks, 'optionalAccess', _41 => _41.map, 'call', _42 => _42(id=>_optionalChain([TRACKS, 'access', _43 => _43.find, 'call', _44 => _44(t=>t.id===id), 'optionalAccess', _45 => _45.flag])||""), 'access', _46 => _46.filter, 'call', _47 => _47(Boolean)])||[];
                   return(
-                    <div key={d.id} className="hov" onClick={()=>setModal({type:"driver",data:d})} style={{background:"#161618",border:`1px solid ${team.color}18`,borderLeft:`3px solid ${team.color}`,borderRadius:4,padding:"11px 13px",cursor:"pointer",transition:"background 0.15s"}}>
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-                        <div>
-                          <div style={{fontSize:10,color:"#444",letterSpacing:1}}>{d.flag} #{d.num}</div>
-                          <div style={{fontSize:13,fontWeight:700,marginTop:1}}>{d.name}</div>
-                          <div style={{fontSize:9,color:team.color,fontWeight:700,letterSpacing:1.5,marginTop:1}}>{team.name}</div>
-                        </div>
-                        <div style={{fontSize:18,fontWeight:900,color:team.color,opacity:0.6}}>{d.abbr}</div>
-                      </div>
-                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"4px 8px",marginBottom:6}}>
-                        {[["PCE",d.pace],["CON",d.consistency],["WET",d.wet]].map(([l,v])=>(
-                          <div key={l}><div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:"#444",letterSpacing:1}}><span>{l}</span><span style={{color:"#888"}}>{v}</span></div><Bar val={v} color={team.color}/></div>
-                        ))}
-                      </div>
-                      <MentalBar val={d.mental||7} color={team.color}/>
-                      <div style={{display:"flex",justifyContent:"space-between",marginTop:6,fontSize:10}}>
-                        <span style={{color:"#44CC88"}}>{goodNames.join(" ")||"—"}</span>
-                        <span style={{color:"#FF4444"}}>{badNames.join(" ")||"—"}</span>
-                      </div>
-                    </div>
+                    React.createElement('div', { key: d.id, className: "hov", onClick: ()=>setModal({type:"driver",data:d}), style: {background:"#161618",border:`1px solid ${team.color}18`,borderLeft:`3px solid ${team.color}`,borderRadius:4,padding:"11px 13px",cursor:"pointer",transition:"background 0.15s"},}
+                      , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8},}
+                        , React.createElement('div', null
+                          , React.createElement('div', { style: {fontSize:10,color:"#444",letterSpacing:1},}, d.flag, " #" , d.num)
+                          , React.createElement('div', { style: {fontSize:13,fontWeight:700,marginTop:1},}, d.name)
+                          , React.createElement('div', { style: {fontSize:9,color:team.color,fontWeight:700,letterSpacing:1.5,marginTop:1},}, team.name)
+                        )
+                        , React.createElement('div', { style: {fontSize:18,fontWeight:900,color:team.color,opacity:0.6},}, d.abbr)
+                      )
+                      , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"4px 8px",marginBottom:6},}
+                        , [["PCE",d.pace],["CON",d.consistency],["WET",d.wet]].map(([l,v])=>(
+                          React.createElement('div', { key: l,}, React.createElement('div', { style: {display:"flex",justifyContent:"space-between",fontSize:9,color:"#444",letterSpacing:1},}, React.createElement('span', null, l), React.createElement('span', { style: {color:"#888"},}, v)), React.createElement(Bar, { val: v, color: team.color,}))
+                        ))
+                      )
+                      , React.createElement(MentalBar, { val: d.mental||7, color: team.color,})
+                      , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",marginTop:6,fontSize:10},}
+                        , React.createElement('span', { style: {color:"#44CC88"},}, goodNames.join(" ")||"—")
+                        , React.createElement('span', { style: {color:"#FF4444"},}, badNames.join(" ")||"—")
+                      )
+                    )
                   );
-                }))}
-              </div>
-            )}
+                }))
+              )
+            )
 
-            {gTab==="teams"&&(
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(285px,1fr))",gap:12}}>
-                {teams.map(t=>(
-                  <div key={t.id} className="hov" onClick={()=>setModal({type:"team",data:t})} style={{background:"#161618",border:`1px solid ${t.color}22`,borderTop:`3px solid ${t.color}`,borderRadius:4,padding:16,cursor:"pointer",transition:"background 0.15s"}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
-                      <div><div style={{fontSize:18,fontWeight:700}}>{t.name}</div><div style={{fontSize:11,color:"#444",letterSpacing:1,marginTop:2}}>⚙️ {t.engine}</div></div>
-                      <div style={{background:t.color,color:t.tc||"#fff",fontSize:11,fontWeight:700,padding:"3px 8px",letterSpacing:2,borderRadius:2}}>{t.abbr}</div>
-                    </div>
-                    {[["CAR PACE",t.carPace],["RELIABILITY",t.reliability],["PIT SPEED",t.pitSpeed]].map(([l,v])=>(
-                      <div key={l} style={{marginBottom:9}}><div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",letterSpacing:1,marginBottom:2}}><span>{l}</span><span style={{color:"#999"}}>{v}</span></div><Bar val={v} color={t.color}/></div>
-                    ))}
-                    <div style={{marginTop:10,fontSize:11,color:"#444"}}>{teamDrivers(t.id).map(d=>d.name).join(" · ")||"No drivers"}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div style={{marginTop:20,display:"flex",justifyContent:"flex-end"}}>
-              <button onClick={()=>setView("tracks")} style={{background:"#E8002D",color:"#fff",border:"none",padding:"11px 28px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:3,borderRadius:3}}>SELECT TRACK →</button>
-            </div>
-          </div>
-        )}
+            , gTab==="teams"&&(
+              React.createElement('div', { style: {display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(285px,1fr))",gap:12},}
+                , teams.map(t=>(
+                  React.createElement('div', { key: t.id, className: "hov", onClick: ()=>setModal({type:"team",data:t}), style: {background:"#161618",border:`1px solid ${t.color}22`,borderTop:`3px solid ${t.color}`,borderRadius:4,padding:16,cursor:"pointer",transition:"background 0.15s"},}
+                    , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14},}
+                      , React.createElement('div', null, React.createElement('div', { style: {fontSize:18,fontWeight:700},}, t.name), React.createElement('div', { style: {fontSize:11,color:"#444",letterSpacing:1,marginTop:2},}, "⚙️ " , t.engine))
+                      , React.createElement('div', { style: {background:t.color,color:t.tc||"#fff",fontSize:11,fontWeight:700,padding:"3px 8px",letterSpacing:2,borderRadius:2},}, t.abbr)
+                    )
+                    , [["CAR PACE",t.carPace],["RELIABILITY",t.reliability],["PIT SPEED",t.pitSpeed]].map(([l,v])=>(
+                      React.createElement('div', { key: l, style: {marginBottom:9},}, React.createElement('div', { style: {display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",letterSpacing:1,marginBottom:2},}, React.createElement('span', null, l), React.createElement('span', { style: {color:"#999"},}, v)), React.createElement(Bar, { val: v, color: t.color,}))
+                    ))
+                    , React.createElement('div', { style: {marginTop:10,fontSize:11,color:"#444"},}, teamDrivers(t.id).map(d=>d.name).join(" · ")||"No drivers")
+                  )
+                ))
+              )
+            )
+            , React.createElement('div', { style: {marginTop:20,display:"flex",justifyContent:"flex-end"},}
+              , React.createElement('button', { onClick: ()=>setView("tracks"), style: {background:"#E8002D",color:"#fff",border:"none",padding:"11px 28px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:3,borderRadius:3},}, "SELECT TRACK →"  )
+            )
+          )
+        )
 
-        {/* ══ TRACKS ══ */}
-        {view==="tracks"&&(
-          <div style={{animation:"fadeIn 0.2s ease"}}>
-            <div style={{marginBottom:16}}>
-              <div style={{fontSize:22,fontWeight:700,letterSpacing:3}}>2027 RACE CALENDAR</div>
-              <div style={{fontSize:11,color:"#444",letterSpacing:1,marginTop:2}}>24 CIRCUITS · ⚡ = SPRINT WEEKEND</div>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(225px,1fr))",gap:9}}>
-              {TRACKS.map(tr=>(
-                <div key={tr.id} className="hov-t" onClick={()=>setTrack(tr)} style={{background:track.id===tr.id?"#161A16":"#161618",border:`1px solid ${track.id===tr.id?"#E8002D":"#2A2A30"}`,borderLeft:`3px solid ${track.id===tr.id?"#E8002D":"#2A2A30"}`,borderRadius:4,padding:"11px 13px",cursor:"pointer",transition:"all 0.15s"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-                    <span style={{fontSize:18}}>{tr.flag}</span>
-                    <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                      {tr.hasSprint&&<span style={{fontSize:9,color:"#FFC906",background:"#FFC90620",padding:"1px 5px",borderRadius:2,fontWeight:700}}>⚡ SPRINT</span>}
-                      <span style={{fontSize:10,color:"#444",letterSpacing:1}}>{tr.laps}L</span>
-                    </div>
-                  </div>
-                  <div style={{fontSize:13,fontWeight:700}}>{tr.name}</div>
-                  <div style={{fontSize:10,color:"#555",marginBottom:8}}>{tr.circuit}</div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"4px 0"}}>
-                    {[["OVT",100-tr.od,"#44CC88"],["DEG",tr.td,"#FFC906"],["WET",tr.wr,"#4488FF"]].map(([l,v,c])=>(
-                      <div key={l}><div style={{fontSize:8,color:"#444",letterSpacing:1}}>{l}</div><div style={{height:3,background:"#222",borderRadius:1,marginTop:2}}><div style={{height:3,width:`${v}%`,background:c,borderRadius:1}}/></div></div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div style={{marginTop:18,display:"flex",justifyContent:"flex-end"}}>
-              <button onClick={doQual} style={{background:"#E8002D",color:"#fff",border:"none",padding:"11px 28px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:3,borderRadius:3}}>SIMULATE QUALIFYING →</button>
-            </div>
-          </div>
-        )}
+        /* ══ TRACKS ══ */
+        , view==="tracks"&&(
+          React.createElement('div', { style: {animation:"fadeIn 0.2s ease"},}
+            , React.createElement('div', { style: {marginBottom:16},}
+              , React.createElement('div', { style: {fontSize:22,fontWeight:700,letterSpacing:3},}, "2027 RACE CALENDAR"  )
+              , React.createElement('div', { style: {fontSize:11,color:"#444",letterSpacing:1,marginTop:2},}, "24 CIRCUITS · ⚡ = SPRINT WEEKEND"      )
+            )
+            , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(225px,1fr))",gap:9},}
+              , TRACKS.map(tr=>(
+                React.createElement('div', { key: tr.id, className: "hov-t", onClick: ()=>setTrack(tr), style: {background:track.id===tr.id?"#161A16":"#161618",border:`1px solid ${track.id===tr.id?"#E8002D":"#2A2A30"}`,borderLeft:`3px solid ${track.id===tr.id?"#E8002D":"#2A2A30"}`,borderRadius:4,padding:"11px 13px",cursor:"pointer",transition:"all 0.15s"},}
+                  , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",marginBottom:4},}
+                    , React.createElement('span', { style: {fontSize:18},}, tr.flag)
+                    , React.createElement('div', { style: {display:"flex",gap:6,alignItems:"center"},}
+                      , tr.hasSprint&&React.createElement('span', { style: {fontSize:9,color:"#FFC906",background:"#FFC90620",padding:"1px 5px",borderRadius:2,fontWeight:700},}, "⚡ SPRINT" )
+                      , React.createElement('span', { style: {fontSize:10,color:"#444",letterSpacing:1},}, tr.laps, "L")
+                    )
+                  )
+                  , React.createElement('div', { style: {fontSize:13,fontWeight:700},}, tr.name)
+                  , React.createElement('div', { style: {fontSize:10,color:"#555",marginBottom:8},}, tr.circuit)
+                  , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"4px 0"},}
+                    , [["OVT",100-tr.od,"#44CC88"],["DEG",tr.td,"#FFC906"],["WET",tr.wr,"#4488FF"]].map(([l,v,c])=>(
+                      React.createElement('div', { key: l,}, React.createElement('div', { style: {fontSize:8,color:"#444",letterSpacing:1},}, l), React.createElement('div', { style: {height:3,background:"#222",borderRadius:1,marginTop:2},}, React.createElement('div', { style: {height:3,width:`${v}%`,background:c,borderRadius:1},})))
+                    ))
+                  )
+                )
+              ))
+            )
+            , React.createElement('div', { style: {marginTop:18,display:"flex",justifyContent:"flex-end"},}
+              , React.createElement('button', { onClick: doQual, style: {background:"#E8002D",color:"#fff",border:"none",padding:"11px 28px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:3,borderRadius:3},}, "SIMULATE QUALIFYING →"  )
+            )
+          )
+        )
 
-        {/* ══ QUALIFYING (Q1/Q2/Q3) ══ */}
-        {view==="qualifying"&&qual&&(()=>{
+        /* ══ QUALIFYING (Q1/Q2/Q3) ══ */
+        , view==="qualifying"&&qual&&(()=>{
           const tabs=[{k:"q1",l:"Q1 — ALL DRIVERS",elim:15,src:qual.q1},{k:"q2",l:"Q2 — TOP 15",elim:10,src:qual.q2},{k:"q3",l:"Q3 — POLE SHOOTOUT",elim:null,src:qual.q3}];
           const cur=tabs.find(t=>t.k===qTab);
           return(
-            <div style={{animation:"fadeIn 0.2s ease"}}>
-              <div style={{marginBottom:14}}>
-                <div style={{fontSize:22,fontWeight:700,letterSpacing:3}}>QUALIFYING — {track.name.toUpperCase()}</div>
-                <div style={{fontSize:11,color:"#444",letterSpacing:1,marginTop:2}}>{track.flag} {track.circuit}</div>
-              </div>
-              <div style={{display:"flex",gap:4,marginBottom:16,background:"#111115",padding:5,borderRadius:5,border:"1px solid #1E1E22"}}>
-                {tabs.map(t=>(
-                  <button key={t.k} onClick={()=>setQTab(t.k)} style={{flex:1,background:qTab===t.k?"#2A2A30":"transparent",color:qTab===t.k?"#F0F0F0":"#555",border:`1px solid ${qTab===t.k?"#444":"transparent"}`,padding:"8px 0",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1.5,borderRadius:3,transition:"all 0.15s"}}>
-                    {t.l}
-                  </button>
-                ))}
-              </div>
-              {cur&&<QGrid entries={cur.src} gapFrom={cur.src} elimLine={cur.elim}/>}
-              <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:16,flexWrap:"wrap"}}>
-                <button onClick={doQual} style={{background:"#2A2A30",color:"#ccc",border:"none",padding:"10px 20px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:2,borderRadius:3}}>↺ RE-QUALIFY</button>
-                {track.hasSprint&&<button onClick={doSprint} style={{background:"#FFC906",color:"#000",border:"none",padding:"10px 22px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:2,borderRadius:3}}>⚡ RUN SPRINT →</button>}
-                <button onClick={doRace} style={{background:"#E8002D",color:"#fff",border:"none",padding:"10px 24px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:3,borderRadius:3}}>START RACE →</button>
-              </div>
-            </div>
+            React.createElement('div', { style: {animation:"fadeIn 0.2s ease"},}
+              , React.createElement('div', { style: {marginBottom:14},}
+                , React.createElement('div', { style: {fontSize:22,fontWeight:700,letterSpacing:3},}, "QUALIFYING — "  , track.name.toUpperCase())
+                , React.createElement('div', { style: {fontSize:11,color:"#444",letterSpacing:1,marginTop:2},}, track.flag, " " , track.circuit)
+              )
+              , React.createElement('div', { style: {display:"flex",gap:4,marginBottom:16,background:"#111115",padding:5,borderRadius:5,border:"1px solid #1E1E22"},}
+                , tabs.map(t=>(
+                  React.createElement('button', { key: t.k, onClick: ()=>setQTab(t.k), style: {flex:1,background:qTab===t.k?"#2A2A30":"transparent",color:qTab===t.k?"#F0F0F0":"#555",border:`1px solid ${qTab===t.k?"#444":"transparent"}`,padding:"8px 0",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1.5,borderRadius:3,transition:"all 0.15s"},}
+                    , t.l
+                  )
+                ))
+              )
+              , cur&&React.createElement(QGrid, { entries: cur.src, gapFrom: cur.src, elimLine: cur.elim,})
+              , React.createElement('div', { style: {display:"flex",gap:8,justifyContent:"flex-end",marginTop:16,flexWrap:"wrap"},}
+                , React.createElement('button', { onClick: doQual, style: {background:"#2A2A30",color:"#ccc",border:"none",padding:"10px 20px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:2,borderRadius:3},}, "↺ RE-QUALIFY" )
+                , track.hasSprint&&React.createElement('button', { onClick: doSprint, style: {background:"#FFC906",color:"#000",border:"none",padding:"10px 22px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:2,borderRadius:3},}, "⚡ RUN SPRINT →"   )
+                , React.createElement('button', { onClick: doRace, style: {background:"#E8002D",color:"#fff",border:"none",padding:"10px 24px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:3,borderRadius:3},}, "START RACE →"  )
+              )
+            )
           );
-        })()}
+        })()
 
-        {/* ══ SPRINT ══ */}
-        {view==="sprint"&&sprint&&(
-          <div style={{animation:"fadeIn 0.2s ease"}}>
-            <div style={{marginBottom:14}}>
-              <div style={{display:"flex",alignItems:"center",gap:10}}>
-                <span style={{fontSize:22,fontWeight:700,letterSpacing:3}}>SPRINT RACE</span>
-                <span style={{background:"#FFC90620",color:"#FFC906",fontSize:10,fontWeight:700,padding:"3px 8px",borderRadius:2,letterSpacing:1}}>⚡ {sprint.sprintLaps} LAPS</span>
-              </div>
-              <div style={{fontSize:11,color:"#444",letterSpacing:1,marginTop:2}}>{track.flag} {track.name} · Points for top 8: 8-7-6-5-4-3-2-1</div>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:16}}>
-              {sprint.positions.map((e,i)=>(
-                <div key={e.driver.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:e.dnf?"#1A1010":i<3?"#181810":"#161618",border:`1px solid ${e.dnf?"#FF444418":i<3?"#FFC90618":"#1E1E22"}`,borderLeft:`3px solid ${e.dnf?"#FF4444":e.team.color}`,borderRadius:3,opacity:e.dnf?0.6:1}}>
-                  <div style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?"#FFC906":i===1?"#888":i===2?"#CD7F32":"transparent",color:i<3?"#000":"#666",fontSize:10,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #2A2A30":"none",flexShrink:0}}>{e.dnf?"DNF":i+1}</div>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:12,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{e.driver.name}</div>
-                    <div style={{fontSize:9,color:e.team.color,letterSpacing:1}}>{e.team.name}</div>
-                  </div>
-                  <div style={{textAlign:"right",flexShrink:0}}>
-                    {e.dnf?<div style={{fontSize:10,color:"#FF4444"}}>DNF L{e.dnfLap}</div>
-                          :<><div style={{fontSize:11,fontFamily:"monospace",color:i===0?"#FFC906":"#888"}}>{i===0?"WIN":`+${e.gap}s`}</div>{e.points>0&&<div style={{fontSize:9,color:"#FFC906",fontWeight:700}}>+{e.points}pts</div>}</>}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
-              <button onClick={doSprint} style={{background:"#2A2A30",color:"#ccc",border:"none",padding:"10px 18px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:2,borderRadius:3}}>↺ RE-RUN SPRINT</button>
-              <button onClick={doRace} style={{background:"#E8002D",color:"#fff",border:"none",padding:"10px 24px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:3,borderRadius:3}}>START GRAND PRIX →</button>
-            </div>
-          </div>
-        )}
+        /* ══ SPRINT ══ */
+        , view==="sprint"&&sprint&&(
+          React.createElement('div', { style: {animation:"fadeIn 0.2s ease"},}
+            , React.createElement('div', { style: {marginBottom:14},}
+              , React.createElement('div', { style: {display:"flex",alignItems:"center",gap:10},}
+                , React.createElement('span', { style: {fontSize:22,fontWeight:700,letterSpacing:3},}, "SPRINT RACE" )
+                , React.createElement('span', { style: {background:"#FFC90620",color:"#FFC906",fontSize:10,fontWeight:700,padding:"3px 8px",borderRadius:2,letterSpacing:1},}, "⚡ " , sprint.sprintLaps, " LAPS" )
+              )
+              , React.createElement('div', { style: {fontSize:11,color:"#444",letterSpacing:1,marginTop:2},}, track.flag, " " , track.name, " · Points for top 8: 8-7-6-5-4-3-2-1"      )
+            )
+            , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:16},}
+              , sprint.positions.map((e,i)=>(
+                React.createElement('div', { key: e.driver.id, style: {display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:e.dnf?"#1A1010":i<3?"#181810":"#161618",border:`1px solid ${e.dnf?"#FF444418":i<3?"#FFC90618":"#1E1E22"}`,borderLeft:`3px solid ${e.dnf?"#FF4444":e.team.color}`,borderRadius:3,opacity:e.dnf?0.6:1},}
+                  , React.createElement('div', { style: {width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?"#FFC906":i===1?"#888":i===2?"#CD7F32":"transparent",color:i<3?"#000":"#666",fontSize:10,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #2A2A30":"none",flexShrink:0},}, e.dnf?"DNF":i+1)
+                  , React.createElement('div', { style: {flex:1,minWidth:0},}
+                    , React.createElement('div', { style: {fontSize:12,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"},}, e.driver.name)
+                    , React.createElement('div', { style: {fontSize:9,color:e.team.color,letterSpacing:1},}, e.team.name)
+                  )
+                  , React.createElement('div', { style: {textAlign:"right",flexShrink:0},}
+                    , e.dnf?React.createElement('div', { style: {fontSize:10,color:"#FF4444"},}, "DNF L" , e.dnfLap)
+                          :React.createElement(React.Fragment, null, React.createElement('div', { style: {fontSize:11,fontFamily:"monospace",color:i===0?"#FFC906":"#888"},}, i===0?"WIN":`+${e.gap}s`), e.points>0&&React.createElement('div', { style: {fontSize:9,color:"#FFC906",fontWeight:700},}, "+", e.points, "pts"))
+                  )
+                )
+              ))
+            )
+            , React.createElement('div', { style: {display:"flex",gap:8,justifyContent:"flex-end"},}
+              , React.createElement('button', { onClick: doSprint, style: {background:"#2A2A30",color:"#ccc",border:"none",padding:"10px 18px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:2,borderRadius:3},}, "↺ RE-RUN SPRINT"  )
+              , React.createElement('button', { onClick: doRace, style: {background:"#E8002D",color:"#fff",border:"none",padding:"10px 24px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:3,borderRadius:3},}, "START GRAND PRIX →"   )
+            )
+          )
+        )
 
-        {/* ══ RACE ══ */}
-        {view==="race"&&race&&(
-          <div style={{animation:"fadeIn 0.2s ease"}}>
-            <div style={{marginBottom:12}}>
-              <div style={{fontSize:22,fontWeight:700,letterSpacing:3}}>RACE RESULT — {track.name.toUpperCase()}</div>
-              <div style={{display:"flex",gap:6,marginTop:6,flexWrap:"wrap"}}>
-                {race.isWet&&<span style={{background:"#4488FF18",color:"#4488FF",fontSize:10,fontWeight:700,padding:"2px 7px",letterSpacing:1,borderRadius:2}}>🌧️ WET</span>}
-                {race.hasSC&&<span style={{background:"#FFC90618",color:"#FFC906",fontSize:10,fontWeight:700,padding:"2px 7px",letterSpacing:1,borderRadius:2}}>🚗 SC LAP {race.scLap}</span>}
-                {race.fastestLap&&<span style={{background:"#CC44FF18",color:"#CC44FF",fontSize:10,fontWeight:700,padding:"2px 7px",letterSpacing:1,borderRadius:2}}>💜 FL: {race.fastestLap.name}</span>}
-                {raceSaved&&<span style={{background:"#44CC8818",color:"#44CC88",fontSize:10,fontWeight:700,padding:"2px 7px",letterSpacing:1,borderRadius:2}}>✓ SAVED TO CHAMPIONSHIP</span>}
-              </div>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18}}>
-              <div>
-                <div style={{fontSize:10,color:"#444",letterSpacing:2,marginBottom:7}}>CLASSIFICATION</div>
-                {race.positions.map((e,i)=>(
-                  <div key={e.driver.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",marginBottom:3,background:e.dnf?"#1A1010":i<3?"#181810":"#161618",border:`1px solid ${e.dnf?"#FF444418":i<3?"#FFC90618":"#1E1E22"}`,borderLeft:`3px solid ${e.dnf?"#FF4444":e.team.color}`,borderRadius:2,opacity:e.dnf?0.65:1}}>
-                    <div style={{width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?"#FFC906":i===1?"#888":i===2?"#CD7F32":"transparent",color:i<3?"#000":"#666",fontSize:10,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #2A2A30":"none",flexShrink:0}}>{e.dnf?"DNF":i+1}</div>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:12,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{e.driver.name}</div>
-                      <div style={{fontSize:9,color:e.team.color,letterSpacing:1}}>{e.team.name}</div>
-                    </div>
-                    <div style={{textAlign:"right",flexShrink:0}}>
-                      {e.dnf?<div style={{fontSize:10,color:"#FF4444"}}>L{e.dnfLap}</div>
-                            :<><div style={{fontSize:11,fontFamily:"monospace",color:i===0?"#FFC906":"#bbb"}}>{i===0?"🏁 WIN":`+${e.gap}s`}</div>{e.points>0&&<div style={{fontSize:9,color:"#E8002D",fontWeight:700}}>+{e.points}pts</div>}</>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div>
-                <div style={{fontSize:10,color:"#444",letterSpacing:2,marginBottom:7}}>RACE EVENTS ({race.events.length})</div>
-                <div style={{maxHeight:540,overflowY:"auto"}}>
-                  {race.events.map((ev,i)=>(
-                    <div key={i} style={{borderLeft:`3px solid ${EVT_C[ev.type]||"#555"}`,padding:"7px 11px",marginBottom:4,background:"#161618",borderRadius:"0 3px 3px 0"}}>
-                      {ev.lap>0&&<div style={{fontSize:8,color:"#444",letterSpacing:1,marginBottom:2}}>LAP {ev.lap}</div>}
-                      <div style={{fontSize:11,lineHeight:1.5}}>{ev.icon} {ev.text}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div style={{marginTop:16,display:"flex",gap:8,justifyContent:"flex-end",flexWrap:"wrap"}}>
-              <button onClick={doRace} style={{background:"#2A2A30",color:"#ccc",border:"none",padding:"10px 18px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:2,borderRadius:3}}>↺ RE-RUN</button>
-              <button onClick={saveToChampionship} disabled={raceSaved} style={{background:raceSaved?"#1A2A1A":"#44CC88",color:raceSaved?"#44CC88":"#000",border:`1px solid ${raceSaved?"#44CC8844":"transparent"}`,padding:"10px 18px",cursor:raceSaved?"default":"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1.5,borderRadius:3,opacity:raceSaved?0.7:1}}>
-                {raceSaved?"✓ SAVED":"💾 SAVE TO CHAMPIONSHIP"}
-              </button>
-              <button onClick={()=>setView("commentary")} style={{background:"#CC44FF",color:"#fff",border:"none",padding:"10px 24px",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:700,letterSpacing:2,borderRadius:3}}>🎙️ CROFT & BRUNDLE →</button>
-            </div>
-          </div>
-        )}
+        /* ══ RACE ══ */
+        , view==="race"&&race&&(
+          React.createElement('div', { style: {animation:"fadeIn 0.2s ease"},}
+            , React.createElement('div', { style: {marginBottom:12},}
+              , React.createElement('div', { style: {fontSize:22,fontWeight:700,letterSpacing:3},}, "RACE RESULT — "   , track.name.toUpperCase())
+              , React.createElement('div', { style: {display:"flex",gap:6,marginTop:6,flexWrap:"wrap"},}
+                , race.isWet&&React.createElement('span', { style: {background:"#4488FF18",color:"#4488FF",fontSize:10,fontWeight:700,padding:"2px 7px",letterSpacing:1,borderRadius:2},}, "🌧️ WET" )
+                , race.hasSC&&React.createElement('span', { style: {background:"#FFC90618",color:"#FFC906",fontSize:10,fontWeight:700,padding:"2px 7px",letterSpacing:1,borderRadius:2},}, "🚗 SC LAP "   , race.scLap)
+                , race.fastestLap&&React.createElement('span', { style: {background:"#CC44FF18",color:"#CC44FF",fontSize:10,fontWeight:700,padding:"2px 7px",letterSpacing:1,borderRadius:2},}, "💜 FL: "  , race.fastestLap.name)
+                , raceSaved&&React.createElement('span', { style: {background:"#44CC8818",color:"#44CC88",fontSize:10,fontWeight:700,padding:"2px 7px",letterSpacing:1,borderRadius:2},}, "✓ SAVED TO CHAMPIONSHIP"   )
+              )
+            )
+            , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"1fr 1fr",gap:18},}
+              , React.createElement('div', null
+                , React.createElement('div', { style: {fontSize:10,color:"#444",letterSpacing:2,marginBottom:7},}, "CLASSIFICATION")
+                , race.positions.map((e,i)=>(
+                  React.createElement('div', { key: e.driver.id, style: {display:"flex",alignItems:"center",gap:8,padding:"7px 10px",marginBottom:3,background:e.dnf?"#1A1010":i<3?"#181810":"#161618",border:`1px solid ${e.dnf?"#FF444418":i<3?"#FFC90618":"#1E1E22"}`,borderLeft:`3px solid ${e.dnf?"#FF4444":e.team.color}`,borderRadius:2,opacity:e.dnf?0.65:1},}
+                    , React.createElement('div', { style: {width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?"#FFC906":i===1?"#888":i===2?"#CD7F32":"transparent",color:i<3?"#000":"#666",fontSize:10,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #2A2A30":"none",flexShrink:0},}, e.dnf?"DNF":i+1)
+                    , React.createElement('div', { style: {flex:1,minWidth:0},}
+                      , React.createElement('div', { style: {fontSize:12,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"},}, e.driver.name)
+                      , React.createElement('div', { style: {fontSize:9,color:e.team.color,letterSpacing:1},}, e.team.name)
+                    )
+                    , React.createElement('div', { style: {textAlign:"right",flexShrink:0},}
+                      , e.dnf?React.createElement('div', { style: {fontSize:10,color:"#FF4444"},}, "L", e.dnfLap)
+                            :React.createElement(React.Fragment, null, React.createElement('div', { style: {fontSize:11,fontFamily:"monospace",color:i===0?"#FFC906":"#bbb"},}, i===0?"🏁 WIN":`+${e.gap}s`), e.points>0&&React.createElement('div', { style: {fontSize:9,color:"#E8002D",fontWeight:700},}, "+", e.points, "pts"))
+                    )
+                  )
+                ))
+              )
+              , React.createElement('div', null
+                , React.createElement('div', { style: {fontSize:10,color:"#444",letterSpacing:2,marginBottom:7},}, "RACE EVENTS ("  , race.events.length, ")")
+                , React.createElement('div', { style: {maxHeight:540,overflowY:"auto"},}
+                  , race.events.map((ev,i)=>(
+                    React.createElement('div', { key: i, style: {borderLeft:`3px solid ${EVT_C[ev.type]||"#555"}`,padding:"7px 11px",marginBottom:4,background:"#161618",borderRadius:"0 3px 3px 0"},}
+                      , ev.lap>0&&React.createElement('div', { style: {fontSize:8,color:"#444",letterSpacing:1,marginBottom:2},}, "LAP " , ev.lap)
+                      , React.createElement('div', { style: {fontSize:11,lineHeight:1.5},}, ev.icon, " " , ev.text)
+                    )
+                  ))
+                )
+              )
+            )
+            , React.createElement('div', { style: {marginTop:16,display:"flex",gap:8,justifyContent:"flex-end",flexWrap:"wrap"},}
+              , React.createElement('button', { onClick: doRace, style: {background:"#2A2A30",color:"#ccc",border:"none",padding:"10px 18px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:2,borderRadius:3},}, "↺ RE-RUN" )
+              , React.createElement('button', { onClick: saveToChampionship, disabled: raceSaved, style: {background:raceSaved?"#1A2A1A":"#44CC88",color:raceSaved?"#44CC88":"#000",border:`1px solid ${raceSaved?"#44CC8844":"transparent"}`,padding:"10px 18px",cursor:raceSaved?"default":"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1.5,borderRadius:3,opacity:raceSaved?0.7:1},}
+                , raceSaved?"✓ SAVED":"💾 SAVE TO CHAMPIONSHIP"
+              )
+              , React.createElement('button', { onClick: ()=>setView("commentary"), style: {background:"#CC44FF",color:"#fff",border:"none",padding:"10px 24px",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:700,letterSpacing:2,borderRadius:3},}, "CROFT & BRUNDLE"  )
+            )
+          )
+        )
 
-        {/* ══ COMMENTARY ══ */}
-        {view==="commentary"&&(
-          <div style={{animation:"fadeIn 0.2s ease"}}>
-            {!apiKey&&(
-              <div style={{background:"#18140A",border:"1px solid #FFC90644",borderLeft:"4px solid #FFC906",borderRadius:"0 6px 6px 0",padding:"14px 18px",marginBottom:16}}>
-                <div style={{fontSize:12,color:"#FFC906",fontWeight:700,marginBottom:6,letterSpacing:1}}>🔑 API KEY REQUIRED FOR AI COMMENTARY</div>
-                <div style={{fontSize:11,color:"#777",marginBottom:10}}>Enter your Anthropic API key to enable Croft & Brundle. Get one free at <span style={{color:"#4488FF"}}>console.anthropic.com</span></div>
-                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                  <input type="password" placeholder="sk-ant-api03-..." value={apiKeyInput} onChange={e=>setApiKeyInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveApiKey()}
-                    style={{flex:1,minWidth:220,background:"#0C0C0F",border:"1px solid #555",color:"#F0F0F0",padding:"8px 12px",fontFamily:"inherit",fontSize:12,borderRadius:3}}/>
-                  <button onClick={saveApiKey} style={{background:"#FFC906",color:"#000",border:"none",padding:"8px 18px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1,borderRadius:3}}>SAVE KEY</button>
-                </div>
-                <div style={{fontSize:9,color:"#444",marginTop:6}}>Stored in your browser only. Only sent to Anthropic's API. Never shared.</div>
-              </div>
-            )}
-            {apiKey&&(
-              <div style={{display:"flex",justifyContent:"flex-end",marginBottom:4}}>
-                <button onClick={clearApiKey} style={{background:"none",border:"none",color:"#333",cursor:"pointer",fontFamily:"inherit",fontSize:9,letterSpacing:1}}>× CLEAR API KEY</button>
-              </div>
-            )}
-            <div style={{marginBottom:16}}>
-              <div style={{fontSize:22,fontWeight:700,letterSpacing:3}}>CROFT & BRUNDLE</div>
-              <div style={{display:"flex",gap:14,marginTop:8,alignItems:"center",flexWrap:"wrap"}}>
-                {[{l:"DC",n:"DAVID CROFT",sub:"Play-by-play",c:"#E8002D",bg:"#E8002D22"},{l:"MB",n:"MARTIN BRUNDLE",sub:"Colour commentary",c:"#4466AA",bg:"#08081A"}].map(x=>(
-                  <div key={x.l} style={{display:"flex",alignItems:"center",gap:8}}>
-                    <div style={{width:32,height:32,borderRadius:"50%",background:x.bg,border:`2px solid ${x.c}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:900,color:x.c}}>{x.l}</div>
-                    <div><div style={{fontSize:11,fontWeight:700,color:x.c,letterSpacing:1}}>{x.n}</div><div style={{fontSize:9,color:"#555"}}>{x.sub}</div></div>
-                  </div>
-                ))}
-                <div style={{marginLeft:"auto",fontSize:10,color:"#444"}}>{track.flag} {track.name.toUpperCase()}</div>
-              </div>
-            </div>
+        /* ══ COMMENTARY ══ */
+        , view==="commentary"&&(
+          React.createElement('div', { style: {animation:"fadeIn 0.2s ease"},}
+            , !apiKey&&(
+              React.createElement('div', { style: {background:"#18140A",border:"1px solid #FFC90644",borderLeft:"4px solid #FFC906",borderRadius:"0 6px 6px 0",padding:"14px 18px",marginBottom:16},}
+                , React.createElement('div', { style: {fontSize:12,color:"#FFC906",fontWeight:700,marginBottom:6,letterSpacing:1},}, "KEY REQUIRED FOR AI COMMENTARY"    )
+                , React.createElement('div', { style: {fontSize:11,color:"#777",marginBottom:10},}, "Enter your Anthropic API key. Get one free at console.anthropic.com"         )
+                , React.createElement('div', { style: {display:"flex",gap:8,flexWrap:"wrap"},}
+                  , React.createElement('input', { type: "password", placeholder: "sk-ant-api03-...", value: apiKeyInput, onChange: e=>setApiKeyInput(e.target.value), onKeyDown: e=>e.key==="Enter"&&saveApiKey(),
+                    style: {flex:1,minWidth:220,background:"#0C0C0F",border:"1px solid #555",color:"#F0F0F0",padding:"8px 12px",fontFamily:"inherit",fontSize:12,borderRadius:3},})
+                  , React.createElement('button', { onClick: saveApiKey, style: {background:"#FFC906",color:"#000",border:"none",padding:"8px 18px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1,borderRadius:3},}, "SAVE KEY" )
+                )
+                , React.createElement('div', { style: {fontSize:9,color:"#444",marginTop:6},}, "Stored in your browser only. Sent only to Anthropic API."         )
+              )
+            )
+            , apiKey&&(
+              React.createElement('div', { style: {display:"flex",justifyContent:"flex-end",marginBottom:4},}
+                , React.createElement('button', { onClick: clearApiKey, style: {background:"none",border:"none",color:"#333",cursor:"pointer",fontFamily:"inherit",fontSize:9,letterSpacing:1},}, "x CLEAR KEY"  )
+              )
+            )
+            , React.createElement('div', { style: {marginBottom:16},}
+              , React.createElement('div', { style: {fontSize:22,fontWeight:700,letterSpacing:3},}, "CROFT & BRUNDLE"  )
+              , React.createElement('div', { style: {display:"flex",gap:14,marginTop:8,alignItems:"center",flexWrap:"wrap"},}
+                , [{l:"DC",n:"DAVID CROFT",sub:"Play-by-play",c:"#E8002D",bg:"#E8002D22"},{l:"MB",n:"MARTIN BRUNDLE",sub:"Colour commentary",c:"#4466AA",bg:"#08081A"}].map(x=>(
+                  React.createElement('div', { key: x.l, style: {display:"flex",alignItems:"center",gap:8},}
+                    , React.createElement('div', { style: {width:32,height:32,borderRadius:"50%",background:x.bg,border:`2px solid ${x.c}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:900,color:x.c},}, x.l)
+                    , React.createElement('div', null, React.createElement('div', { style: {fontSize:11,fontWeight:700,color:x.c,letterSpacing:1},}, x.n), React.createElement('div', { style: {fontSize:9,color:"#555"},}, x.sub))
+                  )
+                ))
+                , React.createElement('div', { style: {marginLeft:"auto",fontSize:10,color:"#444"},}, track.flag, " " , track.name.toUpperCase())
+              )
+            )
 
-            {isGen&&(
-              <div style={{background:"#111115",border:"1px solid #1E1E22",borderRadius:8,padding:50,textAlign:"center"}}>
-                <div style={{display:"flex",justifyContent:"center",gap:20,marginBottom:22}}>
-                  {[{l:"DC",c:"#E8002D",d:1.2},{l:"MB",c:"#4466AA",d:1.5}].map(x=>(
-                    <div key={x.l} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
-                      <div style={{width:44,height:44,borderRadius:"50%",background:x.l==="DC"?"#E8002D22":"#08081A",border:`2px solid ${x.c}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900,color:x.c,animation:`pulse ${x.d}s ease-in-out infinite`}}>{x.l}</div>
-                      <div style={{fontSize:9,color:x.c,letterSpacing:1}}>{x.l==="DC"?"CROFT":"BRUNDLE"}</div>
-                    </div>
-                  ))}
-                </div>
-                <div style={{fontSize:14,fontWeight:700,color:"#CC44FF",letterSpacing:2,animation:"pulse 1.3s ease-in-out infinite",marginBottom:8}}>{genMsg||"GENERATING BROADCAST…"}</div>
-                <div style={{fontSize:11,color:"#444",letterSpacing:1}}>LAP-BY-LAP DIALOGUE · ALL 22 DRIVERS · 7 STAGES</div>
-              </div>
-            )}
+            , isGen&&(
+              React.createElement('div', { style: {background:"#111115",border:"1px solid #1E1E22",borderRadius:8,padding:50,textAlign:"center"},}
+                , React.createElement('div', { style: {display:"flex",justifyContent:"center",gap:20,marginBottom:22},}
+                  , [{l:"DC",c:"#E8002D",d:1.2},{l:"MB",c:"#4466AA",d:1.5}].map(x=>(
+                    React.createElement('div', { key: x.l, style: {display:"flex",flexDirection:"column",alignItems:"center",gap:6},}
+                      , React.createElement('div', { style: {width:44,height:44,borderRadius:"50%",background:x.l==="DC"?"#E8002D22":"#08081A",border:`2px solid ${x.c}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900,color:x.c,animation:`pulse ${x.d}s ease-in-out infinite`},}, x.l)
+                      , React.createElement('div', { style: {fontSize:9,color:x.c,letterSpacing:1},}, x.l==="DC"?"CROFT":"BRUNDLE")
+                    )
+                  ))
+                )
+                , React.createElement('div', { style: {fontSize:14,fontWeight:700,color:"#CC44FF",letterSpacing:2,animation:"pulse 1.3s ease-in-out infinite",marginBottom:8},}, genMsg||"GENERATING BROADCAST…")
+                , React.createElement('div', { style: {fontSize:11,color:"#444",letterSpacing:1},}, "LAP-BY-LAP DIALOGUE · ALL 22 DRIVERS · 7 STAGES"        )
+              )
+            )
 
-            {stages&&!isGen&&(()=>{
+            , stages&&!isGen&&(()=>{
               const s=STAGE_DEFS[activeS];
               const sd=stages.find(x=>x.key===s.key);
-              const lines=sd?.lines||[];
+              const lines=_optionalChain([sd, 'optionalAccess', _48 => _48.lines])||[];
               return(
-                <>
-                  <div style={{display:"flex",gap:3,marginBottom:16,flexWrap:"wrap",background:"#111115",border:"1px solid #1E1E22",borderRadius:5,padding:5}}>
-                    {STAGE_DEFS.map((st,i)=>{
+                React.createElement(React.Fragment, null
+                  , React.createElement('div', { style: {display:"flex",gap:3,marginBottom:16,flexWrap:"wrap",background:"#111115",border:"1px solid #1E1E22",borderRadius:5,padding:5},}
+                    , STAGE_DEFS.map((st,i)=>{
                       const sd2=stages.find(x=>x.key===st.key);
                       if(!sd2) return null;
                       return(
-                        <button key={st.key} onClick={()=>setActiveS(i)} style={{flex:"0 0 auto",background:activeS===i?`${st.color}20`:"transparent",color:activeS===i?st.color:"#555",border:`1px solid ${activeS===i?st.color+"55":"transparent"}`,padding:"6px 10px",cursor:"pointer",fontFamily:"inherit",fontSize:10,fontWeight:700,letterSpacing:1,borderRadius:3,transition:"all 0.15s",whiteSpace:"nowrap"}}>
-                          {st.emoji} {st.title} <span style={{opacity:0.5,fontSize:9}}>{sd2.lines?.length||0}</span>
-                        </button>
+                        React.createElement('button', { key: st.key, onClick: ()=>setActiveS(i), style: {flex:"0 0 auto",background:activeS===i?`${st.color}20`:"transparent",color:activeS===i?st.color:"#555",border:`1px solid ${activeS===i?st.color+"55":"transparent"}`,padding:"6px 10px",cursor:"pointer",fontFamily:"inherit",fontSize:10,fontWeight:700,letterSpacing:1,borderRadius:3,transition:"all 0.15s",whiteSpace:"nowrap"},}
+                          , st.emoji, " " , st.title, " " , React.createElement('span', { style: {opacity:0.5,fontSize:9},}, _optionalChain([sd2, 'access', _49 => _49.lines, 'optionalAccess', _50 => _50.length])||0)
+                        )
                       );
-                    })}
-                  </div>
+                    })
+                  )
 
-                  <div key={activeS} style={{animation:"slideIn 0.22s ease"}}>
-                    <div style={{background:`${s.color}0D`,border:`1px solid ${s.color}33`,borderLeft:`5px solid ${s.color}`,borderRadius:"0 8px 8px 0",padding:"13px 18px",marginBottom:16,display:"flex",alignItems:"center",gap:12,justifyContent:"space-between"}}>
-                      <div style={{display:"flex",alignItems:"center",gap:12}}>
-                        <span style={{fontSize:26}}>{s.emoji}</span>
-                        <div>
-                          <div style={{fontSize:18,fontWeight:700,color:s.color,letterSpacing:2}}>{s.title}</div>
-                          <div style={{fontSize:10,color:"#555",marginTop:2}}>{s.lapHint} · {lines.length} EXCHANGES</div>
-                        </div>
-                      </div>
-                      <button onClick={()=>downloadStage(lines,s,track)} title="Download as image"
-                        style={{background:`${s.color}20`,color:s.color,border:`1px solid ${s.color}44`,padding:"7px 14px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1,borderRadius:3,flexShrink:0}}>
-                        ⬇ DOWNLOAD PNG
-                      </button>
-                    </div>
-                    <div style={{background:"#0D0D10",border:"1px solid #1A1A20",borderRadius:8,padding:"18px 18px 4px"}}>
-                      {lines.map((line,li)=><DialogueLine key={li} speaker={line.speaker} text={line.text} surnameMap={surnameMap}/>)}
-                    </div>
-                  </div>
+                  , React.createElement('div', { key: activeS, style: {animation:"slideIn 0.22s ease"},}
+                    , React.createElement('div', { style: {background:`${s.color}0D`,border:`1px solid ${s.color}33`,borderLeft:`5px solid ${s.color}`,borderRadius:"0 8px 8px 0",padding:"13px 18px",marginBottom:16,display:"flex",alignItems:"center",gap:12,justifyContent:"space-between"},}
+                      , React.createElement('div', { style: {display:"flex",alignItems:"center",gap:12},}
+                        , React.createElement('span', { style: {fontSize:26},}, s.emoji)
+                        , React.createElement('div', null
+                          , React.createElement('div', { style: {fontSize:18,fontWeight:700,color:s.color,letterSpacing:2},}, s.title)
+                          , React.createElement('div', { style: {fontSize:10,color:"#555",marginTop:2},}, s.lapHint, " · "  , lines.length, " EXCHANGES" )
+                        )
+                      )
+                      , React.createElement('button', { onClick: ()=>downloadStage(lines,s,track), title: "Download as image"  ,
+                        style: {background:`${s.color}20`,color:s.color,border:`1px solid ${s.color}44`,padding:"7px 14px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1,borderRadius:3,flexShrink:0},}, "⬇ DOWNLOAD PNG"
 
-                  <div style={{marginTop:14,display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4}}>
-                    {STAGE_DEFS.map((st,i)=>{
+                      )
+                    )
+                    , React.createElement('div', { style: {background:"#0D0D10",border:"1px solid #1A1A20",borderRadius:8,padding:"18px 18px 4px"},}
+                      , lines.map((line,li)=>React.createElement(DialogueLine, { key: li, speaker: line.speaker, text: line.text, surnameMap: surnameMap,}))
+                    )
+                  )
+
+                  , React.createElement('div', { style: {marginTop:14,display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4},}
+                    , STAGE_DEFS.map((st,i)=>{
                       if(!stages.find(x=>x.key===st.key)) return null;
-                      return<div key={i} onClick={()=>setActiveS(i)} style={{background:activeS===i?`${st.color}15`:"#161618",border:`1px solid ${activeS===i?st.color+"44":"#222"}`,borderTop:`2px solid ${st.color}`,borderRadius:3,padding:"7px 3px",cursor:"pointer",textAlign:"center",transition:"all 0.15s"}}>
-                        <div style={{fontSize:14}}>{st.emoji}</div>
-                        <div style={{fontSize:7,color:activeS===i?st.color:"#444",fontWeight:700,letterSpacing:0.3,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{st.title}</div>
-                      </div>;
-                    })}
-                  </div>
-
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:12}}>
-                    <button onClick={()=>setActiveS(a=>Math.max(0,a-1))} disabled={activeS===0} style={{background:"#2A2A30",color:activeS===0?"#2A2A30":"#ccc",border:"none",padding:"9px 18px",cursor:activeS===0?"default":"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1.5,borderRadius:3,opacity:activeS===0?0.3:1}}>← PREV</button>
-                    <div style={{display:"flex",gap:5}}>{STAGE_DEFS.map((_,i)=><div key={i} onClick={()=>setActiveS(i)} style={{width:i===activeS?22:7,height:7,borderRadius:4,background:i===activeS?STAGE_DEFS[activeS].color:"#2A2A30",cursor:"pointer",transition:"all 0.2s"}}/>)}</div>
-                    <button onClick={()=>setActiveS(a=>Math.min(STAGE_DEFS.length-1,a+1))} disabled={activeS===STAGE_DEFS.length-1} style={{background:STAGE_DEFS[Math.min(activeS+1,STAGE_DEFS.length-1)].color,color:"#fff",border:"none",padding:"9px 18px",cursor:activeS===STAGE_DEFS.length-1?"default":"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1.5,borderRadius:3,opacity:activeS===STAGE_DEFS.length-1?0.3:1}}>NEXT →</button>
-                  </div>
-
-                  <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:12}}>
-                    <button onClick={doCommentary} style={{background:"#2A2A30",color:"#ccc",border:"none",padding:"9px 18px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>↺ REGENERATE</button>
-                    <button onClick={()=>{setView("tracks");setQual(null);setSprint(null);setRace(null);setStages(null);}} style={{background:"#E8002D",color:"#fff",border:"none",padding:"9px 22px",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:700,letterSpacing:2,borderRadius:3}}>NEW RACE →</button>
-                  </div>
-                </>
-              );
-            })()}
-
-            {!stages&&!isGen&&(
-              <div style={{background:"#111115",border:"1px solid #1E1E22",borderRadius:8,padding:50,textAlign:"center"}}>
-                <div style={{fontSize:11,color:"#333",letterSpacing:1}}>Run a race first, then send Croft and Brundle to the booth.</div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ══ CHAMPIONSHIP ══ */}
-        {view==="championship"&&(
-          <div style={{animation:"fadeIn 0.2s ease"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16,flexWrap:"wrap",gap:10}}>
-              <div>
-                <div style={{fontSize:22,fontWeight:700,letterSpacing:3}}>🏆 CHAMPIONSHIP</div>
-                <div style={{fontSize:11,color:"#444",letterSpacing:1,marginTop:2}}>{championship.length} ROUNDS COMPLETED · 2027 SEASON</div>
-              </div>
-              <div style={{display:"flex",gap:8}}>
-                <button onClick={()=>{if(championship.length>0)setChampionship(prev=>prev.slice(0,-1));}} disabled={championship.length===0}
-                  style={{background:championship.length===0?"#1A1A1A":"#2A2A30",color:championship.length===0?"#333":"#FFC906",border:`1px solid ${championship.length===0?"#1A1A1A":"#FFC90644"}`,padding:"8px 16px",cursor:championship.length===0?"default":"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>
-                  ↩ UNDO LAST
-                </button>
-                <button onClick={()=>{if(window.confirm("Reset the entire championship? This cannot be undone."))setChampionship([]);}} disabled={championship.length===0}
-                  style={{background:championship.length===0?"#1A1A1A":"#2A1010",color:championship.length===0?"#333":"#FF4444",border:`1px solid ${championship.length===0?"#1A1A1A":"#FF444444"}`,padding:"8px 16px",cursor:championship.length===0?"default":"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>
-                  ✕ RESET
-                </button>
-              </div>
-            </div>
-
-            {championship.length===0?(
-              <div style={{background:"#111115",border:"1px solid #1E1E22",borderRadius:8,padding:50,textAlign:"center"}}>
-                <div style={{fontSize:28,marginBottom:12}}>🏆</div>
-                <div style={{fontSize:13,color:"#444",letterSpacing:1}}>No races saved yet. Complete a race and click "Save to Championship".</div>
-              </div>
-            ):(
-              <>
-                {/* Tab bar */}
-                <div style={{display:"flex",gap:3,marginBottom:16,background:"#111115",border:"1px solid #1E1E22",borderRadius:5,padding:5}}>
-                  {[["drivers","👤 DRIVERS"],["constructors","🏗️ CONSTRUCTORS"],["history","📋 RACE HISTORY"]].map(([k,l])=>(
-                    <button key={k} onClick={()=>setChampTab(k)} style={{flex:1,background:champTab===k?"#2A2A30":"transparent",color:champTab===k?"#F0F0F0":"#555",border:`1px solid ${champTab===k?"#444":"transparent"}`,padding:"8px 0",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1,borderRadius:3,transition:"all 0.15s"}}>{l}</button>
-                  ))}
-                </div>
-
-                {/* DRIVERS TAB */}
-                {champTab==="drivers"&&(
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))",gap:5,maxHeight:620,overflowY:"auto"}}>
-                    {getStandings().map((s,i)=>{
-                      const team=teams.find(t=>t.id===s.driver.teamId);
-                      const hasRaced=s.pts>0||championship.length===0;
-                      return(
-                        <div key={s.driver.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",background:i<3&&s.pts>0?"#181810":"#161618",border:`1px solid ${i<3&&s.pts>0?"#FFC90622":"#1E1E22"}`,borderLeft:`3px solid ${team?.color||"#555"}`,borderRadius:3,opacity:s.pts===0?0.45:1}}>
-                          <div style={{width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",background:i===0&&s.pts>0?"#FFC906":i===1&&s.pts>0?"#888":i===2&&s.pts>0?"#CD7F32":"transparent",color:i<3&&s.pts>0?"#000":"#666",fontSize:10,fontWeight:700,borderRadius:2,border:!(i<3&&s.pts>0)?"1px solid #2A2A30":"none",flexShrink:0}}>{i+1}</div>
-                          <div style={{flex:1,minWidth:0}}>
-                            <div style={{fontSize:13,fontWeight:700}}>{s.driver.flag} {s.driver.name}</div>
-                            <div style={{fontSize:9,color:team?.color||"#888",letterSpacing:1}}>
-                              {team?.name||""}{s.wins>0?` · ${s.wins} WIN${s.wins>1?"S":""}`:""}</div>
-                            {s.sprintPts>0&&<div style={{fontSize:9,color:"#555",marginTop:1}}>🏁 {s.racePts} · ⚡ {s.sprintPts}</div>}
-                          </div>
-                          <div style={{textAlign:"right",flexShrink:0}}>
-                            <div style={{fontSize:20,fontWeight:900,color:i===0&&s.pts>0?"#FFC906":i<3&&s.pts>0?"#aaa":s.pts>0?"#888":"#333",fontFamily:"monospace"}}>{s.pts}</div>
-                            <div style={{fontSize:8,color:"#444",letterSpacing:0.5}}>PTS</div>
-                          </div>
-                        </div>
+                      returnReact.createElement('div', { key: i, onClick: ()=>setActiveS(i), style: {background:activeS===i?`${st.color}15`:"#161618",border:`1px solid ${activeS===i?st.color+"44":"#222"}`,borderTop:`2px solid ${st.color}`,borderRadius:3,padding:"7px 3px",cursor:"pointer",textAlign:"center",transition:"all 0.15s"},}
+                        , React.createElement('div', { style: {fontSize:14},}, st.emoji)
+                        , React.createElement('div', { style: {fontSize:7,color:activeS===i?st.color:"#444",fontWeight:700,letterSpacing:0.3,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},}, st.title)
                       );
-                    })}
-                  </div>
-                )}
+                    })
+                  )
 
-                {/* CONSTRUCTORS TAB */}
-                {champTab==="constructors"&&(
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))",gap:6}}>
-                    {getConstructorStandings().map((s,i)=>(
-                      <div key={s.team.id} style={{background:i<3&&s.pts>0?"#181810":"#161618",border:`1px solid ${i<3&&s.pts>0?"#FFC90622":"#1E1E22"}`,borderLeft:`4px solid ${s.team.color}`,borderRadius:3,padding:"12px 14px",opacity:s.pts===0?0.45:1}}>
-                        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-                          <div style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",background:i===0&&s.pts>0?"#FFC906":i===1&&s.pts>0?"#888":i===2&&s.pts>0?"#CD7F32":"transparent",color:i<3&&s.pts>0?"#000":"#666",fontSize:11,fontWeight:700,borderRadius:2,border:!(i<3&&s.pts>0)?"1px solid #2A2A30":"none",flexShrink:0}}>{i+1}</div>
-                          <div style={{flex:1,minWidth:0}}>
-                            <div style={{display:"flex",alignItems:"center",gap:7}}>
-                              <div style={{background:s.team.color,color:s.team.tc||"#fff",fontSize:9,fontWeight:700,padding:"2px 6px",letterSpacing:1.5,borderRadius:2}}>{s.team.abbr}</div>
-                              <div style={{fontSize:14,fontWeight:700}}>{s.team.name}</div>
-                            </div>
-                            <div style={{fontSize:9,color:"#555",marginTop:2}}>⚙️ {s.team.engine}{s.wins>0?` · ${s.wins} WIN${s.wins>1?"S":""}`:""}</div>
-                          </div>
-                          <div style={{textAlign:"right",flexShrink:0}}>
-                            <div style={{fontSize:22,fontWeight:900,color:i===0&&s.pts>0?"#FFC906":i<3&&s.pts>0?"#aaa":s.pts>0?"#888":"#333",fontFamily:"monospace"}}>{s.pts}</div>
-                            <div style={{fontSize:8,color:"#444",letterSpacing:0.5}}>PTS</div>
-                          </div>
-                        </div>
-                        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}}>
-                          {s.drivers.map(d=>{
-                            let dPts=0; championship.forEach(r=>{dPts+=(r.raceResults?.[d.id]||0)+(r.sprintResults?.[d.id]||0);});
-                            return<span key={d.id} style={{fontSize:10,color:dPts>0?"#ccc":"#444"}}>{d.flag} {d.name.split(" ").pop()} <span style={{color:s.team.color,fontWeight:700}}>{dPts}</span></span>;
-                          })}
-                        </div>
-                        {s.sprintPts>0&&<div style={{fontSize:9,color:"#555"}}>🏁 {s.racePts} race · ⚡ {s.sprintPts} sprint</div>}
-                        <div style={{marginTop:6,height:3,background:"#1A1A1A",borderRadius:2}}>
-                          <div style={{height:3,width:`${getConstructorStandings()[0]?.pts>0?(s.pts/getConstructorStandings()[0].pts)*100:0}%`,background:s.team.color,borderRadius:2,transition:"width 0.4s ease"}}/>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                  , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:12},}
+                    , React.createElement('button', { onClick: ()=>setActiveS(a=>Math.max(0,a-1)), disabled: activeS===0, style: {background:"#2A2A30",color:activeS===0?"#2A2A30":"#ccc",border:"none",padding:"9px 18px",cursor:activeS===0?"default":"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1.5,borderRadius:3,opacity:activeS===0?0.3:1},}, "← PREV" )
+                    , React.createElement('div', { style: {display:"flex",gap:5},}, STAGE_DEFS.map((_,i)=>React.createElement('div', { key: i, onClick: ()=>setActiveS(i), style: {width:i===activeS?22:7,height:7,borderRadius:4,background:i===activeS?STAGE_DEFS[activeS].color:"#2A2A30",cursor:"pointer",transition:"all 0.2s"},})))
+                    , React.createElement('button', { onClick: ()=>setActiveS(a=>Math.min(STAGE_DEFS.length-1,a+1)), disabled: activeS===STAGE_DEFS.length-1, style: {background:STAGE_DEFS[Math.min(activeS+1,STAGE_DEFS.length-1)].color,color:"#fff",border:"none",padding:"9px 18px",cursor:activeS===STAGE_DEFS.length-1?"default":"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1.5,borderRadius:3,opacity:activeS===STAGE_DEFS.length-1?0.3:1},}, "NEXT →" )
+                  )
 
-                {/* HISTORY TAB */}
-                {champTab==="history"&&(
-                  <div style={{maxHeight:620,overflowY:"auto"}}>
-                    {[...championship].reverse().map((r)=>(
-                      <div key={r.id} style={{background:"#161618",border:"1px solid #1E1E22",borderRadius:4,padding:"12px 14px",marginBottom:6}}>
-                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-                          <span style={{fontSize:10,color:"#555",letterSpacing:1}}>ROUND {r.round}</span>
-                          <div style={{display:"flex",gap:5}}>
-                            {r.hasSprint&&<span style={{fontSize:8,color:"#FFC906",background:"#FFC90620",padding:"1px 5px",borderRadius:2,fontWeight:700}}>⚡ SPRINT</span>}
-                          </div>
-                        </div>
-                        <div style={{fontSize:14,fontWeight:700}}>{r.trackFlag} {r.trackName}</div>
-                        {r.sprintWinner&&(
-                          <div style={{marginTop:6,padding:"5px 8px",background:"#FFC90610",border:"1px solid #FFC90622",borderLeft:"3px solid #FFC906",borderRadius:"0 3px 3px 0"}}>
-                            <div style={{fontSize:9,color:"#FFC906",fontWeight:700,letterSpacing:1,marginBottom:2}}>⚡ SPRINT WINNER</div>
-                            <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-                              {r.sprintTop8?.slice(0,4).map((x,xi)=>(
-                                <span key={xi} style={{fontSize:9,color:xi===0?"#FFC906":"#666",fontWeight:xi===0?700:400}}>
-                                  {xi===0?"🏆":""}{x.name} <span style={{color:"#FFC906",opacity:0.7}}>+{x.pts}</span>{xi<3?" ·":""}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        <div style={{display:"flex",gap:6,marginTop:6,flexWrap:"wrap"}}>
-                          {r.podium?.map((n,pi)=>(
-                            <span key={pi} style={{fontSize:10,background:pi===0?"#FFC90620":pi===1?"#88888820":"#CD7F3220",color:pi===0?"#FFC906":pi===1?"#888":"#CD7F32",padding:"2px 7px",borderRadius:2,fontWeight:700}}>
-                              {pi===0?"🥇":pi===1?"🥈":"🥉"} {n}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </>
-          </div>
-        )}
-      </div>
+                  , React.createElement('div', { style: {display:"flex",gap:8,justifyContent:"flex-end",marginTop:12},}
+                    , React.createElement('button', { onClick: doCommentary, style: {background:"#2A2A30",color:"#ccc",border:"none",padding:"9px 18px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1.5,borderRadius:3},}, "↺ REGENERATE" )
+                    , React.createElement('button', { onClick: ()=>{setView("tracks");setQual(null);setSprint(null);setRace(null);setStages(null);}, style: {background:"#E8002D",color:"#fff",border:"none",padding:"9px 22px",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:700,letterSpacing:2,borderRadius:3},}, "NEW RACE →"  )
+                  )
+                )
+              );
+            })()
 
-      {modal&&<EditModal type={modal.type} data={modal.data} teams={teams} onSave={modal.type==="driver"?saveDriver:saveTeam} onClose={()=>setModal(null)}/>}
-    </div>
+            , !stages&&!isGen&&(
+              React.createElement('div', { style: {background:"#111115",border:"1px solid #1E1E22",borderRadius:8,padding:50,textAlign:"center"},}
+                , React.createElement('div', { style: {fontSize:11,color:"#333",letterSpacing:1},}, "Run a race first, then send Croft and Brundle to the booth."           )
+              )
+            )
+          )
+        )
+
+        /* ══ CHAMPIONSHIP ══ */
+        , view==="championship"&&(
+          React.createElement('div', { style: {animation:"fadeIn 0.2s ease"},}
+            , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16,flexWrap:"wrap",gap:10},}
+              , React.createElement('div', null
+                , React.createElement('div', { style: {fontSize:22,fontWeight:700,letterSpacing:3},}, "🏆 CHAMPIONSHIP" )
+                , React.createElement('div', { style: {fontSize:11,color:"#444",letterSpacing:1,marginTop:2},}, championship.length, " ROUNDS COMPLETED · 2027 SEASON"     )
+              )
+              , React.createElement('div', { style: {display:"flex",gap:8},}
+                , React.createElement('button', { onClick: ()=>{if(championship.length>0)setChampionship(prev=>prev.slice(0,-1));}, disabled: championship.length===0,
+                  style: {background:championship.length===0?"#1A1A1A":"#2A2A30",color:championship.length===0?"#333":"#FFC906",border:`1px solid ${championship.length===0?"#1A1A1A":"#FFC90644"}`,padding:"8px 16px",cursor:championship.length===0?"default":"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1.5,borderRadius:3},}, "↩ UNDO LAST"
+
+                )
+                , React.createElement('button', { onClick: ()=>{if(window.confirm("Reset the entire championship? This cannot be undone."))setChampionship([]);}, disabled: championship.length===0,
+                  style: {background:championship.length===0?"#1A1A1A":"#2A1010",color:championship.length===0?"#333":"#FF4444",border:`1px solid ${championship.length===0?"#1A1A1A":"#FF444444"}`,padding:"8px 16px",cursor:championship.length===0?"default":"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1.5,borderRadius:3},}, "✕ RESET"
+
+                )
+              )
+            )
+
+            , championship.length===0?(
+              React.createElement('div', { style: {background:"#111115",border:"1px solid #1E1E22",borderRadius:8,padding:50,textAlign:"center"},}
+                , React.createElement('div', { style: {fontSize:28,marginBottom:12},}, "🏆")
+                , React.createElement('div', { style: {fontSize:13,color:"#444",letterSpacing:1},}, "No races saved yet. Complete a race and click \"Save to Championship\"."           )
+              )
+            ):(
+              React.createElement(React.Fragment, null
+                , React.createElement('div', { style: {display:"flex",gap:3,marginBottom:16,background:"#111115",border:"1px solid #1E1E22",borderRadius:5,padding:5},}
+                  , [["drivers","👤 DRIVERS"],["constructors","🏗️ CONSTRUCTORS"],["history","📋 RACE HISTORY"]].map(([k,l])=>(
+                    React.createElement('button', { key: k, onClick: ()=>setChampTab(k), style: {flex:1,background:champTab===k?"#2A2A30":"transparent",color:champTab===k?"#F0F0F0":"#555",border:`1px solid ${champTab===k?"#444":"transparent"}`,padding:"8px 0",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1,borderRadius:3,transition:"all 0.15s"},}, l)
+                  ))
+                )
+
+                , champTab==="drivers"&&(
+                  React.createElement('div', { style: {display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))",gap:5,maxHeight:620,overflowY:"auto"},}
+                    , getStandings().map((s,i)=>{
+                      const team=teams.find(t=>t.id===s.driver.teamId);
+                      return(
+                        React.createElement('div', { key: s.driver.id, style: {display:"flex",alignItems:"center",gap:10,padding:"9px 12px",background:i<3&&s.pts>0?"#181810":"#161618",border:`1px solid ${i<3&&s.pts>0?"#FFC90622":"#1E1E22"}`,borderLeft:`3px solid ${_optionalChain([team, 'optionalAccess', _51 => _51.color])||"#555"}`,borderRadius:3,opacity:s.pts===0?0.45:1},}
+                          , React.createElement('div', { style: {width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",background:i===0&&s.pts>0?"#FFC906":i===1&&s.pts>0?"#888":i===2&&s.pts>0?"#CD7F32":"transparent",color:i<3&&s.pts>0?"#000":"#666",fontSize:10,fontWeight:700,borderRadius:2,border:!(i<3&&s.pts>0)?"1px solid #2A2A30":"none",flexShrink:0},}, i+1)
+                          , React.createElement('div', { style: {flex:1,minWidth:0},}
+                            , React.createElement('div', { style: {fontSize:13,fontWeight:700},}, s.driver.flag, " " , s.driver.name)
+                            , React.createElement('div', { style: {fontSize:9,color:_optionalChain([team, 'optionalAccess', _52 => _52.color])||"#888",letterSpacing:1},}, _optionalChain([team, 'optionalAccess', _53 => _53.name])||"", s.wins>0?` · ${s.wins} WIN${s.wins>1?"S":""}`:"")
+                            , s.sprintPts>0&&React.createElement('div', { style: {fontSize:9,color:"#555",marginTop:1},}, "🏁 " , s.racePts, " · ⚡ "   , s.sprintPts)
+                          )
+                          , React.createElement('div', { style: {textAlign:"right",flexShrink:0},}
+                            , React.createElement('div', { style: {fontSize:20,fontWeight:900,color:i===0&&s.pts>0?"#FFC906":i<3&&s.pts>0?"#aaa":s.pts>0?"#888":"#333",fontFamily:"monospace"},}, s.pts)
+                            , React.createElement('div', { style: {fontSize:8,color:"#444",letterSpacing:0.5},}, "PTS")
+                          )
+                        )
+                      );
+                    })
+                  )
+                )
+
+                , champTab==="constructors"&&(
+                  React.createElement('div', { style: {display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))",gap:6},}
+                    , getConstructorStandings().map((s,i)=>(
+                      React.createElement('div', { key: s.team.id, style: {background:i<3&&s.pts>0?"#181810":"#161618",border:`1px solid ${i<3&&s.pts>0?"#FFC90622":"#1E1E22"}`,borderLeft:`4px solid ${s.team.color}`,borderRadius:3,padding:"12px 14px",opacity:s.pts===0?0.45:1},}
+                        , React.createElement('div', { style: {display:"flex",alignItems:"center",gap:10,marginBottom:8},}
+                          , React.createElement('div', { style: {width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",background:i===0&&s.pts>0?"#FFC906":i===1&&s.pts>0?"#888":i===2&&s.pts>0?"#CD7F32":"transparent",color:i<3&&s.pts>0?"#000":"#666",fontSize:11,fontWeight:700,borderRadius:2,border:!(i<3&&s.pts>0)?"1px solid #2A2A30":"none",flexShrink:0},}, i+1)
+                          , React.createElement('div', { style: {flex:1,minWidth:0},}
+                            , React.createElement('div', { style: {display:"flex",alignItems:"center",gap:7},}
+                              , React.createElement('div', { style: {background:s.team.color,color:s.team.tc||"#fff",fontSize:9,fontWeight:700,padding:"2px 6px",letterSpacing:1.5,borderRadius:2},}, s.team.abbr)
+                              , React.createElement('div', { style: {fontSize:14,fontWeight:700},}, s.team.name)
+                            )
+                            , React.createElement('div', { style: {fontSize:9,color:"#555",marginTop:2},}, "⚙️ " , s.team.engine, s.wins>0?` · ${s.wins} WIN${s.wins>1?"S":""}`:"")
+                          )
+                          , React.createElement('div', { style: {textAlign:"right",flexShrink:0},}
+                            , React.createElement('div', { style: {fontSize:22,fontWeight:900,color:i===0&&s.pts>0?"#FFC906":i<3&&s.pts>0?"#aaa":s.pts>0?"#888":"#333",fontFamily:"monospace"},}, s.pts)
+                            , React.createElement('div', { style: {fontSize:8,color:"#444",letterSpacing:0.5},}, "PTS")
+                          )
+                        )
+                        , React.createElement('div', { style: {display:"flex",gap:6,flexWrap:"wrap",marginBottom:6},}
+                          , s.drivers.map(d=>{
+                            let dPts=0; championship.forEach(r=>{dPts+=(_optionalChain([r, 'access', _54 => _54.raceResults, 'optionalAccess', _55 => _55[d.id]])||0)+(_optionalChain([r, 'access', _56 => _56.sprintResults, 'optionalAccess', _57 => _57[d.id]])||0);});
+                            returnReact.createElement('span', { key: d.id, style: {fontSize:10,color:dPts>0?"#ccc":"#444"},}, d.flag, " " , d.name.split(" ").pop(), " " , React.createElement('span', { style: {color:s.team.color,fontWeight:700},}, dPts));
+                          })
+                        )
+                        , s.sprintPts>0&&React.createElement('div', { style: {fontSize:9,color:"#555"},}, "🏁 " , s.racePts, " race · ⚡ "    , s.sprintPts, " sprint" )
+                        , React.createElement('div', { style: {marginTop:6,height:3,background:"#1A1A1A",borderRadius:2},}
+                          , React.createElement('div', { style: {height:3,width:`${_optionalChain([getConstructorStandings, 'call', _58 => _58(), 'access', _59 => _59[0], 'optionalAccess', _60 => _60.pts])>0?(s.pts/getConstructorStandings()[0].pts)*100:0}%`,background:s.team.color,borderRadius:2},})
+                        )
+                      )
+                    ))
+                  )
+                )
+
+                , champTab==="history"&&(
+                  React.createElement('div', { style: {maxHeight:620,overflowY:"auto"},}
+                    , [...championship].reverse().map((r)=>(
+                      React.createElement('div', { key: r.id, style: {background:"#161618",border:"1px solid #1E1E22",borderRadius:4,padding:"12px 14px",marginBottom:6},}
+                        , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4},}
+                          , React.createElement('span', { style: {fontSize:10,color:"#555",letterSpacing:1},}, "ROUND " , r.round)
+                          , r.hasSprint&&React.createElement('span', { style: {fontSize:8,color:"#FFC906",background:"#FFC90620",padding:"1px 5px",borderRadius:2,fontWeight:700},}, "⚡ SPRINT" )
+                        )
+                        , React.createElement('div', { style: {fontSize:14,fontWeight:700},}, r.trackFlag, " " , r.trackName)
+                        , r.sprintWinner&&(
+                          React.createElement('div', { style: {marginTop:6,padding:"5px 8px",background:"#FFC90610",border:"1px solid #FFC90622",borderLeft:"3px solid #FFC906",borderRadius:"0 3px 3px 0"},}
+                            , React.createElement('div', { style: {fontSize:9,color:"#FFC906",fontWeight:700,letterSpacing:1,marginBottom:2},}, "⚡ SPRINT WINNER"  )
+                            , React.createElement('div', { style: {display:"flex",gap:4,flexWrap:"wrap"},}
+                              , _optionalChain([r, 'access', _61 => _61.sprintTop8, 'optionalAccess', _62 => _62.slice, 'call', _63 => _63(0,4), 'access', _64 => _64.map, 'call', _65 => _65((x,xi)=>(
+                                React.createElement('span', { key: xi, style: {fontSize:9,color:xi===0?"#FFC906":"#666",fontWeight:xi===0?700:400},}
+                                  , xi===0?"🏆":"", x.name, " " , React.createElement('span', { style: {color:"#FFC906",opacity:0.7},}, "+", x.pts), xi<3?" ·":""
+                                )
+                              ))])
+                            )
+                          )
+                        )
+                        , React.createElement('div', { style: {display:"flex",gap:6,marginTop:6,flexWrap:"wrap"},}
+                          , _optionalChain([r, 'access', _66 => _66.podium, 'optionalAccess', _67 => _67.map, 'call', _68 => _68((n,pi)=>(
+                            React.createElement('span', { key: pi, style: {fontSize:10,background:pi===0?"#FFC90620":pi===1?"#88888820":"#CD7F3220",color:pi===0?"#FFC906":pi===1?"#888":"#CD7F32",padding:"2px 7px",borderRadius:2,fontWeight:700},}
+                              , pi===0?"🥇":pi===1?"🥈":"🥉", " " , n
+                            )
+                          ))])
+                        )
+                      )
+                    ))
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+
+      , modal&&React.createElement(EditModal, { type: modal.type, data: modal.data, teams: teams, onSave: modal.type==="driver"?saveDriver:saveTeam, onClose: ()=>setModal(null),})
+    )
   );
 }
 
 
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<F1Sim />);
+      try {
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(React.createElement(F1Sim));
+      } catch(err) {
+        document.getElementById('root').innerHTML =
+          '<div style="padding:40px;color:#FF4444;font-family:monospace;background:#0C0C0F;min-height:100vh">' +
+          '<div style="font-size:20px;font-weight:700;margin-bottom:12px;color:#E8002D">F1 SIM — ERROR</div>' +
+          '<div style="font-size:13px;color:#FF8844;margin-bottom:8px">Failed to start the app:</div>' +
+          '<pre style="font-size:12px;color:#FF4444;white-space:pre-wrap">' + err.toString() + '</pre>' +
+          '<div style="font-size:11px;color:#444;margin-top:20px">Open browser console for more details.</div>' +
+          '</div>';
+      }
+    })();
   </script>
 </body>
 </html>
