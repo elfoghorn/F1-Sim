@@ -96,3 +96,54 @@ The Croft & Brundle AI commentary requires a personal Anthropic API key.
 - First load may take 1–2 seconds while Babel compiles the JSX
 - Works best on desktop (wide layout)
 - All driver/team data is 2026/2027 season spec (editable in the Garage)
+
+## 🔐 Access PIN
+
+The app is protected by a 4-digit PIN gate.
+
+**Default PIN: `2027`**
+
+Enter it using the on-screen keypad or your keyboard. It's remembered for the browser session.
+
+### Changing the PIN
+
+Find this line near the top of the `<script>` block in `index.html`:
+```js
+const F1_PIN_ENC = '70727075'; // XOR(0x42) of "2027"
+```
+
+To encode a new PIN, run in your browser console:
+```js
+'YOUR_PIN'.split('').map(c=>(c.charCodeAt(0)^0x42).toString(16).padStart(2,'0')).join('')
+```
+Replace `70727075` with the result.
+
+---
+
+## 📱 Install as an App (PWA)
+
+F1 SIM is a **Progressive Web App** — it can be installed and run like a native desktop app.
+
+### How to install (GitHub Pages)
+1. Open the app URL in Opera, Chrome, or Edge
+2. Look for the **Install** icon in the address bar (or the ⬇ INSTALL APP button at the bottom right)
+3. Click **Install** — the app gets its own desktop icon and taskbar entry
+4. It opens in its own window with no browser chrome, works offline
+
+### How to install (local file)
+- Double-click `index.html` to open it directly — no server needed
+- The PWA install button only appears when served over HTTPS, but the app works fully from `file://`
+
+---
+
+## 🔒 Code Protection
+
+The application JavaScript is:
+- **Minified** — all whitespace and comments stripped (27% smaller)
+- **Mangled** — internal variable names are shortened to single characters
+- **No source maps** — the original code cannot be reconstructed from the bundle
+
+The `f1_simulator.jsx` source file contains full JSDoc comments and section headers (10 sections) for reference.
+
+The Anthropic API key is stored in browser `localStorage` only — it is never transmitted anywhere except directly to `api.anthropic.com`.
+
