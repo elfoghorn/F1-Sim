@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node:*)",
+      "Bash(make:*)",
+      "Bash(python3:*)",
+      "Bash(pip:*)",
+      "Bash(npm:*)",
+      "Bash(cat:*)",
+      "Bash(ls:*)",
+      "Bash(cp:*)",
+      "Bash(mkdir:*)",
+      "Bash(grep:*)",
+      "Bash(sed:*)",
+      "Bash(echo:*)",
+      "Bash(curl:*)",
+      "Bash(git:*)"
+    ],
+    "deny": [
+      "Bash(rm -rf /*)",
+      "Bash(sudo:*)"
+    ]
+  },
+  "env": {
+    "SUPABASE_URL": "${SUPABASE_URL}",
+    "SUPABASE_KEY": "${SUPABASE_KEY}"
+  }
+}

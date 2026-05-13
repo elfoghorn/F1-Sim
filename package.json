@@ -1,0 +1,27 @@
+{
+  "name": "f1-sim-2027",
+  "version": "2027.1.0",
+  "description": "Formula 1 2027 Season Simulator — PWA with LightGBM community model",
+  "main": "scripts/build.js",
+  "scripts": {
+    "build":   "node scripts/build.js",
+    "serve":   "python3 -m http.server 8080",
+    "watch":   "nodemon --watch f1_simulator.jsx --ext jsx --exec 'npm run build'",
+    "train":   "python3 -m f1sim_ml.train",
+    "export":  "python3 -c \"from f1sim_ml.export import export_to_js; export_to_js()\"",
+    "check":   "make check",
+    "test":    "make test",
+    "deploy":  "./scripts/deploy.sh",
+    "all":     "npm run train && npm run export && npm run build && npm run deploy"
+  },
+  "keywords": ["f1", "formula1", "simulator", "pwa", "lightgbm", "machine-learning"],
+  "author": "F1 SIM",
+  "license": "MIT",
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "python": ">=3.10.0"
+  }
+}
