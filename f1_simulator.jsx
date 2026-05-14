@@ -2320,6 +2320,7 @@ export default function F1Sim(){
     try{const s=localStorage.getItem('f1sim_champ');return s?JSON.parse(s):[];}catch{return [];}
   });
   const [raceSaved,setRaceSaved]=useState(false);
+  const [dbSaving,setDbSaving]=useState(false);
   const [selectedRound,setSelectedRound]=useState(null);
   // ── Auto-save to localStorage on championship/driver/team changes ────────
   React.useEffect(()=>{
@@ -2479,7 +2480,7 @@ export default function F1Sim(){
 
   const doQual=()=>{
     setQual(aggQual(runAccuracy,drivers,teams,track));
-    setSprint(null); setRace(null); setStages(null); setRaceSaved(false);
+    setSprint(null); setRace(null); setStages(null); setRaceSaved(false); setDbSaving(false);
     setQTab("q1"); setView("qualifying");
   };
   const doSprint=()=>{
@@ -2545,8 +2546,48 @@ export default function F1Sim(){
     };
     setChampionship(prev=>[...prev,entry]);
     setRaceSaved(true);
-    // Submit to community server with actual winner for accuracy tracking
-    if(simResults) submitSimData(simResults, race.positions[0]?.driver?.id||null);
+
+    // ── Send to Supabase and trigger model update ─────────────────────────
+    if(communityEnabled && !SUPABASE_URL.includes('YOUR_PROJECT')) {
+      const actualWinnerId = race.positions[0]?.driver?.id||null;
+      setDbSaving(true);
+      (async()=>{
+        // 1. Submit sim data with actual winner (labelled training example)
+        await submitSimData(simResults||[], actualWinnerId);
+
+        // 2. Trigger aggregate_community_model() to update predictions
+        try {
+          await fetch(`${SUPABASE_URL}/rest/v1/rpc/aggregate_community_model`,{
+            method:"POST",
+            headers:{
+              "apikey":SUPABASE_KEY,
+              "Authorization":`Bearer ${SUPABASE_KEY}`,
+              "Content-Type":"application/json",
+            },
+            body:"{}",
+          });
+          console.log("[F1 SIM] ✅ Community model aggregated");
+        } catch(e) {
+          console.warn("[F1 SIM] Aggregate skipped:", e.message);
+        }
+
+        // 3. Re-fetch community_model for this circuit so UI updates immediately
+        const fresh = await sbSelect('community_model',`&circuit_id=eq.${track.id}`);
+        if(fresh) setCommunityData(fresh);
+
+        // 4. Re-fetch global stats for the LightGBM dashboard
+        const global = await sbSelect('community_global','',50);
+        if(global&&global.length) setCommunityStats(global[0]);
+
+        // 5. Re-fetch ALL circuit data for the training volume chart
+        const allData = await sbSelect('community_model','&order=sample_count.desc',500);
+        if(allData) setAllCircuitData(allData);
+
+        setDbSaving(false);
+        console.log("[F1 SIM] ✅ Community data refreshed after save");
+      })();
+    }
+
     // Record prediction accuracy if we have simResults from Multi-Sim
     if(simResults&&simResults.length>0) {
       const winner=race.positions[0];
@@ -3303,7 +3344,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
             <div style={{marginTop:16,display:"flex",gap:8,justifyContent:"flex-end",flexWrap:"wrap"}}>
               <button onClick={doRace} style={{background:"#2A2A30",color:"#ccc",border:"none",padding:"10px 18px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:2.5,borderRadius:3}}>↺ RE-RUN</button>
               <button onClick={saveToChampionship} disabled={raceSaved} style={{background:raceSaved?"#1A2A1A":"#44CC88",color:raceSaved?"#44CC88":"#000",border:`1px solid ${raceSaved?"#44CC8844":"transparent"}`,padding:"10px 18px",cursor:raceSaved?"default":"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,borderRadius:3,opacity:raceSaved?0.7:1}}>
-                {raceSaved?"✓ SAVED":"💾 SAVE TO CHAMPIONSHIP"}
+                {raceSaved ? (dbSaving ? "⟳ SYNCING DB…" : "✓ SAVED") : "💾 SAVE TO CHAMPIONSHIP"}
               </button>
               <button onClick={()=>{setView("commentary");if(race&&!isGen)doCommentary();}} style={{background:"#CC44FF",color:"#fff",border:"none",padding:"10px 24px",cursor:"pointer",fontFamily:"inherit",fontSize:15,fontWeight:700,letterSpacing:2.5,borderRadius:3}}>🎙️ CROFT & BRUNDLE →</button>
             </div>
