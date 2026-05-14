@@ -2073,7 +2073,7 @@ const STAGE_DEFS=[
 // ── Supabase credentials ──────────────────────────────────────────────────
 // Replace these with your own Supabase project URL and anon key.
 // See docs/SUPABASE_SETUP.md for the full setup guide.
-const SUPABASE_URL  = "https://YOUR_PROJECT.supabase.co";  // ← add your Project URL from Supabase dashboard
+const SUPABASE_URL  = "https://tdsmjrbuplbjnajdzjnu.supabase.co";
 const SUPABASE_KEY  = "YOUR_SUPABASE_ANON_KEY";
 const COMMUNITY_ENABLED_BY_DEFAULT = false;  // users must opt-in
 
@@ -2407,11 +2407,16 @@ export default function F1Sim(){
     });
   },[track.id,communityEnabled]);
 
-  // Fetch global aggregate stats for Stats tab
+  // Fetch global aggregate stats + full circuit breakdown for Stats tab
+  const [allCircuitData,setAllCircuitData]=useState(null);
   React.useEffect(()=>{
     if(!communityEnabled||SUPABASE_URL.includes('YOUR_PROJECT')) return;
-    sbSelect('community_global',``,50).then(rows=>{
-      setCommunityStats(rows||null);
+    sbSelect('community_global','',50).then(rows=>{
+      setCommunityStats(rows&&rows.length?rows[0]:null);
+    });
+    // Fetch ALL community_model rows for the LightGBM dashboard
+    sbSelect('community_model','&order=sample_count.desc',500).then(rows=>{
+      setAllCircuitData(rows||null);
     });
   },[communityEnabled]);
 
@@ -2819,6 +2824,91 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
     setUpdatesApplied(true);
   };
 
+
+  // ── Background OpenF1 auto-fetch ─────────────────────────────────────────
+  // Runs silently after each race is saved. Fetches latest qualifying session
+  // from OpenF1, computes pace ratings, submits enriched data to Supabase.
+  // No UI interaction needed — works in the background automatically.
+  const runBackgroundOpenF1 = React.useCallback(async (circuitId) => {
+    if(!communityEnabled || SUPABASE_URL.includes('YOUR_PROJECT')) return;
+    try {
+      // Fetch latest qualifying session
+      const sessions = await of1Get("sessions", {session_type:"Qualifying"});
+      if(!sessions||!sessions.length) return;
+      const latest = sessions.sort((a,b)=>(b.date_start||"").localeCompare(a.date_start||""))[0];
+      const sk = latest.session_key;
+
+      // Get lap data
+      const [lapsRaw, drvsRaw, weatherRaw] = await Promise.all([
+        of1Get("laps", {session_key:sk}),
+        of1Get("drivers", {session_key:sk}),
+        of1Get("weather", {session_key:sk}),
+      ]);
+      if(!lapsRaw||!lapsRaw.length) return;
+
+      // Compute best lap per driver
+      const bestLaps = {};
+      lapsRaw.filter(l=>l.lap_duration&&!l.is_pit_out_lap).forEach(l=>{
+        const n=l.driver_number;
+        if(!bestLaps[n]||l.lap_duration<bestLaps[n]) bestLaps[n]=l.lap_duration;
+      });
+
+      const times = Object.values(bestLaps);
+      if(!times.length) return;
+      const pole = Math.min(...times);
+      const refMax = Math.max(Math.max(...times)-pole, 1.5);
+
+      // Build enriched driver pace ratings from real data
+      const realPaceRatings = {};
+      Object.entries(bestLaps).forEach(([num, lapTime])=>{
+        const did = OF1_DRIVER_MAP[parseInt(num)];
+        if(!did) return;
+        const gap = lapTime - pole;
+        realPaceRatings[did] = Math.round(Math.max(72, Math.min(99, 97-(gap/refMax)*25)));
+      });
+
+      // Push enriched submission to Supabase with real F1 data flag
+      const enrichedStats = drivers.map(d=>({
+        id:d.id, pace: realPaceRatings[d.id]||d.pace,
+        consistency:d.consistency, wet:d.wet, overtaking:d.overtaking,
+        defense:d.defense, experience:d.experience, mental:d.mental, style:d.style,
+        source:"openf1_auto",
+      }));
+
+      const wasWet = (weatherRaw||[]).some(w=>w.rainfall);
+      const weatherInfo = (weatherRaw||[]).slice(-1)[0]||{};
+
+      await sbInsert("race_sims", {
+        session_id: sessionId,
+        circuit_id: circuitId||track.id,
+        series: "f1",
+        sim_accuracy: 20,
+        predicted_top5: (simResults||[]).slice(0,5).map(r=>({
+          driver_id:r.driver?.id, win_pct:r.winPct||0,
+          podium_pct:r.podiumPct||0, avg_pos:r.avgPos||11,
+        })),
+        driver_stats: enrichedStats,
+        team_paces: teams.map(t=>({id:t.id,pace:t.carPace})),
+        actual_winner_id: null,
+        prediction_correct: null,
+        openf1_session_key: sk,
+        was_wet: wasWet,
+        track_temp: weatherInfo.track_temperature||null,
+        data_source: "openf1_background",
+      });
+      console.log("[F1 SIM] Background OpenF1 sync complete for", circuitId||track.id);
+    } catch(e) {
+      console.log("[F1 SIM] Background OpenF1 sync skipped:", e.message);
+    }
+  }, [communityEnabled, track.id, drivers, teams, simResults, sessionId]);
+
+  // Auto-trigger background sync when a race is saved to championship
+  React.useEffect(()=>{
+    if(raceSaved && communityEnabled) {
+      setTimeout(()=>runBackgroundOpenF1(track.id), 2000);
+    }
+  }, [raceSaved]);
+
   const NAVS=[
     {v:"garage",l:"GARAGE"},{v:"tracks",l:"TRACKS"},
     {v:"qualifying",l:"QUALIFYING",locked:!qual},
@@ -2829,7 +2919,6 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
     {v:"stats",l:"📈 STATS"},
     {v:"commentary",l:"COMMENTARY",locked:!race},
     {v:"championship",l:"🏆 CHAMP"},
-    {v:"livedata",l:"📡 LIVE F1"},
     {v:"guide",l:"📖 GUIDE"},
   ];
   const nb=(a,lk)=>({background:a?"#E8002D":"transparent",color:a?"#fff":lk?"#2A2A2A":"#bbb",border:"none",padding:"0 12px",height:58,cursor:lk?"default":"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,transition:"all 0.15s",borderRight:"1px solid #1A1A1E",pointerEvents:lk?"none":"auto"});
@@ -3635,24 +3724,6 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                 </div>
               </div>
 
-              <div style={{background:"#111115",border:"1px solid #1E1E22",borderRadius:6,padding:"16px 18px"}}>
-                <div style={{fontSize:12,color:"#BB66FF",fontWeight:700,letterSpacing:2,marginBottom:12}}>📡 LIVE F1 DATA — HOW TO USE IT</div>
-                <div style={{fontSize:13,color:"#aaa",lineHeight:1.8,marginBottom:10}}>
-                  The sim uses 2027 pre-season ratings. To improve accuracy with real-season data:
-                </div>
-                {[
-                  ["OpenF1 API","Free, real-time F1 data: openf1.org — lap times, positions, pit data, weather"],
-                  ["Ergast Historical","ergast.com/mrd — full championship history for calibrating baseline ratings"],
-                  ["FastF1 (Python)","docs.fastf1.dev — telemetry-level analysis for advanced stat modelling"],
-                  ["After each race","Update driver Pace/Consistency stats in Garage based on real qualifying delta to team-mate"],
-                  ["Mid-season tuning","Drop a driver's mental stat after a crash; raise after a comeback victory"],
-                ].map(([t,d])=>(
-                  <div key={t} style={{display:"flex",gap:8,padding:"5px 8px",background:"#161618",borderRadius:3,marginBottom:4}}>
-                    <span style={{fontSize:11,fontWeight:700,color:"#BB66FF",minWidth:120,flexShrink:0}}>{t}</span>
-                    <span style={{fontSize:11,color:"#778",lineHeight:1.5}}>{d}</span>
-                  </div>
-                ))}
-              </div>
             </div>
 
             {/* Prediction history */}
@@ -3758,280 +3829,460 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
             </div>
 
             {/* ── LIVE DATA GRAPHS ─────────────────────────────── */}
+            {/* ── MODEL PERFORMANCE DASHBOARD ───────────────────────── */}
             {(()=>{
-              // ── Chart helpers ──────────────────────────────────
-              const W=820, H=160, PAD={t:28,r:16,b:36,l:48};
-              const cW=W-PAD.l-PAD.r, cH=H-PAD.t-PAD.b;
+              if(simmed.length < 2) return null;
 
-              // Scale helpers
-              const scaleX=(i,n)=>PAD.l+( n<2 ? cW/2 : (i/(n-1))*cW );
-              const scaleY=(v,mn,mx)=>PAD.t+cH - ((v-mn)/(mx-mn||1))*cH;
+              // SVG chart constants
+              const CW=820,CH=180,P={t:32,r:24,b:36,l:52};
+              const iW=CW-P.l-P.r, iH=CH-P.t-P.b;
+              const sx=(i,n)=>P.l+(n<2?iW/2:(i/(n-1))*iW);
+              const sy=(v,mn,mx)=>P.t+iH-((v-mn)/((mx-mn)||1))*iH;
+              const polyPts=(vals,mn,mx)=>vals.map((v,i)=>`${sx(i,vals.length)},${sy(v,mn,mx)}`).join(" ");
 
-              // Polyline points string
-              const pts=(vals,mn,mx)=>vals.map((v,i)=>`${scaleX(i,vals.length)},${scaleY(v,mn,mx)}`).join(" ");
-
-              // Grid lines
-              const gridLines=(mn,mx,steps=4)=>Array.from({length:steps+1},(_,i)=>{
-                const v=mn+(mx-mn)*(i/steps);
-                const y=scaleY(v,mn,mx);
-                return `<line x1="${PAD.l}" x2="${W-PAD.r}" y1="${y}" y2="${y}" stroke="#1E1E28" stroke-width="1"/>
-                  <text x="${PAD.l-6}" y="${y+4}" text-anchor="end" font-size="9" fill="#556">${typeof v==='number'?v.toFixed(v<1?0:0):v}</text>`;
-              }).join("");
-
-              // ── CHART 1: Prediction accuracy over rounds ──────
-              const accData = simmed.map((h,i)=>({
-                round: h.round||i+1,
-                win: h.winnerCorrect ? 1 : 0,
-                // rolling 5-round average
-                roll5: simmed.slice(Math.max(0,i-4),i+1).filter(x=>x.winnerCorrect).length /
-                       Math.min(5, i+1),
-              }));
-              const hasAcc = accData.length >= 2;
-
-              // ── CHART 2: Community data volume ────────────────
-              // Simulates community growth from communityData
-              const commRows = communityData||[];
-              const commByDriver = commRows.slice(0,10).map(r=>({
-                id: (drivers.find(d=>d.id===r.driver_id)?.name||r.driver_id||"").split(" ").pop(),
-                winPct: (r.avg_win_pct||0)*100,
-                n: r.sample_count||0,
-              })).sort((a,b)=>b.winPct-a.winPct);
-
-              // ── CHART 3: Accuracy trend (rolling) ────────────
-              const roll = simmed.map((_,i)=>{
-                const window=simmed.slice(Math.max(0,i-4),i+1);
-                return window.filter(h=>h.winnerCorrect).length/window.length;
+              // ── Dataset 1: Rolling accuracy ───────────────────────
+              const roll5 = simmed.map((_,i)=>{
+                const w=simmed.slice(Math.max(0,i-4),i+1);
+                return w.filter(h=>h.winnerCorrect).length/w.length;
               });
-              const rollMin=0, rollMax=1;
 
-              // ── CHART 4: Sim depth per round ─────────────────
+              // ── Dataset 2: Predicted win% vs reality per round ────
+              const predVsActual = simmed.map(h=>({
+                pred: (h.predWinPct||0)*100,
+                actual: h.winnerCorrect?100:0,
+              }));
+
+              // ── Dataset 3: Cumulative accuracy ────────────────────
+              const cumAcc = simmed.map((_,i)=>{
+                const slice=simmed.slice(0,i+1);
+                return slice.filter(h=>h.winnerCorrect).length/slice.length;
+              });
+
+              // ── Dataset 4: Sim depth trend ─────────────────────────
               const depths = simmed.map(h=>h.accuracy||10);
-              const dMin=0, dMax=Math.max(...depths,20);
+              const dMax = Math.max(...depths, 20);
 
-              return(
-              <div style={{marginBottom:14}}>
-                <div style={{fontSize:12,color:"#BB66FF",fontWeight:700,letterSpacing:2,marginBottom:12}}>📊 DATA DASHBOARD</div>
+              // ── Dataset 5: Model score per round (0-100) ──────────
+              // Combines accuracy + depth into a composite score
+              const modelScore = simmed.map((_,i)=>{
+                const accW=cumAcc[i];
+                const depthW=Math.min(1,depths[i]/20);
+                const dataW=Math.min(1,(i+1)/20);
+                return Math.round((accW*50 + depthW*30 + dataW*20));
+              });
 
-                {/* Top row: two charts side by side */}
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+              const overallAcc = simmed.filter(h=>h.winnerCorrect).length/simmed.length;
+              const trend = roll5.length>=3 ? roll5[roll5.length-1]-roll5[roll5.length-3] : 0;
+              const trendLabel = trend>0.05?"📈 Improving":trend<-0.05?"📉 Declining":"➡ Stable";
+              const trendColor = trend>0.05?"#44CC88":trend<-0.05?"#E8002D":"#FFC906";
 
-                  {/* Chart 1: Win/Podium accuracy bars */}
-                  <div style={{background:"#111115",border:"1px solid #1E1E22",borderRadius:6,padding:"14px 16px"}}>
-                    <div style={{fontSize:11,color:"#778",fontWeight:700,letterSpacing:1.5,marginBottom:10}}>
-                      PREDICTION ACCURACY — PER ROUND
-                    </div>
-                    {simmed.length<2?(
-                      <div style={{fontSize:12,color:"#556",textAlign:"center",padding:"30px 0"}}>Need 2+ saved rounds to chart</div>
-                    ):(
-                      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{overflow:"visible"}}>
-                        <defs>
-                          <linearGradient id="gWin" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#44CC88" stopOpacity="0.3"/>
-                            <stop offset="100%" stopColor="#44CC88" stopOpacity="0"/>
-                          </linearGradient>
-                        </defs>
-                        {/* grid */}
-                        {[0,0.25,0.5,0.75,1].map(v=>(
-                          <g key={v}>
-                            <line x1={PAD.l} x2={W-PAD.r} y1={scaleY(v,0,1)} y2={scaleY(v,0,1)} stroke="#1E1E28" strokeWidth="1"/>
-                            <text x={PAD.l-6} y={scaleY(v,0,1)+4} textAnchor="end" fontSize="9" fill="#556">{(v*100).toFixed(0)}%</text>
-                          </g>
-                        ))}
-                        {/* Win/loss bars */}
-                        {accData.map((d,i)=>(
-                          <rect key={i}
-                            x={scaleX(i,accData.length)-8}
-                            y={d.win ? scaleY(1,0,1) : scaleY(0.5,0,1)}
-                            width={16}
-                            height={d.win ? cH : cH/2}
-                            fill={d.win?"#44CC8840":"#E8002D30"}
-                            rx="2"
-                          />
-                        ))}
-                        {/* Rolling 5-round accuracy line */}
-                        {roll.length>=2&&(
-                          <>
-                            <polyline
-                              points={roll.map((v,i)=>`${scaleX(i,roll.length)},${scaleY(v,0,1)}`).join(" ")}
-                              fill="none" stroke="#44CC88" strokeWidth="2" strokeLinejoin="round"
-                            />
-                            {roll.map((v,i)=>(
-                              <circle key={i} cx={scaleX(i,roll.length)} cy={scaleY(v,0,1)} r="3"
-                                fill="#44CC88" stroke="#0C0C0F" strokeWidth="1.5"/>
-                            ))}
-                          </>
-                        )}
-                        {/* X labels */}
-                        {accData.filter((_,i)=>i===0||i===accData.length-1||(accData.length>6&&i%Math.ceil(accData.length/4)===0)).map((d,i,arr)=>(
-                          <text key={i} x={scaleX(accData.indexOf(d),accData.length)} y={H-6}
-                            textAnchor="middle" fontSize="9" fill="#556">R{d.round}</text>
-                        ))}
-                        {/* Legend */}
-                        <circle cx={PAD.l+6} cy={PAD.t-10} r="4" fill="#44CC88"/>
-                        <text x={PAD.l+14} y={PAD.t-7} fontSize="9" fill="#778">5-round rolling avg</text>
-                        <rect x={PAD.l+110} y={PAD.t-16} width="10" height="8" fill="#44CC8840" rx="1"/>
-                        <text x={PAD.l+124} y={PAD.t-7} fontSize="9" fill="#778">✅ correct</text>
-                        <rect x={PAD.l+170} y={PAD.t-16} width="10" height="8" fill="#E8002D30" rx="1"/>
-                        <text x={PAD.l+184} y={PAD.t-7} fontSize="9" fill="#778">❌ wrong</text>
-                      </svg>
-                    )}
-                  </div>
+              return(<div style={{marginBottom:14}}>
 
-                  {/* Chart 2: Sim depth per round */}
-                  <div style={{background:"#111115",border:"1px solid #1E1E22",borderRadius:6,padding:"14px 16px"}}>
-                    <div style={{fontSize:11,color:"#778",fontWeight:700,letterSpacing:1.5,marginBottom:10}}>
-                      MONTE CARLO DEPTH — RUNS PER RACE
-                    </div>
-                    {depths.length<2?(
-                      <div style={{fontSize:12,color:"#556",textAlign:"center",padding:"30px 0"}}>Need 2+ saved rounds to chart</div>
-                    ):(
-                      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{overflow:"visible"}}>
-                        <defs>
-                          <linearGradient id="gDepth" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#BB66FF" stopOpacity="0.4"/>
-                            <stop offset="100%" stopColor="#BB66FF" stopOpacity="0.05"/>
-                          </linearGradient>
-                        </defs>
-                        {[0,5,10,15,20].filter(v=>v<=dMax).map(v=>(
-                          <g key={v}>
-                            <line x1={PAD.l} x2={W-PAD.r} y1={scaleY(v,dMin,dMax)} y2={scaleY(v,dMin,dMax)} stroke="#1E1E28" strokeWidth="1"/>
-                            <text x={PAD.l-6} y={scaleY(v,dMin,dMax)+4} textAnchor="end" fontSize="9" fill="#556">×{v}</text>
-                          </g>
-                        ))}
-                        {/* Area fill */}
-                        <polygon
-                          points={`${PAD.l},${PAD.t+cH} ${depths.map((v,i)=>`${scaleX(i,depths.length)},${scaleY(v,dMin,dMax)}`).join(" ")} ${scaleX(depths.length-1,depths.length)},${PAD.t+cH}`}
-                          fill="url(#gDepth)"
-                        />
-                        {/* Line */}
-                        <polyline
-                          points={depths.map((v,i)=>`${scaleX(i,depths.length)},${scaleY(v,dMin,dMax)}`).join(" ")}
-                          fill="none" stroke="#BB66FF" strokeWidth="2" strokeLinejoin="round"
-                        />
-                        {depths.map((v,i)=>(
-                          <circle key={i} cx={scaleX(i,depths.length)} cy={scaleY(v,dMin,dMax)} r="3"
-                            fill="#BB66FF" stroke="#0C0C0F" strokeWidth="1.5"/>
-                        ))}
-                        {depths.filter((_,i)=>i===0||i===depths.length-1||(depths.length>6&&i%Math.ceil(depths.length/4)===0)).map((v,i,arr)=>{
-                          const origIdx=depths.findIndex((_,j)=>[0,depths.length-1].concat(depths.length>6?[...Array(4)].map((_,k)=>Math.ceil(depths.length/4)*(k+1)):[]).includes(j));
-                          return <text key={i} x={scaleX(i===0?0:i===arr.length-1?depths.length-1:i*Math.ceil(depths.length/4),depths.length)} y={H-6} textAnchor="middle" fontSize="9" fill="#556">R{simmed[i===0?0:i===arr.length-1?simmed.length-1:i*Math.ceil(simmed.length/4)]?.round||i+1}</text>;
-                        })}
-                        {/* Average line */}
-                        {(()=>{const avg=depths.reduce((a,b)=>a+b,0)/depths.length;const y=scaleY(avg,dMin,dMax);return(
-                          <><line x1={PAD.l} x2={W-PAD.r} y1={y} y2={y} stroke="#BB66FF" strokeWidth="1" strokeDasharray="4 3" opacity="0.5"/>
-                          <text x={W-PAD.r+4} y={y+4} fontSize="9" fill="#BB66FF">avg ×{avg.toFixed(0)}</text></>
-                        );})()}
-                      </svg>
-                    )}
+                {/* Header row */}
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
+                  <div style={{fontSize:12,color:"#BB66FF",fontWeight:700,letterSpacing:2}}>📊 MODEL PERFORMANCE TRACKER</div>
+                  <div style={{display:"flex",gap:12,alignItems:"center"}}>
+                    <span style={{fontSize:13,color:trendColor,fontWeight:700}}>{trendLabel}</span>
+                    <span style={{fontSize:13,color:"#aaa"}}>{simmed.length} rounds tracked</span>
+                    <span style={{fontSize:20,fontWeight:900,color:"#44CC88"}}>{(overallAcc*100).toFixed(0)}%</span>
+                    <span style={{fontSize:11,color:"#556"}}>win accuracy</span>
                   </div>
                 </div>
 
-                {/* Community data bar chart */}
-                {commByDriver.length>0&&(
-                  <div style={{background:"#111115",border:"1px solid #1E1E22",borderRadius:6,padding:"14px 16px",marginBottom:12}}>
-                    <div style={{fontSize:11,color:"#778",fontWeight:700,letterSpacing:1.5,marginBottom:10}}>
-                      🌍 COMMUNITY WIN RATES — {track.name.toUpperCase()} ({commRows.length} DRIVERS · {commRows.reduce((a,r)=>a+(r.sample_count||0),0)} TOTAL SUBMISSIONS)
+                {/* Chart 1: Model score + accuracy over time */}
+                <div style={{background:"#111115",border:"1px solid #1E1E22",borderRadius:6,padding:"14px 16px",marginBottom:10}}>
+                  <div style={{fontSize:11,color:"#778",fontWeight:700,letterSpacing:1.5,marginBottom:8}}>
+                    MODEL SCORE & ACCURACY OVER TIME
+                  </div>
+                  <svg width="100%" viewBox={`0 0 ${CW} ${CH}`} style={{overflow:"visible"}}>
+                    <defs>
+                      <linearGradient id="gScore" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#BB66FF" stopOpacity="0.25"/>
+                        <stop offset="100%" stopColor="#BB66FF" stopOpacity="0"/>
+                      </linearGradient>
+                      <linearGradient id="gAcc" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#44CC88" stopOpacity="0.15"/>
+                        <stop offset="100%" stopColor="#44CC88" stopOpacity="0"/>
+                      </linearGradient>
+                    </defs>
+
+                    {/* Grid lines */}
+                    {[0,25,50,75,100].map(v=>(
+                      <g key={v}>
+                        <line x1={P.l} x2={CW-P.r} y1={sy(v,0,100)} y2={sy(v,0,100)} stroke="#1A1A22" strokeWidth="1"/>
+                        <text x={P.l-6} y={sy(v,0,100)+4} textAnchor="end" fontSize="9" fill="#445">{v}</text>
+                      </g>
+                    ))}
+
+                    {/* Model score area + line */}
+                    {modelScore.length>=2&&(<>
+                      <polygon
+                        points={`${sx(0,modelScore.length)},${P.t+iH} ${polyPts(modelScore,0,100)} ${sx(modelScore.length-1,modelScore.length)},${P.t+iH}`}
+                        fill="url(#gScore)"
+                      />
+                      <polyline points={polyPts(modelScore,0,100)} fill="none" stroke="#BB66FF" strokeWidth="2.5" strokeLinejoin="round"/>
+                    </>)}
+
+                    {/* Cumulative accuracy line */}
+                    {cumAcc.length>=2&&(
+                      <polyline points={polyPts(cumAcc.map(v=>v*100),0,100)} fill="none" stroke="#44CC88" strokeWidth="2" strokeLinejoin="round" strokeDasharray="5 3"/>
+                    )}
+
+                    {/* Rolling 5-round accuracy dots */}
+                    {roll5.map((v,i)=>(
+                      <circle key={i} cx={sx(i,roll5.length)} cy={sy(v*100,0,100)} r="3.5"
+                        fill={v>=0.5?"#44CC88":"#E8002D"} stroke="#0C0C0F" strokeWidth="1.5"/>
+                    ))}
+
+                    {/* Round labels */}
+                    {simmed.filter((_,i)=>i===0||i===simmed.length-1||(simmed.length>6&&i%Math.max(1,Math.floor(simmed.length/5))===0)).map((h,_,arr)=>{
+                      const i=simmed.indexOf(h);
+                      return <text key={i} x={sx(i,simmed.length)} y={CH-6} textAnchor="middle" fontSize="9" fill="#445">R{h.round}</text>;
+                    })}
+
+                    {/* Legend */}
+                    <line x1={P.l+4} x2={P.l+20} y1={P.t-12} y2={P.t-12} stroke="#BB66FF" strokeWidth="2.5"/>
+                    <text x={P.l+24} y={P.t-9} fontSize="9" fill="#778">Model score (0-100)</text>
+                    <line x1={P.l+145} x2={P.l+161} y1={P.t-12} y2={P.t-12} stroke="#44CC88" strokeWidth="2" strokeDasharray="5 3"/>
+                    <text x={P.l+165} y={P.t-9} fontSize="9" fill="#778">Cumulative accuracy %</text>
+                    <circle cx={P.l+292} cy={P.t-12} r="3.5" fill="#44CC88"/>
+                    <text x={P.l+299} y={P.t-9} fontSize="9" fill="#778">✅ correct</text>
+                    <circle cx={P.l+348} cy={P.t-12} r="3.5" fill="#E8002D"/>
+                    <text x={P.l+355} y={P.t-9} fontSize="9" fill="#778">❌ wrong</text>
+
+                    {/* Current score callout */}
+                    {modelScore.length>0&&(()=>{
+                      const last=modelScore[modelScore.length-1];
+                      const x=sx(modelScore.length-1,modelScore.length);
+                      const y=sy(last,0,100);
+                      return(<>
+                        <circle cx={x} cy={y} r="6" fill="#BB66FF" stroke="#0C0C0F" strokeWidth="2"/>
+                        <rect x={x+8} y={y-12} width={38} height={16} rx="3" fill="#1A0A2A"/>
+                        <text x={x+27} y={y} textAnchor="middle" fontSize="10" fill="#BB66FF" fontWeight="700">{last}</text>
+                      </>);
+                    })()}
+                  </svg>
+                </div>
+
+                {/* Bottom row: win/loss bars + sim depth */}
+                <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:10,marginBottom:10}}>
+
+                  {/* Win/loss per round bar chart */}
+                  <div style={{background:"#111115",border:"1px solid #1E1E22",borderRadius:6,padding:"12px 14px"}}>
+                    <div style={{fontSize:11,color:"#778",fontWeight:700,letterSpacing:1.5,marginBottom:8}}>
+                      PREDICTION RESULT PER ROUND
                     </div>
+                    <div style={{display:"flex",gap:3,alignItems:"flex-end",height:60}}>
+                      {simmed.map((h,i)=>{
+                        const barH = Math.max(8, (h.predWinPct||0.1)*200);
+                        return(
+                          <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,height:60,justifyContent:"flex-end"}}>
+                            <div style={{
+                              width:"100%",height:`${Math.min(52,barH)}px`,
+                              background:h.winnerCorrect?"#44CC88":"#E8002D",
+                              borderRadius:"2px 2px 0 0",opacity:0.8,
+                              minHeight:8,
+                            }}/>
+                            <div style={{fontSize:8,color:"#445"}}>{h.round}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={{display:"flex",gap:10,marginTop:6}}>
+                      <div style={{display:"flex",alignItems:"center",gap:4}}>
+                        <div style={{width:10,height:10,background:"#44CC88",borderRadius:2}}/>
+                        <span style={{fontSize:10,color:"#778"}}>Correct {simmed.filter(h=>h.winnerCorrect).length}</span>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:4}}>
+                        <div style={{width:10,height:10,background:"#E8002D",borderRadius:2}}/>
+                        <span style={{fontSize:10,color:"#778"}}>Wrong {simmed.filter(h=>!h.winnerCorrect).length}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Sim depth radial/gauge */}
+                  <div style={{background:"#111115",border:"1px solid #1E1E22",borderRadius:6,padding:"12px 14px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+                    <div style={{fontSize:11,color:"#778",fontWeight:700,letterSpacing:1.5,marginBottom:8,alignSelf:"flex-start"}}>AVG SIM DEPTH</div>
                     {(()=>{
-                      const BH=120, BW=820, BP={t:20,r:16,b:30,l:60};
-                      const barW=Math.min(60,(BW-BP.l-BP.r)/commByDriver.length-8);
-                      const maxWin=Math.max(...commByDriver.map(d=>d.winPct),20);
+                      const avg=depths.reduce((a,b)=>a+b,0)/depths.length;
+                      const pct=avg/20;
+                      const r=38, cx=60, cy=50;
+                      const startAngle=-Math.PI*0.75, endAngle=Math.PI*0.75;
+                      const angle=startAngle+(endAngle-startAngle)*pct;
+                      const x1=cx+r*Math.cos(startAngle), y1=cy+r*Math.sin(startAngle);
+                      const x2=cx+r*Math.cos(endAngle),   y2=cy+r*Math.sin(endAngle);
+                      const xN=cx+r*Math.cos(angle),      yN=cy+r*Math.sin(angle);
+                      const large=pct>0.5?1:0;
+                      const col=avg>=15?"#44CC88":avg>=10?"#FFC906":"#E8002D";
                       return(
-                        <svg width="100%" viewBox={`0 0 ${BW} ${BH}`} style={{overflow:"visible"}}>
-                          {[0,10,20,30].filter(v=>v<=maxWin).map(v=>{
-                            const y=BP.t+(BH-BP.t-BP.b)*(1-v/maxWin);
-                            return(<g key={v}>
-                              <line x1={BP.l} x2={BW-BP.r} y1={y} y2={y} stroke="#1E1E28" strokeWidth="1"/>
-                              <text x={BP.l-4} y={y+4} textAnchor="end" fontSize="9" fill="#556">{v}%</text>
-                            </g>);
-                          })}
-                          {commByDriver.map((d,i)=>{
-                            const x=BP.l+i*(barW+8)+4;
-                            const barH=(BH-BP.t-BP.b)*(d.winPct/maxWin);
-                            const y=BP.t+(BH-BP.t-BP.b)-barH;
-                            const simD=drivers.find(dr=>dr.id===commRows[i]?.driver_id);
-                            const col=simD?`#${simD.color||"4488FF"}`:"#4488FF";
-                            return(<g key={i}>
-                              <rect x={x} y={y} width={barW} height={barH} fill={col} opacity="0.7" rx="2"/>
-                              <text x={x+barW/2} y={y-4} textAnchor="middle" fontSize="9" fill={col} fontWeight="700">{d.winPct.toFixed(0)}%</text>
-                              <text x={x+barW/2} y={BH-8} textAnchor="middle" fontSize="9" fill="#778">{d.id.slice(0,7)}</text>
-                              <text x={x+barW/2} y={BH-BH+12} textAnchor="middle" fontSize="8" fill="#445">n={d.n}</text>
-                            </g>);
-                          })}
+                        <svg width="120" height="80" viewBox="0 0 120 80">
+                          <path d={`M${x1},${y1} A${r},${r} 0 1 1 ${x2},${y2}`} fill="none" stroke="#1E1E22" strokeWidth="8" strokeLinecap="round"/>
+                          <path d={`M${x1},${y1} A${r},${r} 0 ${large} 1 ${xN},${yN}`} fill="none" stroke={col} strokeWidth="8" strokeLinecap="round"/>
+                          <text x={cx} y={cy+6} textAnchor="middle" fontSize="18" fontWeight="900" fill={col}>×{avg.toFixed(0)}</text>
+                          <text x={cx} y={cy+20} textAnchor="middle" fontSize="9" fill="#445">avg runs</text>
                         </svg>
                       );
                     })()}
                   </div>
-                )}
+                </div>
 
-                {/* Calibration curve — only show if we have enough data */}
-                {simmed.length>=5&&(()=>{
-                  // Group by predicted win% bucket (0-10%, 10-20%, etc.)
-                  const buckets={};
-                  simmed.forEach(h=>{
-                    const b=Math.floor((h.predWinPct||0)*5)*20; // 0,20,40,60,80,100
-                    if(!buckets[b]) buckets[b]={predicted:b,correct:0,total:0};
-                    buckets[b].total++;
-                    if(h.winnerCorrect) buckets[b].correct++;
-                  });
-                  const calPts=Object.values(buckets).filter(b=>b.total>=1)
-                    .map(b=>({x:b.predicted,y:(b.correct/b.total)*100,n:b.total}))
-                    .sort((a,b_)=>a.x-b_.x);
-                  if(calPts.length<2) return null;
+                {/* Community data bar chart if available */}
+                {(communityData||[]).length>0&&(()=>{
+                  const rows=(communityData||[]).slice(0,10).map(r=>({
+                    id:(drivers.find(d=>d.id===r.driver_id)?.name||r.driver_id||"").split(" ").pop(),
+                    winPct:(r.avg_win_pct||0)*100,
+                    n:r.sample_count||0,
+                    col:drivers.find(d=>d.id===r.driver_id)?.color||"4488FF",
+                  })).sort((a,b)=>b.winPct-a.winPct);
+                  const maxW=Math.max(...rows.map(r=>r.winPct),5);
+                  const BW=820,BH=100,BP={t:18,r:16,b:28,l:50};
                   return(
-                    <div style={{background:"#111115",border:"1px solid #1E1E22",borderRadius:6,padding:"14px 16px",marginBottom:12}}>
-                      <div style={{fontSize:11,color:"#778",fontWeight:700,letterSpacing:1.5,marginBottom:4}}>
-                        CALIBRATION CURVE — PREDICTED WIN% vs ACTUAL WIN%
+                    <div style={{background:"#080F08",border:"1px solid #44CC8822",borderRadius:6,padding:"12px 14px",marginBottom:10}}>
+                      <div style={{fontSize:11,color:"#44CC88",fontWeight:700,letterSpacing:1.5,marginBottom:8}}>
+                        🌍 COMMUNITY WIN RATES — {track.name.toUpperCase()} (n={rows.reduce((a,r)=>a+r.n,0)} submissions)
                       </div>
-                      <div style={{fontSize:11,color:"#445",marginBottom:10}}>
-                        A perfectly calibrated model follows the diagonal. Points above = underconfident; below = overconfident.
-                      </div>
-                      {(()=>{
-                        const CW=820,CH=200,CP={t:20,r:20,b:36,l:48};
-                        const sx=v=>CP.l+(v/100)*(CW-CP.l-CP.r);
-                        const sy=v=>CP.t+(CH-CP.t-CP.b)*(1-v/100);
-                        return(
-                          <svg width="100%" viewBox={`0 0 ${CW} ${CH}`} style={{overflow:"visible"}}>
-                            {/* Grid */}
-                            {[0,25,50,75,100].map(v=>(
-                              <g key={v}>
-                                <line x1={CP.l} x2={CW-CP.r} y1={sy(v)} y2={sy(v)} stroke="#1E1E28" strokeWidth="1"/>
-                                <text x={CP.l-4} y={sy(v)+4} textAnchor="end" fontSize="9" fill="#556">{v}%</text>
-                                <line x1={sx(v)} x2={sx(v)} y1={CP.t} y2={CH-CP.b} stroke="#1E1E28" strokeWidth="1"/>
-                                <text x={sx(v)} y={CH-6} textAnchor="middle" fontSize="9" fill="#556">{v}%</text>
-                              </g>
-                            ))}
-                            {/* Perfect calibration line */}
-                            <line x1={CP.l} x2={CW-CP.r} y1={CH-CP.b} y2={CP.t} stroke="#334" strokeWidth="1.5" strokeDasharray="6 4"/>
-                            <text x={CW-CP.r-4} y={CP.t+12} textAnchor="end" fontSize="9" fill="#445">Perfect calibration</text>
-                            {/* Actual calibration area */}
-                            {calPts.length>=2&&(
-                              <polygon
-                                points={`${sx(calPts[0].x)},${CH-CP.b} ${calPts.map(p=>`${sx(p.x)},${sy(p.y)}`).join(" ")} ${sx(calPts[calPts.length-1].x)},${CH-CP.b}`}
-                                fill="#E8002D18"
-                              />
-                            )}
-                            {/* Data line */}
-                            <polyline
-                              points={calPts.map(p=>`${sx(p.x)},${sy(p.y)}`).join(" ")}
-                              fill="none" stroke="#E8002D" strokeWidth="2" strokeLinejoin="round"
-                            />
-                            {/* Data points */}
-                            {calPts.map((p,i)=>(
-                              <g key={i}>
-                                <circle cx={sx(p.x)} cy={sy(p.y)} r={Math.min(12,4+p.n*2)}
-                                  fill="#E8002D" opacity="0.7" stroke="#0C0C0F" strokeWidth="1"/>
-                                <text x={sx(p.x)} y={sy(p.y)+4} textAnchor="middle" fontSize="9" fill="#fff" fontWeight="700">{p.n}</text>
-                              </g>
-                            ))}
-                            <text x={CP.l+8} y={CH-CP.b-8} fontSize="9" fill="#556">← predicted low</text>
-                            <text x={CW-CP.r-8} y={CH-CP.b-8} fontSize="9" fill="#556" textAnchor="end">predicted high →</text>
-                          </svg>
-                        );
-                      })()}
+                      <svg width="100%" viewBox={`0 0 ${BW} ${BH}`} style={{overflow:"visible"}}>
+                        {[0,10,20,30].filter(v=>v<=maxW+5).map(v=>{
+                          const y=BP.t+(BH-BP.t-BP.b)*(1-v/maxW);
+                          return(<g key={v}><line x1={BP.l} x2={BW-BP.r} y1={y} y2={y} stroke="#1A2A1A" strokeWidth="1"/>
+                            <text x={BP.l-4} y={y+4} textAnchor="end" fontSize="9" fill="#445">{v}%</text></g>);
+                        })}
+                        {rows.map((d,i)=>{
+                          const bW=Math.min(55,(BW-BP.l-BP.r)/rows.length-6);
+                          const x=BP.l+i*(bW+6)+3;
+                          const bH=(BH-BP.t-BP.b)*(d.winPct/maxW);
+                          const y=BP.t+(BH-BP.t-BP.b)-bH;
+                          return(<g key={i}>
+                            <rect x={x} y={y} width={bW} height={bH} fill={`#${d.col}`} opacity="0.75" rx="2"/>
+                            <text x={x+bW/2} y={y-4} textAnchor="middle" fontSize="9" fill={`#${d.col}`} fontWeight="700">{d.winPct.toFixed(0)}%</text>
+                            <text x={x+bW/2} y={BH-6} textAnchor="middle" fontSize="8" fill="#556">{d.id.slice(0,7)}</text>
+                          </g>);
+                        })}
+                      </svg>
                     </div>
                   );
                 })()}
+
+              </div>);
+            })()}
+
+
+
+            {/* ── LIGHTGBM MODEL DASHBOARD ─────────────────────────────── */}
+            {(()=>{
+              const global = communityStats;
+              const allData = allCircuitData||[];
+
+              // Aggregate: total samples and drivers per circuit
+              const circuitMap = {};
+              allData.forEach(r=>{
+                if(!circuitMap[r.circuit_id]) circuitMap[r.circuit_id]={
+                  circuit_id:r.circuit_id, total_samples:0, drivers:0, top_win_pct:0,
+                };
+                circuitMap[r.circuit_id].total_samples += r.sample_count||0;
+                circuitMap[r.circuit_id].drivers++;
+                if((r.avg_win_pct||0)>circuitMap[r.circuit_id].top_win_pct)
+                  circuitMap[r.circuit_id].top_win_pct=r.avg_win_pct||0;
+              });
+              const circuits = Object.values(circuitMap).sort((a,b)=>b.total_samples-a.total_samples);
+              const totalSims   = global?.total_sims||0;
+              const withResult  = global?.total_with_result||0;
+              const winAcc      = global?.win_accuracy||0;
+              const podAcc      = global?.podium_accuracy||0;
+              const topCircuit  = global?.most_active_circuit||"—";
+              const modelReady  = totalSims>=50;
+              const hasData     = allData.length>0||totalSims>0;
+
+              // SVG helpers
+              const bCol=n=>n>=100?"#44CC88":n>=30?"#FFC906":"#E8002D";
+              const scoreColor=s=>s>=70?"#44CC88":s>=45?"#FFC906":"#E8002D";
+              const modelScore=modelReady?Math.min(100,Math.round(
+                winAcc*40 + podAcc*20 + Math.min(1,totalSims/500)*20 + Math.min(1,withResult/100)*20
+              )):null;
+
+              return(
+              <div style={{background:"#080810",border:"1px solid #4488FF22",borderRadius:8,padding:"18px 20px",marginBottom:14}}>
+
+                {/* Header */}
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
+                  <div>
+                    <div style={{fontSize:13,color:"#4488FF",fontWeight:700,letterSpacing:2,marginBottom:4}}>
+                      🧠 LIGHTGBM COMMUNITY MODEL
+                    </div>
+                    <div style={{fontSize:12,color:"#556"}}>
+                      {communityEnabled?"Fetching live model data from Supabase":"Enable 🟢 LIVE to see community model data"}
+                    </div>
+                  </div>
+                  {modelScore!==null&&(
+                    <div style={{textAlign:"center",background:"#0A0A14",border:`2px solid ${scoreColor(modelScore)}44`,borderRadius:8,padding:"10px 18px"}}>
+                      <div style={{fontSize:36,fontWeight:900,color:scoreColor(modelScore),lineHeight:1}}>{modelScore}</div>
+                      <div style={{fontSize:10,color:"#556",letterSpacing:1.5,marginTop:2}}>MODEL SCORE /100</div>
+                    </div>
+                  )}
+                </div>
+
+                {!communityEnabled?(
+                  <div style={{textAlign:"center",padding:"30px 0",color:"#445",fontSize:13}}>
+                    Enable community mode (🟢 LIVE in the nav bar) to connect to the LightGBM model
+                  </div>
+                ):!hasData?(
+                  <div style={{textAlign:"center",padding:"30px 0"}}>
+                    <div style={{fontSize:13,color:"#556",marginBottom:8}}>No model data yet</div>
+                    <div style={{fontSize:12,color:"#444"}}>Run Multi-Sim and save races with 🟢 LIVE enabled to start training the model</div>
+                  </div>
+                ):(
+                  <>
+                  {/* Key metrics */}
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:16}}>
+                    {[
+                      ["Total Submissions",totalSims,"race simulations","#4488FF"],
+                      ["With Real Results",withResult,"actual winners logged","#FFC906"],
+                      ["Win Prediction",winAcc>0?`${(winAcc*100).toFixed(0)}%`:"—","accuracy vs actual","#44CC88"],
+                      ["Most Active",topCircuit,"circuit by volume","#BB66FF"],
+                    ].map(([l,v,s,c])=>(
+                      <div key={l} style={{background:"#0C0C16",border:`1px solid ${c}22`,borderTop:`2px solid ${c}`,borderRadius:"0 0 4px 4px",padding:"12px 14px"}}>
+                        <div style={{fontSize:20,fontWeight:900,color:c,marginBottom:2}}>{v}</div>
+                        <div style={{fontSize:10,color:"#778",fontWeight:700,letterSpacing:1,marginBottom:2}}>{l.toUpperCase()}</div>
+                        <div style={{fontSize:10,color:"#445"}}>{s}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Training data volume by circuit */}
+                  {circuits.length>0&&(()=>{
+                    const MAX_SHOW=20;
+                    const shown=circuits.slice(0,MAX_SHOW);
+                    const maxN=Math.max(...shown.map(c=>c.total_samples),1);
+                    const THRESHOLD=30; // min samples before model trusts the circuit
+                    const BW=820,BH=140,BP={t:20,r:16,b:36,l:16};
+                    const barW=Math.max(18,Math.floor((BW-BP.l-BP.r-shown.length*4)/shown.length));
+                    return(
+                      <div style={{marginBottom:14}}>
+                        <div style={{fontSize:11,color:"#778",fontWeight:700,letterSpacing:1.5,marginBottom:8}}>
+                          TRAINING DATA VOLUME PER CIRCUIT
+                          <span style={{fontWeight:400,color:"#445",marginLeft:8}}>— dashed line = 30 sample threshold (minimum for model blending)</span>
+                        </div>
+                        <div style={{background:"#0C0C16",border:"1px solid #1A1A28",borderRadius:6,padding:"10px 12px"}}>
+                          <svg width="100%" viewBox={`0 0 ${BW} ${BH}`} style={{overflow:"visible"}}>
+                            {/* Threshold line at 30 samples */}
+                            {(()=>{
+                              const ty=BP.t+(BH-BP.t-BP.b)*(1-THRESHOLD/maxN);
+                              return(<>
+                                <line x1={BP.l} x2={BW-BP.r} y1={ty} y2={ty}
+                                  stroke="#FFC906" strokeWidth="1.5" strokeDasharray="6 4" opacity="0.7"/>
+                                <text x={BW-BP.r+4} y={ty+4} fontSize="9" fill="#FFC906">min 30</text>
+                              </>);
+                            })()}
+                            {/* Y axis labels */}
+                            {[0,maxN/2,maxN].map((v,i)=>{
+                              const y=BP.t+(BH-BP.t-BP.b)*(1-v/maxN);
+                              return <text key={i} x={BW-BP.r+4} y={y+4} fontSize="8" fill="#333">{Math.round(v)}</text>;
+                            })}
+                            {/* Bars */}
+                            {shown.map((c,i)=>{
+                              const x=BP.l+i*(barW+4);
+                              const bH=Math.max(2,(BH-BP.t-BP.b)*(c.total_samples/maxN));
+                              const y=BP.t+(BH-BP.t-BP.b)-bH;
+                              const col=bCol(c.total_samples);
+                              return(<g key={c.circuit_id}>
+                                <rect x={x} y={y} width={barW} height={bH} fill={col} opacity="0.8" rx="2"/>
+                                <text x={x+barW/2} y={y-4} textAnchor="middle" fontSize="8" fill={col} fontWeight="700">
+                                  {c.total_samples}
+                                </text>
+                                <text x={x+barW/2} y={BH-BP.b+14} textAnchor="middle" fontSize="7" fill="#445"
+                                  transform={`rotate(-35,${x+barW/2},${BH-BP.b+14})`}>
+                                  {c.circuit_id.slice(0,5)}
+                                </text>
+                              </g>);
+                            })}
+                          </svg>
+                          <div style={{display:"flex",gap:14,marginTop:4,justifyContent:"center"}}>
+                            {[["🟢 ≥100 (high confidence)","#44CC88"],["🟡 30-99 (blending active)","#FFC906"],["🔴 <30 (below threshold)","#E8002D"]].map(([l,c])=>(
+                              <div key={l} style={{fontSize:10,color:c}}>{l}</div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Model accuracy vs local Monte Carlo */}
+                  {winAcc>0&&withResult>0&&(
+                    <div style={{marginBottom:14}}>
+                      <div style={{fontSize:11,color:"#778",fontWeight:700,letterSpacing:1.5,marginBottom:8}}>
+                        LIGHTGBM vs LOCAL MODEL — WIN PREDICTION ACCURACY
+                      </div>
+                      <div style={{background:"#0C0C16",border:"1px solid #1A1A28",borderRadius:6,padding:"14px 16px"}}>
+                        {(()=>{
+                          const localAcc = simHistory.filter(h=>h.winnerCorrect!==undefined).length>0
+                            ? simHistory.filter(h=>h.winnerCorrect).length/simHistory.filter(h=>h.winnerCorrect!==undefined).length
+                            : null;
+                          const W=820,H=80,P={t:10,r:120,b:10,l:16};
+                          const iW=W-P.l-P.r;
+                          const bar=(pct,col,y,label,n)=>{
+                            const w=Math.max(4,iW*pct);
+                            return(<g>
+                              <rect x={P.l} y={y} width={w} height={22} fill={col} opacity="0.8" rx="3"/>
+                              <rect x={P.l} y={y} width={iW} height={22} fill="none" stroke={col} strokeWidth="1" rx="3" opacity="0.2"/>
+                              <text x={P.l+w+6} y={y+15} fontSize="13" fontWeight="900" fill={col}>{(pct*100).toFixed(0)}%</text>
+                              <text x={W-P.r+10} y={y+9}  fontSize="9" fill="#778" fontWeight="700">{label}</text>
+                              <text x={W-P.r+10} y={y+21} fontSize="9" fill="#445">{n}</text>
+                            </g>);
+                          };
+                          return(
+                            <svg width="100%" viewBox={`0 0 ${W} ${H}`}>
+                              {bar(winAcc,"#4488FF",P.t,"LightGBM (community)",`n=${withResult} labelled`)}
+                              {localAcc!==null&&bar(localAcc,"#44CC88",P.t+36,"Local Monte Carlo",`n=${simHistory.filter(h=>h.winnerCorrect!==undefined).length} rounds`)}
+                              {localAcc===null&&(
+                                <text x={P.l} y={P.t+52} fontSize="11" fill="#445">Local accuracy: run Multi-Sim before saving races to track</text>
+                              )}
+                            </svg>
+                          );
+                        })()}
+                        <div style={{fontSize:11,color:"#556",marginTop:8,lineHeight:1.7}}>
+                          LightGBM is trained on all {totalSims} community submissions. It improves as more users play with 🟢 LIVE enabled and save races — each saved result provides a labelled training example (predicted winner vs actual winner).
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Circuit coverage heatmap */}
+                  {circuits.length>0&&(()=>{
+                    const allCircuits=["australia","china","japan","bahrain","saudi","miami","spain","monaco","canada","madrid","austria","britain","hungary","belgium","netherlands","italy","azerbaijan","singapore","usa","mexico","brazil","lasvegas","qatar","abudhabi"];
+                    return(
+                      <div>
+                        <div style={{fontSize:11,color:"#778",fontWeight:700,letterSpacing:1.5,marginBottom:8}}>
+                          CIRCUIT COVERAGE — {circuits.filter(c=>c.total_samples>=30).length}/{allCircuits.length} CIRCUITS ABOVE THRESHOLD
+                        </div>
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(12,1fr)",gap:4}}>
+                          {allCircuits.map(cid=>{
+                            const c=circuitMap[cid];
+                            const n=c?c.total_samples:0;
+                            const col=n>=100?"#44CC88":n>=30?"#FFC906":n>0?"#883322":"#1A1A22";
+                            const trk=TRACKS?TRACKS.find(t=>t.id===cid):null;
+                            return(
+                              <div key={cid} title={`${cid}: ${n} samples`}
+                                style={{background:col,borderRadius:3,height:28,display:"flex",alignItems:"center",
+                                  justifyContent:"center",flexDirection:"column",cursor:"default",opacity:0.85}}>
+                                <div style={{fontSize:8,color:"#000",fontWeight:700,opacity:0.8}}>{cid.slice(0,3).toUpperCase()}</div>
+                                <div style={{fontSize:7,color:"#000",opacity:0.7}}>{n||""}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div style={{display:"flex",gap:12,marginTop:8,justifyContent:"flex-end"}}>
+                          {[["≥100","#44CC88"],["30-99","#FFC906"],["1-29","#883322"],["0","#1A1A22"]].map(([l,c])=>(
+                            <div key={l} style={{display:"flex",alignItems:"center",gap:4}}>
+                              <div style={{width:10,height:10,background:c,borderRadius:2}}/>
+                              <span style={{fontSize:10,color:"#556"}}>{l}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  </>
+                )}
               </div>
               );
             })()}
@@ -4229,7 +4480,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
 
                   <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:14,flexWrap:"wrap"}}>
                     <button onClick={doMultiSim} style={{background:"#2A2A30",color:"#ccc",border:"none",padding:"10px 18px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>↺ RUN AGAIN</button>
-                    <button onClick={()=>{setView("tracks");setSimResults(null);}} style={{background:"#E8002D",color:"#fff",border:"none",padding:"10px 22px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:2,borderRadius:3}}>NEW TRACK →</button>
+                    <button onClick={()=>setView("tracks")} style={{background:"#E8002D",color:"#fff",border:"none",padding:"10px 22px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:2,borderRadius:3}}>NEW TRACK →</button>
                   </div>
                 </>
               );
@@ -4377,218 +4628,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
       </div>
 
 
-        {/* ══ LIVE F1 DATA (OpenF1) ══ */}
-        {view==="livedata"&&(
-          <div style={{animation:"fadeIn 0.2s ease"}}>
-            {/* Header */}
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18,flexWrap:"wrap",gap:12}}>
-              <div>
-                <div style={{fontSize:26,fontWeight:700,letterSpacing:3}}>📡 LIVE F1 DATA</div>
-                <div style={{fontSize:14,color:"#778",marginTop:4,letterSpacing:1.5}}>
-                  Powered by <a href="https://openf1.org" target="_blank" style={{color:"#E8002D",textDecoration:"none"}}>OpenF1</a> — free, real-time F1 API · No login required
-                </div>
-              </div>
-              <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-                {["Qualifying","Sprint","Race"].map(t=>(
-                  <button key={t} onClick={()=>fetchLatestSession(t)}
-                    disabled={liveLoading}
-                    style={{background:"#1A1A22",color:"#ccc",border:"1px solid #2A2A30",padding:"8px 14px",cursor:liveLoading?"default":"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1,borderRadius:3}}>
-                    {t==="Qualifying"?"📋":t==="Sprint"?"⚡":"🏁"} {t}
-                  </button>
-                ))}
-                <button onClick={()=>fetchLatestSession("Race")} disabled={liveLoading}
-                  style={{background:liveLoading?"#1A1A1A":"#E8002D",color:"#fff",border:"none",padding:"8px 18px",cursor:liveLoading?"default":"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>
-                  {liveLoading?"⟳ LOADING…":"⟳ REFRESH"}
-                </button>
-              </div>
-            </div>
 
-            {/* Error */}
-            {liveError&&(
-              <div style={{background:"#1A0808",border:"1px solid #E8002D44",borderLeft:"4px solid #E8002D",borderRadius:"0 6px 6px 0",padding:"14px 18px",marginBottom:16}}>
-                <div style={{fontSize:12,color:"#E8002D",fontWeight:700,letterSpacing:2,marginBottom:4}}>⚠️ OPENF1 ERROR</div>
-                <div style={{fontSize:13,color:"#aaa"}}>{liveError}</div>
-                <div style={{fontSize:12,color:"#556",marginTop:6}}>
-                  OpenF1 serves real F1 data after each session is completed. During off-season or between races, limited data may be available.
-                </div>
-              </div>
-            )}
-
-            {/* Session info banner */}
-            {liveSession&&(
-              <div style={{background:"#0D0D14",border:"1px solid #2A2A44",borderLeft:"4px solid #4488FF",borderRadius:"0 6px 6px 0",padding:"14px 18px",marginBottom:16,display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
-                <div>
-                  <div style={{fontSize:18,fontWeight:700,letterSpacing:1.5}}>{liveSession.session_name||liveSession.session_type}</div>
-                  <div style={{fontSize:13,color:"#778",marginTop:2}}>
-                    {liveSession.circuit_short_name||liveSession.location||""} · {liveSession.country_code||""} · {(liveSession.date_start||"").slice(0,10)}
-                  </div>
-                </div>
-                <div style={{marginLeft:"auto",display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
-                  {liveWeather&&(
-                    <div style={{display:"flex",gap:10,fontSize:13,color:"#aaa"}}>
-                      <span>{liveWeather.rainfall?"🌧️ WET":"☀️ DRY"}</span>
-                      <span>🌡️ {liveWeather.air_temperature?.toFixed(0)}°C air</span>
-                      <span>🏁 {liveWeather.track_temperature?.toFixed(0)}°C track</span>
-                      {liveWeather.wind_speed>0&&<span>💨 {liveWeather.wind_speed?.toFixed(0)} km/h</span>}
-                    </div>
-                  )}
-                  <span style={{background:"#4488FF22",color:"#4488FF",fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:2,letterSpacing:1}}>
-                    session_key={liveSession.session_key}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Race control events */}
-            {liveRaceCtrl.length>0&&(
-              <div style={{marginBottom:16}}>
-                <div style={{fontSize:11,color:"#FF8844",fontWeight:700,letterSpacing:2,marginBottom:8}}>⚠️ RACE CONTROL EVENTS</div>
-                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  {liveRaceCtrl.slice(-8).map((e,i)=>{
-                    const col=e.flag==="RED"?"#FF4444":e.flag==="YELLOW"?"#FFC906":e.flag==="SAFETY_CAR"?"#FF8844":"#778";
-                    return(
-                      <div key={i} style={{background:`${col}18`,border:`1px solid ${col}44`,borderRadius:3,padding:"5px 10px",fontSize:12}}>
-                        <span style={{color:col,fontWeight:700,marginRight:5}}>{e.flag}</span>
-                        <span style={{color:"#aaa"}}>{e.message?.slice(0,60)||""}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Main grid: lap times + stat update panel */}
-            {liveLaps.length>0?(
-              <div style={{display:"grid",gridTemplateColumns:"1fr 340px",gap:16,alignItems:"start"}}>
-
-                {/* Lap times table */}
-                <div>
-                  <div style={{fontSize:11,color:"#778",fontWeight:700,letterSpacing:2,marginBottom:8}}>
-                    BEST LAP TIMES — {liveLaps.length} DRIVERS
-                  </div>
-                  <div style={{background:"#111115",border:"1px solid #1E1E22",borderRadius:6,overflow:"hidden"}}>
-                    <div style={{display:"grid",gridTemplateColumns:"36px 1fr 1fr 100px 80px",gap:8,padding:"9px 14px",background:"#0D0D10",borderBottom:"1px solid #1E1E22"}}>
-                      {["#","DRIVER","TEAM","BEST LAP","SECTORS"].map(h=>(
-                        <div key={h} style={{fontSize:11,color:"#778",fontWeight:700,letterSpacing:1.2}}>{h}</div>
-                      ))}
-                    </div>
-                    {liveLaps.map((lap,i)=>{
-                      const drvInfo=liveDrivers.find(d=>d.driver_number===lap.driver_number)||{};
-                      const simDrv=drivers.find(d=>d.id===OF1_DRIVER_MAP[lap.driver_number]);
-                      const teamCol="#"+((drvInfo.team_colour||"888").replace("#",""));
-                      const poleLap=liveLaps[0].lap_duration;
-                      const gap=i===0?null:((lap.lap_duration-poleLap)*1000).toFixed(0)+"ms";
-
-                      const fmtSec=s=>s?`${Math.floor(s/60)}:${(s%60).toFixed(3).padStart(6,"0")}`:"—";
-                      return(
-                        <div key={lap.driver_number} style={{display:"grid",gridTemplateColumns:"36px 1fr 1fr 100px 80px",gap:8,padding:"9px 14px",borderBottom:"1px solid #161618",background:i<3?"#141410":"#111115",alignItems:"center"}}>
-                          <div style={{fontSize:14,fontWeight:700,color:i===0?"#FFC906":i<3?"#aaa":"#778"}}>{i+1}</div>
-                          <div>
-                            <div style={{fontSize:14,fontWeight:700}}>
-                              {drvInfo.broadcast_name||("Driver "+lap.driver_number)}
-                              {simDrv&&<span style={{fontSize:10,color:teamCol,marginLeft:6,fontWeight:700}}>{simDrv.flag}</span>}
-                            </div>
-                            <div style={{fontSize:11,color:"#778"}}>#{lap.driver_number}</div>
-                          </div>
-                          <div style={{fontSize:12,color:teamCol,fontWeight:700}}>{drvInfo.team_name||"—"}</div>
-                          <div style={{fontFamily:"monospace"}}>
-                            <div style={{fontSize:13,fontWeight:700,color:i===0?"#FFC906":"#F0F0F0"}}>{fmtSec(lap.lap_duration)}</div>
-                            {gap&&<div style={{fontSize:11,color:"#778"}}>+{gap}</div>}
-                          </div>
-                          <div style={{fontSize:10,color:"#556",lineHeight:1.6}}>
-                            {lap.duration_sector_1?`S1: ${lap.duration_sector_1?.toFixed(3)}`:""}<br/>
-                            {lap.duration_sector_2?`S2: ${lap.duration_sector_2?.toFixed(3)}`:""}<br/>
-                            {lap.duration_sector_3?`S3: ${lap.duration_sector_3?.toFixed(3)}`:""}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Stat update panel */}
-                <div style={{position:"sticky",top:16}}>
-                  <div style={{background:"#0D1A0D",border:"1px solid #44CC8844",borderRadius:6,padding:"16px 18px",marginBottom:12}}>
-                    <div style={{fontSize:12,color:"#44CC88",fontWeight:700,letterSpacing:2,marginBottom:10}}>
-                      🔄 STAT CALIBRATION
-                    </div>
-                    <div style={{fontSize:12,color:"#aaa",lineHeight:1.7,marginBottom:12}}>
-                      Based on this session's lap times vs the field, these driver Pace stats should be updated:
-                    </div>
-                    {pendingUpdates.length>0?(
-                      <>
-                        <div style={{marginBottom:12}}>
-                          {pendingUpdates.map((u,i)=>(
-                            <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",background:"#161618",borderRadius:3,marginBottom:4,border:"1px solid #1E1E22"}}>
-                              <div style={{flex:1}}>
-                                <div style={{fontSize:12,fontWeight:700}}>{u.driverName.split(" ").pop()}</div>
-                                <div style={{fontSize:11,color:"#778",textTransform:"capitalize"}}>{u.stat}</div>
-                              </div>
-                              <div style={{textAlign:"right",flexShrink:0}}>
-                                <div style={{fontSize:12,fontFamily:"monospace"}}>
-                                  <span style={{color:"#778"}}>{u.current}</span>
-                                  <span style={{color:"#44CC88",fontWeight:700,marginLeft:4}}>→ {u.suggested}</span>
-                                </div>
-                                <div style={{fontSize:11,color:u.delta>0?"#44CC88":"#FF8844",fontWeight:700}}>
-                                  {u.delta>0?"+":""}{u.delta}
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                        <button onClick={applyStatUpdates} disabled={updatesApplied}
-                          style={{width:"100%",background:updatesApplied?"#1A2A1A":"#44CC88",color:updatesApplied?"#44CC88":"#000",border:`1px solid ${updatesApplied?"#44CC8844":"transparent"}`,padding:"9px",cursor:updatesApplied?"default":"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>
-                          {updatesApplied?"✅ STATS UPDATED":"⬆ APPLY TO GARAGE"}
-                        </button>
-                        {updatesApplied&&<div style={{fontSize:11,color:"#44CC88",marginTop:6,textAlign:"center"}}>Stats applied. Re-run qualifying to see the effect.</div>}
-                      </>
-                    ):(
-                      <div style={{fontSize:12,color:"#556",textAlign:"center",padding:"12px 0"}}>
-                        {liveSession?"No significant stat changes detected (all within 1pt)":<span>Load a session above to see calibration suggestions</span>}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* OpenF1 link */}
-                  <div style={{background:"#111115",border:"1px solid #1E1E22",borderRadius:6,padding:"12px 14px",fontSize:12,color:"#778",lineHeight:1.7}}>
-                    <div style={{fontSize:11,color:"#4488FF",fontWeight:700,letterSpacing:1.5,marginBottom:6}}>📡 ABOUT OPENF1</div>
-                    Free, community-run real-time F1 API. Updated after each session. All data is official F1 timing data.
-                    <br/><a href="https://openf1.org" target="_blank" style={{color:"#4488FF"}}>openf1.org</a> ·{" "}
-                    <a href="https://openf1.org/documentation" target="_blank" style={{color:"#4488FF"}}>docs</a>
-                    <div style={{marginTop:8,fontSize:11,color:"#444"}}>No API key needed · Rate limit: 60 req/min · Free forever</div>
-                  </div>
-                </div>
-              </div>
-            ):(
-              !liveLoading&&(
-                <div style={{background:"#111115",border:"1px solid #1E1E22",borderRadius:8,padding:60,textAlign:"center"}}>
-                  <div style={{fontSize:32,marginBottom:12}}>📡</div>
-                  <div style={{fontSize:16,fontWeight:700,letterSpacing:2,marginBottom:8}}>FETCH LIVE F1 DATA</div>
-                  <div style={{fontSize:13,color:"#778",marginBottom:24,maxWidth:480,margin:"0 auto 24px"}}>
-                    Click a session type above to load real F1 timing data from OpenF1. Lap times, weather, race control events, and sector times are pulled directly from the official F1 timing feed.
-                  </div>
-                  <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}>
-                    {["Qualifying","Sprint","Race"].map(t=>(
-                      <button key={t} onClick={()=>fetchLatestSession(t)}
-                        style={{background:"#1A1A22",color:"#ccc",border:"1px solid #2A2A30",padding:"10px 20px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1,borderRadius:3}}>
-                        {t==="Qualifying"?"📋":t==="Sprint"?"⚡":"🏁"} Latest {t}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )
-            )}
-
-            {liveLoading&&(
-              <div style={{background:"#111115",border:"1px solid #1E1E22",borderRadius:8,padding:60,textAlign:"center"}}>
-                <div style={{fontSize:16,fontWeight:700,color:"#4488FF",letterSpacing:2,animation:"pulse 1s ease-in-out infinite"}}>
-                  ⟳ FETCHING FROM OPENF1…
-                </div>
-                <div style={{fontSize:13,color:"#778",marginTop:8}}>Fetching sessions, lap times, weather and race control data</div>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* ══ GUIDE ══ */}
         {view==="guide"&&(
