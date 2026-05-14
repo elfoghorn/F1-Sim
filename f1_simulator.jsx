@@ -2074,8 +2074,8 @@ const STAGE_DEFS=[
 // Replace these with your own Supabase project URL and anon key.
 // See docs/SUPABASE_SETUP.md for the full setup guide.
 const SUPABASE_URL  = "https://tdsmjrbuplbjnajdzjnu.supabase.co";
-const SUPABASE_KEY  = "YOUR_SUPABASE_ANON_KEY";
-const COMMUNITY_ENABLED_BY_DEFAULT = false;  // users must opt-in
+const SUPABASE_KEY  = "sb_publishable_XsC9JcwIvUb1ns7qeFegXw_CzsjStu2";
+const COMMUNITY_ENABLED_BY_DEFAULT = true;   // on by default - repo is private
 
 // ── API helpers ───────────────────────────────────────────────────────────
 const sbHeaders = () => ({
@@ -2086,7 +2086,7 @@ const sbHeaders = () => ({
 });
 
 async function sbInsert(table, row) {
-  if(SUPABASE_URL.includes("YOUR_PROJECT")||!SUPABASE_KEY) return null;
+  if(SUPABASE_URL.includes("YOUR_PROJECT")||SUPABASE_KEY.includes("YOUR_")||!SUPABASE_KEY) return null;
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
       method: "POST", headers: sbHeaders(), body: JSON.stringify(row),
@@ -2096,7 +2096,7 @@ async function sbInsert(table, row) {
 }
 
 async function sbSelect(table, filters = "", limit = 500) {
-  if(SUPABASE_URL.includes("YOUR_PROJECT")||!SUPABASE_KEY) return null;
+  if(SUPABASE_URL.includes("YOUR_PROJECT")||SUPABASE_KEY.includes("YOUR_")||!SUPABASE_KEY) return null;
   try {
     const r = await fetch(
       `${SUPABASE_URL}/rest/v1/${table}?select=*${filters}&limit=${limit}`,
@@ -2385,7 +2385,10 @@ export default function F1Sim(){
 
   // ── Community model state ──────────────────────────────────────────────
   const [communityEnabled,setCommunityEnabled]=useState(()=>{
-    try{return localStorage.getItem('f1sim_community')==='1';}catch{return COMMUNITY_ENABLED_BY_DEFAULT;}
+    try{
+      const stored=localStorage.getItem('f1sim_community');
+      return stored===null ? COMMUNITY_ENABLED_BY_DEFAULT : stored==='1';
+    }catch{return COMMUNITY_ENABLED_BY_DEFAULT;}
   });
   const [communityData,setCommunityData]=useState(null);   // fetched per-circuit
   const [communityStats,setCommunityStats]=useState(null); // global aggregate
@@ -2409,6 +2412,8 @@ export default function F1Sim(){
 
   // Fetch global aggregate stats + full circuit breakdown for Stats tab
   const [allCircuitData,setAllCircuitData]=useState(null);
+  const [dbSubmitCount,setDbSubmitCount]=useState(0);
+  const [dbError,setDbError]=useState(false);
   React.useEffect(()=>{
     if(!communityEnabled||SUPABASE_URL.includes('YOUR_PROJECT')) return;
     sbSelect('community_global','',50).then(rows=>{
@@ -2422,7 +2427,7 @@ export default function F1Sim(){
 
   // ── Submit simulation data to server ───────────────────────────────────
   const submitSimData=async(results,actualWinner=null)=>{
-    if(!communityEnabled||SUPABASE_URL.includes('YOUR_PROJECT')) return;
+    if(!communityEnabled||SUPABASE_URL.includes('YOUR_PROJECT')||SUPABASE_KEY.includes('YOUR_')) return;
     const payload={
       session_id:sessionId,
       circuit_id:track.id,
@@ -2444,7 +2449,15 @@ export default function F1Sim(){
       prediction_correct:actualWinner&&results[0]?.driver?.id===actualWinner||null,
       series:'f1',
     };
-    await sbInsert('race_sims',payload);
+    const result = await sbInsert('race_sims',payload);
+    if(result) {
+      console.log('[F1 SIM] ✅ Sim data sent to Supabase:', payload.circuit_id, 'accuracy:×'+payload.sim_accuracy);
+      // Show a brief toast in the stats tab count
+      setDbSubmitCount(p=>p+1);
+    } else {
+      console.warn('[F1 SIM] ⚠️ Supabase insert failed - check F12 console for details');
+      setDbError(true);
+    }
   };
 
   React.useEffect(()=>{
@@ -2965,11 +2978,17 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
           {/* Back to menu */}
           <button onClick={()=>setShowMenu(true)} title="Back to series select" style={{background:"transparent",color:"#444",border:"1px solid #2A2A30",padding:"3px 9px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1,borderRadius:2,whiteSpace:"nowrap"}}>⏏ MENU</button>
           <button
-            onClick={()=>setCommunityEnabled(p=>!p)}
+            onClick={()=>{setCommunityEnabled(p=>!p);setDbError(false);setDbSubmitCount(0);}}
             title={communityEnabled?"Community model ON — sharing anonymous data":"Community model OFF — click to enable"}
             style={{background:communityEnabled?"#00440022":"transparent",color:communityEnabled?"#44CC88":"#333",border:`1px solid ${communityEnabled?"#44CC8844":"#2A2A30"}`,padding:"3px 9px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1,borderRadius:2,whiteSpace:"nowrap",transition:"all 0.2s"}}>
             {communityEnabled?"🟢 LIVE":"⚫ OFFLINE"}
           </button>
+          {communityEnabled&&dbSubmitCount>0&&!dbError&&(
+            <span style={{fontSize:10,color:"#44CC88",fontWeight:700,letterSpacing:1}}>↑{dbSubmitCount} sent</span>
+          )}
+          {communityEnabled&&dbError&&(
+            <span style={{fontSize:10,color:"#E8002D",fontWeight:700}} title="Check browser console (F12) for details">⚠️ DB error</span>
+          )}
         </div>
       </div>
 
