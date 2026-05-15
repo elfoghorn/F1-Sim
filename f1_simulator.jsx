@@ -1243,57 +1243,62 @@ function QGrid({entries,gapFrom,posLabel,elimLine,elimColor="#FF4444"}){
 function aggQual(n, drivers, teams, track) {
   if(n<=1) return runQ1Q2Q3(drivers,teams,track);
 
-  // Accumulate per-driver results across N independent runs
-  const gridAcc={}, q1ScoreAcc={}, q2ScoreAcc={}, q3ScoreAcc={};
-  drivers.forEach(d=>{
-    gridAcc[d.id]=[];
-    q1ScoreAcc[d.id]=[];
-    q2ScoreAcc[d.id]=[];
-    q3ScoreAcc[d.id]=[];
-  });
+  // Run N full qualifying sessions and accumulate scores per session
+  const q1ScoreAcc={}, q2ScoreAcc={}, q3ScoreAcc={};
+  drivers.forEach(d=>{ q1ScoreAcc[d.id]=[]; q2ScoreAcc[d.id]=[]; q3ScoreAcc[d.id]=[]; });
 
   for(let i=0;i<n;i++){
     const q=runQ1Q2Q3(drivers,teams,track);
-    q.grid.forEach((e,idx)=>gridAcc[e.driver.id].push(idx+1));
-    // Each session stores its own fresh score — collect them separately
     q.q1.forEach(e=>q1ScoreAcc[e.driver.id].push(e.score));
     q.q2.forEach(e=>q2ScoreAcc[e.driver.id].push(e.score));
     q.q3.forEach(e=>q3ScoreAcc[e.driver.id].push(e.score));
   }
 
-  const avg=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:0;
+  const avg=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:null;
 
-  // Build driver objects with per-session averaged scores
+  // Build driver map — null score means driver never reached that session
   const driverMap=drivers.map(d=>{
     const team=teams.find(t=>t.id===d.teamId)||teams[teams.length-1];
-    const q1s=avg(q1ScoreAcc[d.id]);
-    const q2s=q2ScoreAcc[d.id].length?avg(q2ScoreAcc[d.id]):q1s;
-    const q3s=q3ScoreAcc[d.id].length?avg(q3ScoreAcc[d.id]):q2s;
-    return {driver:d,team, avgGrid:avg(gridAcc[d.id])||20, q1Score:q1s, q2Score:q2s, q3Score:q3s};
+    return {
+      driver:d, team,
+      q1Score: avg(q1ScoreAcc[d.id])||0,
+      q2Score: avg(q2ScoreAcc[d.id]),
+      q3Score: avg(q3ScoreAcc[d.id]),
+    };
   });
 
-  // Sort by overall average grid position
-  const sorted=[...driverMap].sort((a,b)=>a.avgGrid-b.avgGrid);
+  // ── Q1: sort ALL 20 by their averaged Q1 score independently ─────────
+  const q1=[...driverMap]
+    .sort((a,b)=>b.q1Score-a.q1Score)
+    .map((e,i)=>({...e, score:e.q1Score, q1Pos:i+1, elim1:i>=15}));
 
-  // Build each session with its own averaged score so times differ visibly
-  const q1=sorted.map((e,i)=>({
-    ...e, score:e.q1Score, q1Pos:i+1, elim1:i>=15,
-  }));
+  // ── Q2: sort ALL 20 by Q2 score (null = use Q1 score minus penalty) ──
+  // This means a driver who rarely made Q2 will rank low, but could still
+  // push through on a lucky average — just like real qualifying upsets
+  const q2All=[...driverMap]
+    .map(e=>({...e, score:e.q2Score!==null ? e.q2Score : e.q1Score-3}))
+    .sort((a,b)=>b.score-a.score);
   const q2=[
-    ...sorted.slice(0,15).map((e,i)=>({
-      ...e, score:e.q2Score, q2Pos:i+1, elim2:i>=10,
-    })),
-    ...sorted.slice(15).map((e,i)=>({
-      ...e, score:e.q1Score, q2Pos:16+i, elim2:true,
-    })),
+    ...q2All.slice(0,15).map((e,i)=>({...e, q2Pos:i+1, elim2:i>=10})),
+    ...q2All.slice(15).map((e,i)=>({...e, q2Pos:16+i, elim2:true})),
   ];
-  const q3=sorted.slice(0,10).map((e,i)=>({
-    ...e, score:e.q3Score, q3Pos:i+1,
-  }));
 
-  return {q1,q2,q3,grid:sorted.map(e=>({...e,score:e.q3Score||e.q2Score||e.q1Score})),runsUsed:n,
+  // ── Q3: sort top drivers by Q3 score (null = use Q2 score minus gap) ─
+  const q3All=[...driverMap]
+    .map(e=>({...e, score:e.q3Score!==null ? e.q3Score : (e.q2Score!==null ? e.q2Score-2 : e.q1Score-5)}))
+    .sort((a,b)=>b.score-a.score);
+  const q3=q3All.slice(0,10).map((e,i)=>({...e, q3Pos:i+1}));
+
+  // Grid: Q3 order → Q2 eliminatees sorted by Q2 score → Q1 eliminatees
+  const q2Elim=q2.filter(e=>e.elim2).sort((a,b)=>a.q2Pos-b.q2Pos);
+  const q1Elim=q1.filter(e=>e.elim1).sort((a,b)=>a.q1Pos-b.q1Pos);
+  const grid=[...q3,...q2Elim,...q1Elim];
+
+  return {q1,q2,q3,
+    grid:grid.map(e=>({...e,score:e.q3Score||e.q2Score||e.q1Score})),
+    runsUsed:n,
     q1Events:genQEvents("Q1",q1,track,15),
-    q2Events:genQEvents("Q2",q2,track,10),
+    q2Events:genQEvents("Q2",q2.slice(0,15),track,10),
     q3Events:genQEvents("Q3",q3,track,null),
   };
 }
