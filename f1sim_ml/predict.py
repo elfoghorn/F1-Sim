@@ -1,8 +1,6 @@
 """
-predict.py — Race prediction using trained LightGBM model
-===========================================================
-Given a circuit and a set of driver/team stats, generates
-win and podium probability predictions from the trained model.
+predict.py — Race prediction using trained LightGBM model.
+Generates win and podium probability rankings for a given circuit and driver roster.
 """
 
 import json

@@ -166,7 +166,8 @@ class FeatureBuilder:
             circuit = sim["circuit_id"]
             circuit_meta = CIRCUIT_META.get(circuit, {})
 
-            # Parse JSONB columns
+            # Columns are stored as JSONB in Supabase; already parsed if loaded via psycopg2,
+            # but arrive as strings when fetched through the REST API.
             try:
                 top5 = sim["predicted_top5"] if isinstance(sim["predicted_top5"], list) else json.loads(sim["predicted_top5"])
                 driver_stats = sim["driver_stats"] if isinstance(sim["driver_stats"], list) else json.loads(sim["driver_stats"])
@@ -174,7 +175,6 @@ class FeatureBuilder:
             except (json.JSONDecodeError, TypeError):
                 continue
 
-            # Build a lookup of driver stats by id
             drv_map = {d["id"]: d for d in driver_stats if isinstance(d, dict)}
             team_map = {t["id"]: t.get("pace", 85) for t in team_paces if isinstance(t, dict)}
 
@@ -189,15 +189,14 @@ class FeatureBuilder:
                 style = drv.get("style", "smooth")
                 style_mods = STYLE_FEATURES.get(style, {})
 
-                # Effective stats after style application
                 eff_pace        = drv.get("pace", 85)        + style_mods.get("pace", 0)
                 eff_consistency = drv.get("consistency", 80) + style_mods.get("consistency", 0)
                 eff_overtaking  = drv.get("overtaking", 80)  + style_mods.get("overtaking", 0)
                 eff_defense     = drv.get("defense", 80)     + style_mods.get("defense", 0)
 
-                # Assume driver belongs to a team — find car pace
-                # (team_id not in driver_stats, so estimate from pace rank)
-                car_pace = team_map.get("mclaren", 91)  # fallback — will improve with join
+                # team_id is absent from driver_stats; using a fixed fallback until the
+                # submission schema is updated to include it.
+                car_pace = team_map.get("mclaren", 91)
 
                 # Circuit interaction features
                 alt = circuit_meta.get("alt", 0)
@@ -208,7 +207,7 @@ class FeatureBuilder:
                 abrasive = circuit_meta.get("abrasive", 5)
                 abrasion_pen = ((abrasive - 5) * 0.3) * ((100 - eff_consistency) / 40) if abrasive > 5 else 0
 
-                # Base score (mirrors JS calcBase logic exactly)
+                # Must stay in sync with calcBase() in f1_simulator.jsx
                 circuit_type = circuit_meta.get("type", "technical")
                 if circuit_type == "high-speed":
                     type_bonus = eff_pace * 0.06
@@ -249,7 +248,7 @@ class FeatureBuilder:
                     "circuit_alt":          alt,
                     "circuit_night":        int(circuit_meta.get("night", False)),
                     "circuit_abrasive":     abrasive,
-                    "circuit_od":           circuit_meta.get("od", 50),
+                    "circuit_od":           circuit_meta.get("od", 50),   # overtaking difficulty 0–100
                     "circuit_drs":          circuit_meta.get("drs", 3),
                     "circuit_type_hs":      int(circuit_type == "high-speed"),
                     "circuit_type_tech":    int(circuit_type == "technical"),

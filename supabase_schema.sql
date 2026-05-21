@@ -1,9 +1,7 @@
 -- ============================================================
 -- F1 SIM 2027 — Supabase Community Model Schema
--- Run this entire file in: Supabase → SQL Editor → New Query
 -- ============================================================
 
--- ── Enable UUID extension ────────────────────────────────────
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 
@@ -154,9 +152,8 @@ $$;
 
 
 -- ============================================================
--- TRIGGER: auto-aggregate after new inserts (optional)
--- Uncomment if you want real-time updates.
--- For high traffic, use a scheduled cron instead.
+-- TRIGGER: auto-aggregate on insert
+-- Adds latency to every INSERT. Use pg_cron (below) at scale.
 -- ============================================================
 -- CREATE OR REPLACE FUNCTION trigger_aggregate()
 -- RETURNS trigger LANGUAGE plpgsql AS $$
@@ -191,8 +188,7 @@ CREATE POLICY "allow_read"   ON community_global FOR SELECT TO anon USING (true)
 
 -- ============================================================
 -- SCHEDULED AGGREGATION (Supabase pg_cron)
--- Uncomment to run aggregation every hour automatically.
--- Requires pg_cron extension enabled in Supabase dashboard.
+-- Requires pg_cron enabled under Extensions in the Supabase dashboard.
 -- ============================================================
 -- SELECT cron.schedule(
 --   'aggregate-community-model',
@@ -203,26 +199,21 @@ CREATE POLICY "allow_read"   ON community_global FOR SELECT TO anon USING (true)
 
 -- ============================================================
 -- INITIAL AGGREGATE RUN
--- Run this after creating the schema to initialise the tables.
 -- ============================================================
 SELECT aggregate_community_model();
 
 
 -- ============================================================
 -- VERIFICATION QUERIES
--- Run these to confirm everything was set up correctly.
 -- ============================================================
 
--- Check tables exist
 SELECT table_name FROM information_schema.tables
 WHERE table_schema = 'public'
   AND table_name IN ('race_sims', 'community_model', 'community_global');
 
--- Check RLS is enabled
 SELECT tablename, rowsecurity FROM pg_tables
 WHERE schemaname = 'public'
   AND tablename IN ('race_sims', 'community_model', 'community_global');
 
--- Check policies
 SELECT tablename, policyname, cmd FROM pg_policies
 WHERE schemaname = 'public';
