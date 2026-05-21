@@ -1,149 +1,159 @@
-# 🏎️ F1 SIM — 2027 Season Simulator
+# F1 SIM 2027
 
-A full Formula 1 season simulator with Q1/Q2/Q3 qualifying, sprint races, mental stats, good/bad track preferences, AI-powered Croft & Brundle commentary, and a full championship tracker.
+A Formula 1 season simulator for the 2027 calendar. Runs fully in the browser as a single HTML file — no install, no build step, no backend required for basic use.
 
----
-
-## 🚀 Deploy to GitHub Pages (5 minutes)
-
-### Step 1 — Create a GitHub Repository
-
-1. Go to [github.com](https://github.com) and sign in
-2. Click the **+** button (top right) → **New repository**
-3. Name it something like `f1-sim` or `f1-simulator`
-4. Set it to **Public**
-5. Click **Create repository**
-
-### Step 2 — Upload the file
-
-**Option A — Via the GitHub website (easiest):**
-1. On your new repo page, click **"uploading an existing file"**
-2. Drag and drop `index.html` onto the page
-3. Scroll down, click **Commit changes**
-
-**Option B — Via Git:**
-```bash
-git init
-git add index.html
-git commit -m "Add F1 SIM"
-git remote add origin https://github.com/YOUR_USERNAME/f1-sim.git
-git push -u origin main
-```
-
-### Step 3 — Enable GitHub Pages
-
-1. Go to your repo on GitHub
-2. Click **Settings** (top tab)
-3. Click **Pages** (left sidebar, under "Code and automation")
-4. Under **Source**, select **Deploy from a branch**
-5. Set Branch to **main** and folder to **/ (root)**
-6. Click **Save**
-
-### Step 4 — Get your URL
-
-After about 1–2 minutes your app will be live at:
-```
-https://YOUR_USERNAME.github.io/f1-sim/
-```
-
-GitHub will show you the exact URL in the Pages settings once it's deployed.
+**Live features:** Q1/Q2/Q3 qualifying, 6 sprint weekends, championship tracker, driver/team editing, Croft & Brundle style AI commentary, multi-sim statistical analysis, and a pre-season testing mode.
 
 ---
 
-## 🔑 Anthropic API Key (for AI Commentary)
+## Running the app
 
-The Croft & Brundle AI commentary requires a personal Anthropic API key.
+**Easiest — open locally:**  
+Double-click `index.html`. No server needed.
 
-1. Go to [console.anthropic.com](https://console.anthropic.com)
-2. Sign up / log in
-3. Go to **API Keys** → **Create Key**
-4. Copy the key (starts with `sk-ant-...`)
-5. In the F1 SIM app, go to **COMMENTARY** and paste it in the key field
-6. Click **SAVE KEY** — it's stored in your browser's localStorage
+**Deploy to GitHub Pages:**
+1. Push `index.html` to any public GitHub repository
+2. Go to **Settings → Pages → Deploy from branch** and select `main / (root)`
+3. Your app is live at `https://YOUR_USERNAME.github.io/REPO_NAME/` within ~2 minutes
 
-> Your API key is **never** sent anywhere except directly to Anthropic's API. It's stored locally in your browser only.
-
----
-
-## 🎮 Features
-
-| Feature | Description |
-|---|---|
-| **24 Tracks** | Full 2027 season calendar |
-| **Q1 / Q2 / Q3** | Proper 3-segment qualifying with eliminations |
-| **⚡ Sprint Weekends** | 6 sprint tracks — China, Miami, Austria, USA, Brazil, Qatar |
-| **Mental Stat** | 1–10 scale affects pace, consistency and DNF probability |
-| **Good/Bad Tracks** | 3 favourite + 3 difficult circuits per driver (±5 pace) |
-| **AI Commentary** | Lap-by-lap Croft & Brundle dialogue via Claude AI |
-| **Stage Download** | Save each commentary stage as a PNG image |
-| **Championship** | Full season points tracker with undo & reset |
+The app is also installable as a PWA — look for the install icon in Chrome/Edge/Opera when served over HTTPS.
 
 ---
 
-## 🛠️ Tech
+## Access PIN
 
-- **React 18** (loaded via CDN — no npm or build step needed)
-- **Babel Standalone** (JSX transpiled in the browser)
-- **Anthropic API** (claude-sonnet-4 for commentary generation)
-- **HTML5 Canvas** (for PNG stage downloads)
-- Single `index.html` file — no dependencies to install
-
----
-
-## 📝 Notes
-
-- The app state resets on page refresh (no backend persistence)
-- First load may take 1–2 seconds while Babel compiles the JSX
-- Works best on desktop (wide layout)
-- All driver/team data is 2026/2027 season spec (editable in the Garage)
-
-## 🔐 Access PIN
-
-The app is protected by a 4-digit PIN gate.
+The app opens behind a 4-digit PIN gate.
 
 **Default PIN: `2027`**
 
-Enter it using the on-screen keypad or your keyboard. It's remembered for the browser session.
+To change it, find this constant near the top of the `<script>` block in `index.html` and replace the encoded value:
 
-### Changing the PIN
-
-Find this line near the top of the `<script>` block in `index.html`:
 ```js
 const F1_PIN_ENC = '70727075'; // XOR(0x42) of "2027"
 ```
 
-To encode a new PIN, run in your browser console:
+Encode a new PIN in the browser console:
+
 ```js
-'YOUR_PIN'.split('').map(c=>(c.charCodeAt(0)^0x42).toString(16).padStart(2,'0')).join('')
+'1234'.split('').map(c => (c.charCodeAt(0) ^ 0x42).toString(16).padStart(2, '0')).join('')
 ```
-Replace `70727075` with the result.
 
 ---
 
-## 📱 Install as an App (PWA)
+## AI Commentary
 
-F1 SIM is a **Progressive Web App** — it can be installed and run like a native desktop app.
+Race and qualifying sessions generate lap-by-lap Croft & Brundle style commentary using the Anthropic API.
 
-### How to install (GitHub Pages)
-1. Open the app URL in Opera, Chrome, or Edge
-2. Look for the **Install** icon in the address bar (or the ⬇ INSTALL APP button at the bottom right)
-3. Click **Install** — the app gets its own desktop icon and taskbar entry
-4. It opens in its own window with no browser chrome, works offline
-
-### How to install (local file)
-- Double-click `index.html` to open it directly — no server needed
-- The PWA install button only appears when served over HTTPS, but the app works fully from `file://`
+1. Get an API key from [console.anthropic.com](https://console.anthropic.com) (starts with `sk-ant-...`)
+2. In the app, go to **Commentary** and paste the key into the field
+3. Click **Save Key** — it is stored in `localStorage` only, never transmitted anywhere except `api.anthropic.com`
 
 ---
 
-## 🔒 Code Protection
+## Community Model (optional)
 
-The application JavaScript is:
-- **Minified** — all whitespace and comments stripped (27% smaller)
-- **Mangled** — internal variable names are shortened to single characters
-- **No source maps** — the original code cannot be reconstructed from the bundle
+The simulator optionally blends its built-in Monte Carlo probabilities with a community-trained LightGBM model. When enabled, anonymised simulation results are submitted to a Supabase backend and the model's predicted win/podium weights are pulled down and blended into the next simulation.
 
-The `f1_simulator.jsx` source file contains full JSDoc comments and section headers (10 sections) for reference.
+Setup instructions are in [COMMUNITY_MODEL_SETUP.md](COMMUNITY_MODEL_SETUP.md).
 
-The Anthropic API key is stored in browser `localStorage` only — it is never transmitted anywhere except directly to `api.anthropic.com`.
+---
 
+## Development
+
+The source for the entire app is [`f1_simulator.jsx`](f1_simulator.jsx). The compiled, minified output is `index.html`. You only need to touch `f1_simulator.jsx` — the build pipeline handles everything else.
+
+**Prerequisites:** Node.js 18+, `npm install` once.
+
+```bash
+make build       # compile JSX → minify → patch into index.html
+make serve       # build + serve locally at http://localhost:8080
+make watch       # rebuild automatically when f1_simulator.jsx changes
+```
+
+---
+
+## ML Pipeline
+
+The `f1sim_ml/` Python package trains a three-booster LightGBM model on community simulation data. It predicts win probability, podium probability, and whether the simulator's top-1 pick was correct, per driver per circuit.
+
+**Prerequisites:** Python 3.10+, `make install` once.
+
+```bash
+make install     # pip install f1sim_ml/requirements.txt
+make train       # load from Supabase → feature engineering → train → save model
+make export      # run inference across all 24 circuits → push weights to Supabase
+make check       # print calibration status and drift report
+make all         # train → export → build → deploy (full pipeline)
+```
+
+You can also use the package directly:
+
+```python
+from f1sim_ml import train_pipeline, predict_race, export_to_js
+
+model = train_pipeline()                          # train and save
+preds = predict_race(circuit_id="monaco")         # predict for one circuit
+export_to_js(model)                               # push all predictions to Supabase
+```
+
+Run `python -m f1sim_ml.run_example` for a self-contained demo using synthetic data (no Supabase credentials required).
+
+---
+
+## Environment variables
+
+Copy `.env.example` to `.env` and fill in your values. For CI, add these as GitHub Actions secrets under **Settings → Secrets and variables → Actions**.
+
+| Variable | Required | Description |
+|---|---|---|
+| `SUPABASE_URL` | Community model | Your Supabase project URL |
+| `SUPABASE_KEY` | Community model | Anon (publishable) key — safe in browser |
+| `SUPABASE_SECRET` | CI/retrain only | Service role key — never expose client-side |
+| `GITHUB_TOKEN` | Auto-deploy | PAT with `repo` + `pages` scope |
+
+---
+
+## CI/CD
+
+| Workflow | Trigger | What it does |
+|---|---|---|
+| `deploy.yml` | Push to `main` | Publishes `index.html` to GitHub Pages |
+| `retrain.yml` | Weekly (Sunday 03:00 UTC), or manually, or on changes to `f1sim_ml/` | Runs the full ML pipeline and pushes updated weights to Supabase |
+
+---
+
+## Project structure
+
+```
+f1_simulator.jsx          Source — edit this
+index.html                Compiled single-file PWA
+scripts/
+  build.js                JSX → esbuild → patch into index.html
+  deploy.sh               Git-push index.html to gh-pages branch
+f1sim_ml/
+  model.py                LightGBM wrapper (win, podium, correct boosters)
+  data.py                 Supabase loader + feature engineering
+  train.py                Training pipeline with GroupKFold validation
+  predict.py              Per-circuit race prediction
+  export.py               Batch inference → push to Supabase
+  calibrate.py            Accuracy tracking + drift detection
+  openf1.py               OpenF1 API client for real-season calibration
+  run_example.py          End-to-end demo (synthetic data, no credentials)
+supabase_schema.sql       Database schema for the three community tables
+Makefile                  Unified entry point for all build/train/deploy tasks
+.env.example              Environment variable template
+```
+
+---
+
+## Tech
+
+| Layer | Technology |
+|---|---|
+| UI | React 19 (CDN), Babel Standalone (in-browser JSX transpilation) |
+| Commentary | Anthropic API — claude-sonnet-4 |
+| Community backend | Supabase (PostgreSQL + REST API) |
+| ML model | LightGBM, scikit-learn, pandas |
+| Real F1 data | OpenF1 API (for driver stat calibration) |
+| Build | esbuild (minify + mangle), Node.js |
+| Hosting | GitHub Pages |
