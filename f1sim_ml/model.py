@@ -28,9 +28,7 @@ class F1SimModel:
         Prediction-correct uses binary cross-entropy with Platt scaling.
     """
 
-        # These are good starting defaults for 1k-50k rows.
-    # Re-tune when you have >10k labelled examples using optuna (see calibrate.py).
-
+    # Good defaults for 1k–50k rows. Re-tune with Optuna (see calibrate.py) at >10k labelled examples.
     WIN_PARAMS = {
         "objective":        "regression",
         "metric":           "rmse",
@@ -97,7 +95,7 @@ class F1SimModel:
 
         print(f"Training on {len(train_df)} rows, {len(feature_cols)} features")
 
-                print("\n── Training win model ──")
+        print("\n── Training win model ──")
         win_train = train_df.dropna(subset=["predicted_win_pct"])
         win_val   = val_df.dropna(subset=["predicted_win_pct"]) if val_df is not None else None
 
@@ -121,7 +119,7 @@ class F1SimModel:
             callbacks=callbacks,
         )
 
-                print("\n── Training podium model ──")
+        print("\n── Training podium model ──")
         pod_train = train_df.dropna(subset=["predicted_podium_pct"])
 
         dtrain_pod = lgb.Dataset(pod_train[feature_cols], label=pod_train["predicted_podium_pct"], free_raw_data=False)
@@ -140,7 +138,7 @@ class F1SimModel:
             callbacks=callbacks_pod,
         )
 
-                print("\n── Training prediction-correct model ──")
+        print("\n── Training prediction-correct model ──")
         correct_df = train_df.dropna(subset=["prediction_correct"])
         if len(correct_df) >= 50:  # need labelled data
             dtrain_corr = lgb.Dataset(

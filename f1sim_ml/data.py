@@ -230,40 +230,40 @@ class FeatureBuilder:
                 )
 
                 rows.append({
-                                        "submission_id":     sim["id"],
-                    "driver_id":         driver_id,
-                    "circuit_id":        circuit,
-                    "sim_accuracy":      int(sim.get("sim_accuracy", 10)),
+                    "submission_id":        sim["id"],
+                    "driver_id":            driver_id,
+                    "circuit_id":           circuit,
+                    "sim_accuracy":         int(sim.get("sim_accuracy", 10)),
 
-                                        "pace":              eff_pace,
-                    "consistency":       eff_consistency,
-                    "wet":               drv.get("wet", 80)         + style_mods.get("wet", 0),
-                    "overtaking":        eff_overtaking,
-                    "defense":           eff_defense,
-                    "experience":        experience,
-                    "mental":            drv.get("mental", 7),
+                    "pace":                 eff_pace,
+                    "consistency":          eff_consistency,
+                    "wet":                  drv.get("wet", 80) + style_mods.get("wet", 0),
+                    "overtaking":           eff_overtaking,
+                    "defense":              eff_defense,
+                    "experience":           experience,
+                    "mental":               drv.get("mental", 7),
 
-                                        "style":             style,
-                    "style_dnf_risk":    style_mods.get("dnf_risk", 0),
+                    "style":                style,
+                    "style_dnf_risk":       style_mods.get("dnf_risk", 0),
 
-                                        "circuit_alt":       alt,
-                    "circuit_night":     int(circuit_meta.get("night", False)),
-                    "circuit_abrasive":  abrasive,
-                    "circuit_od":        circuit_meta.get("od", 50),   # overtaking difficulty
-                    "circuit_drs":       circuit_meta.get("drs", 3),
-                    "circuit_type_hs":   int(circuit_type == "high-speed"),
-                    "circuit_type_tech": int(circuit_type == "technical"),
-                    "circuit_type_st":   int(circuit_type in ("street", "semi-st")),
+                    "circuit_alt":          alt,
+                    "circuit_night":        int(circuit_meta.get("night", False)),
+                    "circuit_abrasive":     abrasive,
+                    "circuit_od":           circuit_meta.get("od", 50),
+                    "circuit_drs":          circuit_meta.get("drs", 3),
+                    "circuit_type_hs":      int(circuit_type == "high-speed"),
+                    "circuit_type_tech":    int(circuit_type == "technical"),
+                    "circuit_type_st":      int(circuit_type in ("street", "semi-st")),
 
-                                        "base_score":        base_score,
-                    "alt_penalty":       alt_penalty,
-                    "abrasion_penalty":  abrasion_pen,
-                    "night_bonus":       night_bonus,
+                    "base_score":           base_score,
+                    "alt_penalty":          alt_penalty,
+                    "abrasion_penalty":     abrasion_pen,
+                    "night_bonus":          night_bonus,
 
-                                        "predicted_win_pct":    float(pred.get("win_pct", 0)),
+                    "predicted_win_pct":    float(pred.get("win_pct", 0)),
                     "predicted_podium_pct": float(pred.get("podium_pct", 0)),
                     "predicted_avg_pos":    float(pred.get("avg_pos", 11)),
-                    "prediction_correct":   sim.get("prediction_correct"),  # None if no result yet
+                    "prediction_correct":   sim.get("prediction_correct"),
                 })
 
         if not rows:

@@ -23,10 +23,6 @@ const TEAMS = [
 ];
 
 
-// ║  Defines 8 race strategy archetypes. Each strategy carries numeric      ║
-// ║  directly into runRace() and runSprint(). Teams are assigned a default  ║
-// ║                                                                          ║
-// ║  Overcut Gamble · Fuel Saving Mode · Safety Car Hunter · Tyre Banker    ║
 // ===================== TEAM STRATEGIES =====================
 const TEAM_STRATEGIES = [
   {
@@ -91,10 +87,6 @@ function getTeamStrategy(team) {
   return TEAM_STRATEGIES.find(s=>s.id===team.strategy)||TEAM_STRATEGIES[1];
 }
 
-// Known rivalries for richer narrative
-
-// ║  Rivals are stored per-driver as rivals:[] arrays. getRivalry() checks  ║
-// ║  description string used in qualifying, sprint and race narratives.     ║
 /**
  * Returns a rivalry object if dA and dB have a mutual rivalry set.
  * @param {object} dA - First driver object (with .rivals array)
@@ -179,7 +171,6 @@ const CPDS       = ["Softs","Mediums","Hards","Intermediates"];
 const FAIL       = ["engine failure","hydraulics failure","gearbox failure","suspension damage","power unit issue","brake failure","water pressure loss"];
 const EVT_C      = {incident:"#FF4444",dnf:"#FF6644",safetycar:"#FFC906",weather:"#4488FF",charge:"#44CC88",fastestlap:"#CC44FF",battle:"#FF8844",pitstop:"#44AAFF",drop:"#FF8844",start:"#E8002D",strategy:"#BB66FF"};
 
-const pick  = a => a[Math.floor(Math.random()*a.length)];
 const pickN = (a,n) => [...a].sort(()=>Math.random()-0.5).slice(0,n);
 const Lf    = (t,f) => Math.max(1,Math.floor(t*f));
 
@@ -187,10 +178,6 @@ const Lf    = (t,f) => Math.max(1,Math.floor(t*f));
 
 
 const _pick=(a)=>a[Math.floor(Math.random()*a.length)];
-
-// ║  8 driver style archetypes, each applying stat modifiers to the         ║
-// ║  race pace (overallPace), DNF risk, overtaking/defense weighting.       ║
-// ║  Styles: Aggressive · Smooth · Qualifier · Defender · Charger           ║
 
 // ===================== DRIVING STYLES =====================
 const DRIVING_STYLES = [
@@ -249,11 +236,6 @@ function getStyleMods(d) {
   return style ? style.mods : {pace:0,consistency:0,overtaking:0,defense:0,wet:0,experience:0,dnfRisk:0,qualBonus:0,racePace:0};
 }
 
-// ║  calcBase()      — Deterministic base score from driver+team+track.     ║
-// ║  calcQualBase()  — calcBase + qualifying style bonus.                   ║
-// ║                    traffic, rivalries, mechanical issues, strategy).     ║
-// ║  runSprint()     — Abbreviated race (~100km). Sprint points for top 8.  ║
-// ║                    DNFs, weather, fastest lap, position battles.        ║
 /**
  * Calculates a driver's base performance score for a given track.
  * Incorporates: car pace, driver stats, driving style mods, circuit type,
@@ -1184,11 +1166,6 @@ function QGrid({entries,gapFrom,posLabel,elimLine,elimColor="#FF4444"}){
 }
 
 // Aggregated qualifying: run N times, average grid positions → canonical grid
-
-// ║  When ACCURACY selector is set to ×5/×10/×20, these functions run the  ║
-// ║  random variance. The canonical result is the most probable outcome.    ║
-// ║  aggQual()   — Average qualifying grid from N runs                      ║
-// ║  aggSprint() — Average sprint positions from N runs                     ║
 function aggQual(n, drivers, teams, track) {
   if(n<=1) return runQ1Q2Q3(drivers,teams,track);
 
@@ -1315,8 +1292,7 @@ function aggSprint(n, grid, teams, track) {
 }
 
 
-// ║  Runs the full weekend pipeline (qual + optional sprint + race) N times ║
-// ║  average position, total points. Powers the 📊 MULTI-SIM tab.          ║
+// Runs the full weekend pipeline N times, averaging positions and points. Powers the MULTI-SIM tab.
 function runMultiSim(n, drivers, teams, track) {
   const acc = {};
   drivers.forEach(d => {
@@ -1384,8 +1360,7 @@ const TESTING_SESSIONS = [
 ];
 
 
-// ║  Generates per-day test data: qualifying simulation laps, long-run      ║
-// ║  character (installation / setup / quali sims) with conditions.         ║
+// Generates pre-season test data: qualifying sim laps and long-run stints per day, with weather conditions.
 function runPreseasonTest(days, drivers, teams, trackId) {
   const track = TRACKS.find(t=>t.id===trackId)||TRACKS[0];
   const ISSUE_TYPES = ["Hydraulics issue","Power unit concern","Gearbox problem","Brake failure","Cooling issue","Suspension damage","Oil leak","Electrical fault","DRS fault","Floor damage"];
@@ -1480,11 +1455,6 @@ function fmtLap(s){const m=Math.floor(s/60);return `${m}:${(s%60).toFixed(3).pad
 // ===================== SESSION CAPTIONS =====================
 
 
-// ║  Sky Sports-style written reports for each session. All randomised      ║
-// ║                                                                          ║
-// ║  buildSprintCaption()     — Sprint race report with rivalries            ║
-// ║  buildDayCaption()        — Per-day test report                          ║
-// ║  buildQ2Caption()         — Q2 session narrative with tyre strategy      ║
 function buildQualifyingCaption(q1,q2,q3,grid,track){
   const pole=grid[0], p2=grid[1], p3=grid[2], p4=grid[3]||grid[2];
   const q2elim=q1.filter(e=>e.elim1);
@@ -1949,8 +1919,7 @@ function buildQ3Caption(q3, track){
 }
 
 
-// ║  Reusable React components: Bar, MentalBar, TrackPicker, RivalPicker,  ║
-// ║  STAGE_DEFS: the 7 Croft & Brundle commentary stages (lights out →     ║
+// Seven commentary stages rendered by the race view, from lights out to podium.
 const STAGE_DEFS=[
   {key:"start",   title:"LIGHTS OUT",      emoji:"🚦",color:"#E8002D",lapHint:"Laps 1–5"},
   {key:"early",   title:"EARLY RUNNING",   emoji:"⚡",color:"#FF8844",lapHint:"Laps 6–20"},
@@ -1962,20 +1931,6 @@ const STAGE_DEFS=[
 ];
 
 // ===================== MAIN APP =====================
-
-
-// ║  F1Sim is the root React component. All state lives here.               ║
-// ║  State:   drivers, teams, track, view, qual, sprint, race, stages,      ║
-// ║                                                                          ║
-// ║           → testing → multisim → championship                           ║
-// ║  Persistence: localStorage keys:                                         ║
-// ║    f1sim_teams   — serialised team array                                ║
-
-// ║  Shows on first load. F1 2027 is the only active series; F2/F3/F4/     ║
-// ║  ready to be activated in future versions.                               ║
-
-// ║  Anonymised race simulation data is sent to a Supabase backend.         ║
-// ║  local model via Bayesian blending. All data is opt-in and anonymous.   ║
 
 
 // Replace these with your own Supabase project URL and anon key.
