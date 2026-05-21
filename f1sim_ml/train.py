@@ -49,7 +49,7 @@ def train_pipeline(
         Trained F1SimModel instance
     """
 
-        print("Loading data from Supabase...")
+    print("Loading data from Supabase...")
     loader  = SupabaseLoader(url=supabase_url, key=supabase_key)
     raw_df  = loader.load_race_sims(min_accuracy=min_accuracy)
 
@@ -60,7 +60,7 @@ def train_pipeline(
     print(f"  Circuits: {raw_df['circuit_id'].unique().tolist()}")
     print(f"  Date range: {raw_df['created_at'].min()} → {raw_df['created_at'].max()}")
 
-        print("\nBuilding feature matrix...")
+    print("\nBuilding feature matrix...")
     builder  = FeatureBuilder()
     feat_df  = builder.build(raw_df)
 
@@ -75,7 +75,7 @@ def train_pipeline(
     print(f"  Circuits:     {feat_df['circuit_id'].nunique()}")
     print(f"  Drivers:      {feat_df['driver_id'].nunique()}")
 
-        # Get unique session IDs and split them
+    # Split by session_id to prevent data leakage between train and validation sets
     unique_sessions = feat_df["submission_id"].unique()
     n_val = max(1, int(len(unique_sessions) * val_size))
 
@@ -90,7 +90,7 @@ def train_pipeline(
     print(f"\nSplit: {len(train_df)} train / {len(val_df)} validation rows")
     print(f"       ({len(unique_sessions) - n_val} train sessions / {n_val} val sessions)")
 
-        model = F1SimModel()
+    model = F1SimModel()
     meta  = model.train(
         train_df=train_df,
         val_df=val_df,
@@ -99,7 +99,7 @@ def train_pipeline(
         early_stopping_rounds=early_stopping_rounds,
     )
 
-        print("\n── Evaluation ──")
+    print("\n── Evaluation ──")
     val_preds = model.predict(val_df)
 
     # Win probability RMSE
@@ -132,7 +132,7 @@ def train_pipeline(
         bar = "█" * int(row["importance"] / imp["importance"].max() * 20)
         print(f"  {row['feature']:<25} {bar}")
 
-        if save:
+    if save:
         model.save()
 
     return model
