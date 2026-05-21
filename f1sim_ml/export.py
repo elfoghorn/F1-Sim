@@ -94,7 +94,6 @@ def export_to_js(
         all_weights[circuit_id] = preds
         print(f"  {circuit_id:<15} → P1: {preds[0]['driver_id']:<15} ({preds[0]['win_pct']*100:.0f}% win)")
 
-    # Save to file
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
         json.dump(all_weights, f, indent=2)

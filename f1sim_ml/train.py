@@ -102,21 +102,18 @@ def train_pipeline(
     print("\n── Evaluation ──")
     val_preds = model.predict(val_df)
 
-    # Win probability RMSE
     win_rmse = np.sqrt(mean_squared_error(
         val_df["predicted_win_pct"],
         val_preds["win_pct"],
     ))
     print(f"  Win probability RMSE:    {win_rmse:.4f}")
 
-    # Podium RMSE
     pod_rmse = np.sqrt(mean_squared_error(
         val_df["predicted_podium_pct"],
         val_preds["podium_pct"],
     ))
     print(f"  Podium probability RMSE: {pod_rmse:.4f}")
 
-    # AUC on prediction-correct if labels available
     labelled_val = val_df.dropna(subset=["prediction_correct"])
     if len(labelled_val) >= 20 and model.correct_model is not None:
         corr_preds = model.predict(labelled_val)["model_correct_prob"]
@@ -125,7 +122,6 @@ def train_pipeline(
     else:
         print(f"  Prediction-correct AUC:  N/A ({len(labelled_val)} labelled val rows)")
 
-    # Feature importances
     print("\n── Top 10 features (win model) ──")
     imp = model.feature_importance("win").head(10)
     for _, row in imp.iterrows():

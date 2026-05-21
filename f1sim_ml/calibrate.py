@@ -93,7 +93,6 @@ class CalibrationTracker:
         }
         self.data["rounds"].append(record)
 
-        # Update per-circuit accuracy
         circ = self.data["circuit_accuracy"].setdefault(circuit_id, {
             "rounds": 0, "correct": 0, "accuracy": None,
         })
@@ -102,7 +101,6 @@ class CalibrationTracker:
             circ["correct"] += 1
         circ["accuracy"] = circ["correct"] / circ["rounds"]
 
-        # Update overall
         all_rounds = self.data["rounds"]
         self.data["overall_accuracy"] = sum(r["win_correct"] for r in all_rounds) / len(all_rounds)
 

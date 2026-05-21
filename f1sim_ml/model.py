@@ -33,19 +33,19 @@ class F1SimModel:
         "objective":        "regression",
         "metric":           "rmse",
         "learning_rate":    0.05,
-        "num_leaves":       31,        # small → reduces overfitting on small data
-        "min_child_samples":10,        # at least 10 rows per leaf
-        "feature_fraction": 0.8,       # bagging for features
+        "num_leaves":       31,        # shallow trees to prevent overfitting on small datasets
+        "min_child_samples":10,
+        "feature_fraction": 0.8,
         "bagging_fraction": 0.8,
         "bagging_freq":     5,
-        "lambda_l1":        0.1,       # L1 regularisation
-        "lambda_l2":        0.1,       # L2 regularisation
+        "lambda_l1":        0.1,
+        "lambda_l2":        0.1,
         "verbose":         -1,
     }
 
     PODIUM_PARAMS = {
         **WIN_PARAMS,
-        "num_leaves":   63,            # can use more capacity — podium has more signal
+        "num_leaves":   63,            # podium target has more signal; deeper trees are warranted
         "learning_rate": 0.04,
     }
 

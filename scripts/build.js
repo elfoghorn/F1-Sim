@@ -54,7 +54,7 @@ function build() {
   console.log('▸ Reading source...');
   let jsx = fs.readFileSync(SRC, 'utf8');
 
-  // Pre-process: strip import, remove export default
+  // Strip module syntax — the bundle runs inside an IIFE in index.html, not as an ES module
   jsx = jsx.replace(/^import\s+\{[^}]+\}\s+from\s+['"]react['"];\n?/m, '');
   jsx = jsx.replace(/^export default function F1Sim\(\)/m, 'function F1Sim()');
 
@@ -95,7 +95,6 @@ function build() {
     production: true,
   });
 
-  // Replace placeholder strings in compiled output
   const patched = compiled
     .replace(/__SUPABASE_URL__/g, process.env.SUPABASE_URL || 'https://YOUR_PROJECT.supabase.co')
     .replace(/__SUPABASE_KEY__/g, process.env.SUPABASE_KEY || '');

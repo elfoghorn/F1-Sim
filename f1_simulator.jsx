@@ -177,7 +177,8 @@ const Lf    = (t,f) => Math.max(1,Math.floor(t*f));
 // ===================== SIMULATION ENGINE =====================
 
 
-const _pick=(a)=>a[Math.floor(Math.random()*a.length)];
+const pick=(a)=>a[Math.floor(Math.random()*a.length)];
+const _pick=pick;
 
 // ===================== DRIVING STYLES =====================
 const DRIVING_STYLES = [
@@ -255,33 +256,27 @@ function calcBase(d, team, track) {
   const ex = d.experience + sm.experience;
 
   let s = team.carPace*0.55 + ep*0.45;
-  // Circuit type bonus (uses effective stats)
+  // Circuit-type bonus applied to the most relevant effective stat
   if (track.type==="high-speed"||track.type==="low-downforce") s+=ep*0.06;
   else if (track.type==="technical") {
     s+=ec*0.06;
-    if(d.style==="technical") s+=4; // technical specialist bonus
+    if(d.style==="technical") s+=4;
   }
   else if (track.type==="street") {
     s+=ex*0.03+edf*0.02;
-    if(d.style==="defender") s+=2; // street defender bonus
+    if(d.style==="defender") s+=2;
   }
-  // Downforce matching
+  // Downforce delta: reward cars closer to the circuit's preferred level
   const dfDiff=Math.abs((track.downforce||6)-6);
   s+=team.carPace*0.01*dfDiff*(track.downforce>6?0.5:-0.3);
-  // High altitude
   if((track.alt||0)>500) s-=((track.alt-500)/2000)*((100-ex)*0.04);
-  // Night races
   if(track.night) s+=ex*0.025;
-  // Street circuits
   if(track.street) s+=ex*0.02+edf*0.015;
-  // High abrasion (smooth style helps here)
+  // High abrasion punishes low-consistency drivers disproportionately
   if((track.abrasive||3)>5) s-=((track.abrasive-5)*0.3)*((100-ec)/40);
-  // DRS zones
   if((track.drs||2)>=3) s+=eo*0.015;
-  // Good/bad track bonuses
   if((d.goodTracks||[]).includes(track.id)) s+=5;
   if((d.badTracks||[]).includes(track.id)) s-=5;
-  // Mental
   s+=((d.mental||7)-5)*0.45;
   return s;
 }

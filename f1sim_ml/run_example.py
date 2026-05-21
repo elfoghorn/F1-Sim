@@ -1,11 +1,9 @@
 """
-run_example.py — Complete end-to-end demo
-==========================================
-Run this after setting up Supabase and collecting some data.
+run_example.py — End-to-end demo of the f1sim_ml pipeline.
+Walks through data loading, feature engineering, training, prediction, export, and calibration.
+Falls back to synthetic data when SUPABASE_URL is not set.
 
 Usage:
-    export SUPABASE_URL="https://YOUR_PROJECT.supabase.co"
-    export SUPABASE_KEY="YOUR_SUPABASE_ANON_KEY"
     python run_example.py
 """
 
