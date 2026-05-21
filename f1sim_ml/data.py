@@ -1,8 +1,6 @@
 """
-data.py — Supabase data loading and feature engineering
-========================================================
-Fetches raw race_sims rows from Supabase, expands the JSONB
-columns, and builds a flat feature matrix ready for LightGBM.
+Data loading and feature engineering for F1 SIM community model.
+Loads race_sims from Supabase, expands JSONB columns, builds feature matrix.
 """
 
 import os
@@ -12,8 +10,6 @@ import pandas as pd
 import numpy as np
 from typing import Optional, List, Dict
 
-
-# ── Supabase connection ──────────────────────────────────────────────────────
 
 class SupabaseLoader:
     """
@@ -95,8 +91,6 @@ class SupabaseLoader:
         rows = self._get("community_global")
         return rows[0] if rows else {}
 
-
-# ── Feature engineering ──────────────────────────────────────────────────────
 
 # Circuit metadata — matches JS TRACKS array
 CIRCUIT_META = {
@@ -236,14 +230,12 @@ class FeatureBuilder:
                 )
 
                 rows.append({
-                    # ── Identifiers ──────────────────────────────────
-                    "submission_id":     sim["id"],
+                                        "submission_id":     sim["id"],
                     "driver_id":         driver_id,
                     "circuit_id":        circuit,
                     "sim_accuracy":      int(sim.get("sim_accuracy", 10)),
 
-                    # ── Driver raw stats ─────────────────────────────
-                    "pace":              eff_pace,
+                                        "pace":              eff_pace,
                     "consistency":       eff_consistency,
                     "wet":               drv.get("wet", 80)         + style_mods.get("wet", 0),
                     "overtaking":        eff_overtaking,
@@ -251,12 +243,10 @@ class FeatureBuilder:
                     "experience":        experience,
                     "mental":            drv.get("mental", 7),
 
-                    # ── Style ────────────────────────────────────────
-                    "style":             style,
+                                        "style":             style,
                     "style_dnf_risk":    style_mods.get("dnf_risk", 0),
 
-                    # ── Circuit features ─────────────────────────────
-                    "circuit_alt":       alt,
+                                        "circuit_alt":       alt,
                     "circuit_night":     int(circuit_meta.get("night", False)),
                     "circuit_abrasive":  abrasive,
                     "circuit_od":        circuit_meta.get("od", 50),   # overtaking difficulty
@@ -265,14 +255,12 @@ class FeatureBuilder:
                     "circuit_type_tech": int(circuit_type == "technical"),
                     "circuit_type_st":   int(circuit_type in ("street", "semi-st")),
 
-                    # ── Computed interaction features ────────────────
-                    "base_score":        base_score,
+                                        "base_score":        base_score,
                     "alt_penalty":       alt_penalty,
                     "abrasion_penalty":  abrasion_pen,
                     "night_bonus":       night_bonus,
 
-                    # ── Target variables ─────────────────────────────
-                    "predicted_win_pct":    float(pred.get("win_pct", 0)),
+                                        "predicted_win_pct":    float(pred.get("win_pct", 0)),
                     "predicted_podium_pct": float(pred.get("podium_pct", 0)),
                     "predicted_avg_pos":    float(pred.get("avg_pos", 11)),
                     "prediction_correct":   sim.get("prediction_correct"),  # None if no result yet

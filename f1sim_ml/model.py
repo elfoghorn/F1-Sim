@@ -1,17 +1,6 @@
 """
-model.py — LightGBM F1 prediction model
-=========================================
-Wraps three LightGBM models:
-  1. win_model     — predicts P(win)      [regression]
-  2. podium_model  — predicts P(podium)   [regression]
-  3. correct_model — predicts P(correct)  [binary classification, calibrated]
-
-Why LightGBM:
-  - Handles the small-to-medium dataset size (100–50,000 rows) extremely well
-  - Categorical feature support (circuit_id, style, driver_id)
-  - Built-in cross-validation and early stopping
-  - Fast inference (<1ms per prediction for JS weight generation)
-  - Interpretable via SHAP / feature importances
+LightGBM wrapper for F1 race outcome prediction.
+Three boosters: win probability, podium probability, prediction-correct classification.
 """
 
 import os
@@ -39,8 +28,7 @@ class F1SimModel:
         Prediction-correct uses binary cross-entropy with Platt scaling.
     """
 
-    # ── LightGBM hyperparameters ──────────────────────────────────────────
-    # These are good starting defaults for 1k-50k rows.
+        # These are good starting defaults for 1k-50k rows.
     # Re-tune when you have >10k labelled examples using optuna (see calibrate.py).
 
     WIN_PARAMS = {
@@ -78,8 +66,7 @@ class F1SimModel:
         self.is_trained:    bool                  = False
         self.meta:          dict                  = {}
 
-    # ── Training ──────────────────────────────────────────────────────────
-
+    
     def train(
         self,
         train_df: pd.DataFrame,
@@ -110,8 +97,7 @@ class F1SimModel:
 
         print(f"Training on {len(train_df)} rows, {len(feature_cols)} features")
 
-        # ── 1. Win probability model ──────────────────────────────────────
-        print("\n── Training win model ──")
+                print("\n── Training win model ──")
         win_train = train_df.dropna(subset=["predicted_win_pct"])
         win_val   = val_df.dropna(subset=["predicted_win_pct"]) if val_df is not None else None
 
@@ -135,8 +121,7 @@ class F1SimModel:
             callbacks=callbacks,
         )
 
-        # ── 2. Podium probability model ───────────────────────────────────
-        print("\n── Training podium model ──")
+                print("\n── Training podium model ──")
         pod_train = train_df.dropna(subset=["predicted_podium_pct"])
 
         dtrain_pod = lgb.Dataset(pod_train[feature_cols], label=pod_train["predicted_podium_pct"], free_raw_data=False)
@@ -155,8 +140,7 @@ class F1SimModel:
             callbacks=callbacks_pod,
         )
 
-        # ── 3. Prediction-correct classification (calibrated) ─────────────
-        print("\n── Training prediction-correct model ──")
+                print("\n── Training prediction-correct model ──")
         correct_df = train_df.dropna(subset=["prediction_correct"])
         if len(correct_df) >= 50:  # need labelled data
             dtrain_corr = lgb.Dataset(
@@ -195,8 +179,7 @@ class F1SimModel:
         print(f"\n✅ Training complete: {self.meta}")
         return self.meta
 
-    # ── Prediction ────────────────────────────────────────────────────────
-
+    
     def predict(self, feature_df: pd.DataFrame) -> pd.DataFrame:
         """
         Generate win/podium probability predictions.
@@ -226,8 +209,7 @@ class F1SimModel:
 
         return out
 
-    # ── Feature importance ───────────────────────────────────────────────
-
+    
     def feature_importance(self, model: str = "win") -> pd.DataFrame:
         """
         Return feature importances for interpretability.
@@ -247,8 +229,7 @@ class F1SimModel:
         }).sort_values("importance", ascending=False)
         return imp
 
-    # ── Serialisation ────────────────────────────────────────────────────
-
+    
     def save(self, path: Optional[Path] = None) -> Path:
         """Save model to disk."""
         path = path or MODEL_DIR / "f1sim_model.pkl"

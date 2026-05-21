@@ -1,25 +1,7 @@
 /**
- * ╔════════════════════════════════════════════════════════════╗
- * ║  F1 SIM — 2027 FORMULA 1 SEASON SIMULATOR                 ║
- * ║  Version: 2027.1 | Built for RPers & F1 fans              ║
- * ╠════════════════════════════════════════════════════════════╣
- * ║  Architecture: Single-file React 19 JSX (pre-compiled)    ║
- * ║  Commentary:   Anthropic Claude claude-sonnet-4            ║
- * ║  Persistence:  Browser localStorage (zero backend)        ║
- * ║  Deployment:   GitHub Pages PWA / Local file              ║
- * ╠════════════════════════════════════════════════════════════╣
- * ║  SECTIONS:                                                 ║
- * ║  1. Team Strategies (8 archetypes)                        ║
- * ║  2. Driving Styles  (8 archetypes)                        ║
- * ║  3. Rivalry System                                         ║
- * ║  4. Simulation Engine Core                                 ║
- * ║  5. Aggregated Simulation (Accuracy Mode)                  ║
- * ║  6. Monte Carlo (Multi-Sim)                               ║
- * ║  7. Pre-Season Testing                                     ║
- * ║  8. Narrative Caption Generators                           ║
- * ║  9. UI Components & Stage Definitions                      ║
- * ║  10. Main Application Component                            ║
- * ╚════════════════════════════════════════════════════════════╝
+ * F1 SIM 2027 — Formula 1 Season Simulator
+ * React 19 JSX, single-file PWA, localStorage persistence
+ * Commentary via Anthropic claude-sonnet-4
  */
 
 import { useState, useRef } from "react";
@@ -41,18 +23,10 @@ const TEAMS = [
 ];
 
 
-
-// ╔══════════════════════════════════════════════════════════════════════════╗
-// ║  SECTION 1 — TEAM STRATEGIES                                            ║
 // ║  Defines 8 race strategy archetypes. Each strategy carries numeric      ║
-// ║  modifiers (pace, DNF risk, undercut efficiency, SC bonus) that feed    ║
 // ║  directly into runRace() and runSprint(). Teams are assigned a default  ║
-// ║  strategy but it can be changed in the Garage edit modal.               ║
 // ║                                                                          ║
-// ║  Strategies: One-Stop Master · Aggressive 2-Stop · Undercut Specialist  ║
 // ║  Overcut Gamble · Fuel Saving Mode · Safety Car Hunter · Tyre Banker    ║
-// ║  Reactive Strategy                                                       ║
-// ╚══════════════════════════════════════════════════════════════════════════╝
 // ===================== TEAM STRATEGIES =====================
 const TEAM_STRATEGIES = [
   {
@@ -119,13 +93,8 @@ function getTeamStrategy(team) {
 
 // Known rivalries for richer narrative
 
-// ╔══════════════════════════════════════════════════════════════════════════╗
-// ║  SECTION 3 — RIVALRY SYSTEM                                             ║
 // ║  Rivals are stored per-driver as rivals:[] arrays. getRivalry() checks  ║
-// ║  both directions (A rivals B or B rivals A) and returns a dynamic       ║
 // ║  description string used in qualifying, sprint and race narratives.     ║
-// ║  Up to 3 rivals per driver, configurable in the Garage edit modal.      ║
-// ╚══════════════════════════════════════════════════════════════════════════╝
 /**
  * Returns a rivalry object if dA and dB have a mutual rivalry set.
  * @param {object} dA - First driver object (with .rivals array)
@@ -219,15 +188,9 @@ const Lf    = (t,f) => Math.max(1,Math.floor(t*f));
 
 const _pick=(a)=>a[Math.floor(Math.random()*a.length)];
 
-// ╔══════════════════════════════════════════════════════════════════════════╗
-// ║  SECTION 2 — DRIVING STYLES                                             ║
 // ║  8 driver style archetypes, each applying stat modifiers to the         ║
-// ║  base score calculation. Styles affect: qualifying pace (qualBonus),    ║
 // ║  race pace (overallPace), DNF risk, overtaking/defense weighting.       ║
-// ║                                                                          ║
 // ║  Styles: Aggressive · Smooth · Qualifier · Defender · Charger           ║
-// ║  Strategist · Technical · Ironman                                        ║
-// ╚══════════════════════════════════════════════════════════════════════════╝
 
 // ===================== DRIVING STYLES =====================
 const DRIVING_STYLES = [
@@ -286,18 +249,11 @@ function getStyleMods(d) {
   return style ? style.mods : {pace:0,consistency:0,overtaking:0,defense:0,wet:0,experience:0,dnfRisk:0,qualBonus:0,racePace:0};
 }
 
-// ╔══════════════════════════════════════════════════════════════════════════╗
-// ║  SECTION 4 — SIMULATION ENGINE CORE                                     ║
 // ║  calcBase()      — Deterministic base score from driver+team+track.     ║
-// ║                    Applies style mods, altitude, night, abrasion, DRS.  ║
 // ║  calcQualBase()  — calcBase + qualifying style bonus.                   ║
-// ║  genQEvents()    — Generates live qualifying session events (yellows,   ║
 // ║                    traffic, rivalries, mechanical issues, strategy).     ║
-// ║  runQ1Q2Q3()     — Full Q1/Q2/Q3 elimination qualifying simulation.     ║
 // ║  runSprint()     — Abbreviated race (~100km). Sprint points for top 8.  ║
-// ║  runRace()       — Full race simulation with pitstops, safety car,      ║
 // ║                    DNFs, weather, fastest lap, position battles.        ║
-// ╚══════════════════════════════════════════════════════════════════════════╝
 /**
  * Calculates a driver's base performance score for a given track.
  * Incorporates: car pace, driver stats, driving style mods, circuit type,
@@ -370,7 +326,7 @@ function genQEvents(session, entries, track, elimLine) {
   const twoDriverBattle = Math.random()<0.55&&sorted.length>4;
   const battlePair = twoDriverBattle?[_pick(sorted.slice(0,5)),_pick(sorted.slice(1,8))]:null;
 
-  // ── Yellow / Red flags ──────────────────────────────────
+  // Yellow / Red flags
   if(yfDriver) {
     const corner=_pick(SECTORS);
     const cause=_pick(["clips the barrier with the front wing","locks up and goes wide over the kerbs","moments of snap oversteer into the wall","loses the rear exiting the corner and spins","a fraction too early on the power — the car snaps sideways"]);
@@ -387,7 +343,7 @@ function genQEvents(session, entries, track, elimLine) {
     }
   }
 
-  // ── Mechanical / reliability ─────────────────────────────
+  // Mechanical / reliability
   if(mechDriver) {
     const issue=_pick(["hydraulics pressure warning","gearbox issue","brake-by-wire failure","water temperature spike","DRS mechanism stuck","front wing damage from a kerb strike","MGU-K deployment problem"]);
     const consequence=_pick([
@@ -400,7 +356,7 @@ function genQEvents(session, entries, track, elimLine) {
       text:`🔧 ${mechDriver.driver.name} (${mechDriver.team.name}) reports a ${issue} over the radio. ${consequence}`});
   }
 
-  // ── Rivalry / team-mate battle ───────────────────────────
+  // Rivalry / team-mate battle
   if(rivalry&&session==="Q3") {
     evts.push({type:"rivalry",icon:"⚔️",
       text:`The paddock is watching ${rivalry.desc} play out in real time. Both drivers delivered near-identical sector times on their first runs — ${_pick(["the gap is tenths","thousandths separate them","the data shows almost zero difference in technique through the medium-speed corners","this could come down to tyre temperature on the final flying lap"])}.`});
@@ -413,7 +369,7 @@ function genQEvents(session, entries, track, elimLine) {
     }
   }
 
-  // ── Session-specific events ──────────────────────────────
+  // Session-specific events
   if(session==="Q1") {
     // Traffic chaos
     if(Math.random()<0.45) {
@@ -533,7 +489,7 @@ function genQEvents(session, entries, track, elimLine) {
     }
   }
 
-  // ── Night-race atmosphere ────────────────────────────────
+  // Night-race atmosphere
   if(track.night&&Math.random()<0.6) {
     evts.push({type:"info",icon:"🌙",
       text:`Under the floodlights at ${track.circuit}, grip levels behave differently — the asphalt has cooled significantly since FP2, changing tyre compound performance windows. ${_pick([
@@ -552,7 +508,6 @@ function runQ1Q2Q3(drivers, teams, track) {
   //   sessionForm   — per-driver random offset ±3 (track day variance, tyre prep, lap timing)
   //   tyreBonus     — Q2/Q3 get progressively fresher, faster rubber (+noise)
   //   sessionNoise  — Q1 widest spread (traffic/traffic/banker laps), Q3 narrowest (pure flying lap)
-  // This means a driver can be P4 in Q1, P7 in Q2, P2 in Q3 — just like real life.
 
   const sessionScore = (d, team, sessionNoise, tyreGain=0, formSpread=3) => {
     const base = calcQualBase(d, team, track);
@@ -562,7 +517,7 @@ function runQ1Q2Q3(drivers, teams, track) {
     return base + form + tyre + lap;
   };
 
-  // ── Q1: All 20 drivers, widest variance. Used/scrubbed tyres. ─────────
+  // Q1: All 20 drivers, widest variance. Used/scrubbed tyres.
   const q1 = drivers.map(d=>{
     const team=teams.find(t=>t.id===d.teamId)||teams[teams.length-1];
     const s=sessionScore(d, team, 6, 0, 4);
@@ -570,14 +525,14 @@ function runQ1Q2Q3(drivers, teams, track) {
   }).sort((a,b)=>b.score-a.score).map((e,i)=>({...e, q1Pos:i+1, elim1:i>=15}));
   const q1Events = genQEvents("Q1", q1, track, 15);
 
-  // ── Q2: Top 15 only. Medium-compound optimisation. Fresh run plans. ───
+  // Q2: Top 15 only. Medium-compound optimisation. Fresh run plans.
   const q2base = q1.filter(e=>!e.elim1).map(e=>{
     const s=sessionScore(e.driver, e.team, 5, 1.2, 3);
     return {...e, score:s, q2Score:s};
   }).sort((a,b)=>b.score-a.score).map((e,i)=>({...e, q2Pos:i+1, elim2:i>=10}));
   const q2Events = genQEvents("Q2", q2base, track, 10);
 
-  // ── Q3: Top 10 only. Full-attack flying lap. Freshest softs. ──────────
+  // Q3: Top 10 only. Full-attack flying lap. Freshest softs.
   const q3base = q2base.filter(e=>!e.elim2).map(e=>{
     const s=sessionScore(e.driver, e.team, 3.5, 2.5, 2.5);
     return {...e, score:s, q3Score:s};
@@ -1228,22 +1183,15 @@ function QGrid({entries,gapFrom,posLabel,elimLine,elimColor="#FF4444"}){
   );
 }
 
-// ── Aggregated qualifying: run N times, average grid positions → canonical grid
+// Aggregated qualifying: run N times, average grid positions → canonical grid
 
-// ╔══════════════════════════════════════════════════════════════════════════╗
-// ║  SECTION 5 — AGGREGATED SIMULATION (ACCURACY MODE)                     ║
 // ║  When ACCURACY selector is set to ×5/×10/×20, these functions run the  ║
-// ║  base simulation N times and average the results, dramatically reducing ║
 // ║  random variance. The canonical result is the most probable outcome.    ║
-// ║                                                                          ║
 // ║  aggQual()   — Average qualifying grid from N runs                      ║
-// ║  aggRace()   — Average race positions from N runs                       ║
 // ║  aggSprint() — Average sprint positions from N runs                     ║
-// ╚══════════════════════════════════════════════════════════════════════════╝
 function aggQual(n, drivers, teams, track) {
   if(n<=1) return runQ1Q2Q3(drivers,teams,track);
 
-  // Run N full qualifying sessions and accumulate scores per session
   const q1ScoreAcc={}, q2ScoreAcc={}, q3ScoreAcc={};
   drivers.forEach(d=>{ q1ScoreAcc[d.id]=[]; q2ScoreAcc[d.id]=[]; q3ScoreAcc[d.id]=[]; });
 
@@ -1256,7 +1204,6 @@ function aggQual(n, drivers, teams, track) {
 
   const avg=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:null;
 
-  // Build driver map — null score means driver never reached that session
   const driverMap=drivers.map(d=>{
     const team=teams.find(t=>t.id===d.teamId)||teams[teams.length-1];
     return {
@@ -1267,14 +1214,12 @@ function aggQual(n, drivers, teams, track) {
     };
   });
 
-  // ── Q1: sort ALL 20 by their averaged Q1 score independently ─────────
+  // Q1 — sort by averaged score
   const q1=[...driverMap]
     .sort((a,b)=>b.q1Score-a.q1Score)
     .map((e,i)=>({...e, score:e.q1Score, q1Pos:i+1, elim1:i>=15}));
 
-  // ── Q2: sort ALL 20 by Q2 score (null = use Q1 score minus penalty) ──
-  // This means a driver who rarely made Q2 will rank low, but could still
-  // push through on a lucky average — just like real qualifying upsets
+  // Q2 — drivers who rarely reached Q2 rank lower
   const q2All=[...driverMap]
     .map(e=>({...e, score:e.q2Score!==null ? e.q2Score : e.q1Score-3}))
     .sort((a,b)=>b.score-a.score);
@@ -1283,13 +1228,12 @@ function aggQual(n, drivers, teams, track) {
     ...q2All.slice(15).map((e,i)=>({...e, q2Pos:16+i, elim2:true})),
   ];
 
-  // ── Q3: sort top drivers by Q3 score (null = use Q2 score minus gap) ─
+  // Q3
   const q3All=[...driverMap]
     .map(e=>({...e, score:e.q3Score!==null ? e.q3Score : (e.q2Score!==null ? e.q2Score-2 : e.q1Score-5)}))
     .sort((a,b)=>b.score-a.score);
   const q3=q3All.slice(0,10).map((e,i)=>({...e, q3Pos:i+1}));
 
-  // Grid: Q3 order → Q2 eliminatees sorted by Q2 score → Q1 eliminatees
   const q2Elim=q2.filter(e=>e.elim2).sort((a,b)=>a.q2Pos-b.q2Pos);
   const q1Elim=q1.filter(e=>e.elim1).sort((a,b)=>a.q1Pos-b.q1Pos);
   const grid=[...q3,...q2Elim,...q1Elim];
@@ -1303,7 +1247,7 @@ function aggQual(n, drivers, teams, track) {
   };
 }
 
-// ── Aggregated race: run N times, average finish positions → canonical race
+// Aggregated race: run N times, average finish positions → canonical race
 function aggRace(n, grid, teams, track) {
   if(n<=1) return runRace(grid,teams,track);
   const posAcc={}, dnfCount={}, dnfLaps={}, flCount={};
@@ -1341,7 +1285,7 @@ function aggRace(n, grid, teams, track) {
   return {positions:canon,events:repRace?.events||[],fastestLap,isWet:wetCount>=n/2,hasSC:scCount>=n/2,scLap:scCount?Math.round(scLapSum/scCount):0,totalLaps:track.laps,runsUsed:n};
 }
 
-// ── Aggregated sprint: run N times, average positions → canonical sprint
+// Aggregated sprint: run N times, average positions → canonical sprint
 function aggSprint(n, grid, teams, track) {
   if(n<=1) return runSprint(grid,teams,track);
   const posAcc={}, dnfCount={}, dnfLaps={}; let spLaps=0;
@@ -1371,12 +1315,8 @@ function aggSprint(n, grid, teams, track) {
 }
 
 
-// ╔══════════════════════════════════════════════════════════════════════════╗
-// ║  SECTION 6 — MONTE CARLO (MULTI-SIM)                                   ║
 // ║  Runs the full weekend pipeline (qual + optional sprint + race) N times ║
-// ║  and returns probability statistics: win%, podium%, pole%, DNF%,        ║
 // ║  average position, total points. Powers the 📊 MULTI-SIM tab.          ║
-// ╚══════════════════════════════════════════════════════════════════════════╝
 function runMultiSim(n, drivers, teams, track) {
   const acc = {};
   drivers.forEach(d => {
@@ -1444,13 +1384,8 @@ const TESTING_SESSIONS = [
 ];
 
 
-// ╔══════════════════════════════════════════════════════════════════════════╗
-// ║  SECTION 7 — PRE-SEASON TESTING                                         ║
 // ║  Generates per-day test data: qualifying simulation laps, long-run      ║
-// ║  race pace, laps completed, and technical issues. Each day has a        ║
 // ║  character (installation / setup / quali sims) with conditions.         ║
-// ║  Barcelona: Feb 10-12 | Bahrain: Feb 24-26                             ║
-// ╚══════════════════════════════════════════════════════════════════════════╝
 function runPreseasonTest(days, drivers, teams, trackId) {
   const track = TRACKS.find(t=>t.id===trackId)||TRACKS[0];
   const ISSUE_TYPES = ["Hydraulics issue","Power unit concern","Gearbox problem","Brake failure","Cooling issue","Suspension damage","Oil leak","Electrical fault","DRS fault","Floor damage"];
@@ -1545,20 +1480,11 @@ function fmtLap(s){const m=Math.floor(s/60);return `${m}:${(s%60).toFixed(3).pad
 // ===================== SESSION CAPTIONS =====================
 
 
-
-// ╔══════════════════════════════════════════════════════════════════════════╗
-// ║  SECTION 8 — NARRATIVE CAPTION GENERATORS                               ║
 // ║  Sky Sports-style written reports for each session. All randomised      ║
-// ║  from pools of template strings — no API required.                      ║
 // ║                                                                          ║
-// ║  buildQualifyingCaption() — Full qualifying report (pole, gaps, drama)  ║
 // ║  buildSprintCaption()     — Sprint race report with rivalries            ║
-// ║  buildTestingCaption()    — Overall test summary                         ║
 // ║  buildDayCaption()        — Per-day test report                          ║
-// ║  buildQ1Caption()         — Q1 session narrative                         ║
 // ║  buildQ2Caption()         — Q2 session narrative with tyre strategy      ║
-// ║  buildQ3Caption()         — Q3 pole shootout narrative                   ║
-// ╚══════════════════════════════════════════════════════════════════════════╝
 function buildQualifyingCaption(q1,q2,q3,grid,track){
   const pole=grid[0], p2=grid[1], p3=grid[2], p4=grid[3]||grid[2];
   const q2elim=q1.filter(e=>e.elim1);
@@ -1817,7 +1743,7 @@ function buildDayCaption(dayObj, session, dayIndex, totalDays) {
   const didntRunLong = results.filter(r=>r.laps<20);
   const surpriseP = results.find((r,i)=>i<3 && r.didQualiRun && (results.indexOf(r)+4) < results.length);
 
-  // ── Opening ──
+  // Opening
   const openings = isFirst ? [
     `🔬 DAY 1 OF ${totalDays} — ${session.circuit.toUpperCase()} | ${conditions.icon} ${conditions.label}\n\nThe pit lane gates open, the engines fire, and the 2027 Formula 1 pre-season begins. Day one is never about lap times — it is about systems checks, installation laps and the first tentative feel of a new car on a new circuit. And yet, ${fastest.team.name} could not resist: ${fastest.driver.name} went quickest with a ${fmtLap(fastest.bestLap)}, setting the early benchmark${conditions.paceMod>0?" despite the compromised conditions":""}. A ${totalLaps}-lap day for the field as a whole.`,
     `DAY ONE | ${session.name.toUpperCase()}\n\n${conditions.icon} Conditions: ${conditions.label}. ${fastest.driver.name} (${fastest.team.name}) tops the timing screens on Day 1 with a ${fmtLap(fastest.bestLap)}, though context is everything — fuel loads are unknown, tyre specifications vary wildly, and half the field spent the morning on installation laps and aero mapping runs. The real data is in the long-run simulations happening off-camera.`,
@@ -1829,7 +1755,7 @@ function buildDayCaption(dayObj, session, dayIndex, totalDays) {
     `DAY ${day} REPORT | ${session.circuit}\n\n${conditions.icon} ${conditions.label}. A ${totalLaps}-lap day across the field — and the running is picking up. ${fastest.team.name} looked strongest today: ${fastest.driver.name} set a ${fmtLap(fastest.bestLap)} on what appeared to be a low-fuel qualifying run in the ${_pick(["morning","afternoon","final hour of the session"])}. ${second?.driver.name||"P2"} and ${third?.driver.name||"P3"} were not far away.`,
   ];
 
-  // ── Pace analysis ──
+  // Pace analysis
   const paceAnalysis = [
     longRunSurprise
       ? `PACE PICTURE: The timing screens told one story; the fuel-adjusted data tells another. ${longRunLeader.driver.name} produced the most consistent long-run numbers of the day — ${fmtLap(longRunLeader.longRun)} average over an extended stint. That is the figure that will be circled in red in rival garages tonight. ${fastest.driver.name}'s quick time was on a ${_pick(["fresh set of softs","low-fuel single lap","clear track at the end of the session"])} — the race pace picture is more complex.`
@@ -1837,7 +1763,7 @@ function buildDayCaption(dayObj, session, dayIndex, totalDays) {
     `The gap between ${fastest.driver.name} and ${second?.driver.name||"P2"} was ${gap?gap+"s":"marginal"} on outright pace${conditions.paceMod>0?", though the "+conditions.label.toLowerCase()+" conditions make direct comparison difficult":""}.${longRunSurprise?" On long runs, ${longRunLeader.driver.name} looked a different proposition entirely.":""}`,
   ];
 
-  // ── Technical incidents ──
+  // Technical incidents
   const techLines = [];
   if (majorIssues.length > 0) {
     majorIssues.forEach(inc => {
@@ -1852,7 +1778,7 @@ function buildDayCaption(dayObj, session, dayIndex, totalDays) {
     techLines.push(`A clean day in terms of reliability — ${totalLaps} laps completed across the field with no significant stoppages. ${fastest.team.name}'s mechanics can allow themselves a cautious smile. Building confidence in the package is as valuable as any lap time.`);
   }
 
-  // ── Mileage / storylines ──
+  // Mileage / storylines
   const storyLines = [];
   if (highLaps.length > 0) {
     storyLines.push(`MILEAGE LEADERS: ${highLaps.map(r=>`${r.driver.name} (${r.laps} laps)`).join(", ")} accumulated the most running today. ${highLaps[0].driver.name} in particular was relentless — long stints, back-to-back sets, different compounds. The tyre wear data they are generating will be invaluable come race day.`);
@@ -1861,7 +1787,7 @@ function buildDayCaption(dayObj, session, dayIndex, totalDays) {
     storyLines.push(`THE TALKING POINT: ${surpriseP.driver.name} was the name on everyone's lips in the paddock. A genuine qualifying simulation lap elevated them to P${results.indexOf(surpriseP)+1} — ${_pick(["a result that surprised even their own engineers","a time that will be studied by rivals in detail","raising questions about whether it was representative or something more significant"])}. Watch this space.`);
   }
 
-  // ── Day-end look ahead ──
+  // Day-end look ahead
   const lookAheads = isFinal ? [
     `With testing concluded, the teams pack up and prepare for ${session.trackId==="spain"?"the second test in Bahrain":"the season opener"}. The laptimes will dominate discussion — but as every experienced engineer will say, the real work happens in the data warehouse, not on the timing screens.`,
   ] : isFirst ? [
@@ -1880,7 +1806,6 @@ function buildDayCaption(dayObj, session, dayIndex, totalDays) {
     _pick(lookAheads),
   ].filter(Boolean);
 }
-
 
 
 function buildQ1Caption(q1, track){
@@ -2024,14 +1949,8 @@ function buildQ3Caption(q3, track){
 }
 
 
-
-// ╔══════════════════════════════════════════════════════════════════════════╗
-// ║  SECTION 9 — UI COMPONENTS & STAGE DEFINITIONS                         ║
 // ║  Reusable React components: Bar, MentalBar, TrackPicker, RivalPicker,  ║
-// ║  QGrid, DialogueLine, HighlightedText, EditModal, RaceMap              ║
 // ║  STAGE_DEFS: the 7 Croft & Brundle commentary stages (lights out →     ║
-// ║  early running → pit window → mid race → midfield → closing → podium)  ║
-// ╚══════════════════════════════════════════════════════════════════════════╝
 const STAGE_DEFS=[
   {key:"start",   title:"LIGHTS OUT",      emoji:"🚦",color:"#E8002D",lapHint:"Laps 1–5"},
   {key:"early",   title:"EARLY RUNNING",   emoji:"⚡",color:"#FF8844",lapHint:"Laps 6–20"},
@@ -2045,44 +1964,27 @@ const STAGE_DEFS=[
 // ===================== MAIN APP =====================
 
 
-// ╔══════════════════════════════════════════════════════════════════════════╗
-// ║  SECTION 10 — MAIN APPLICATION COMPONENT                                ║
 // ║  F1Sim is the root React component. All state lives here.               ║
-// ║                                                                          ║
 // ║  State:   drivers, teams, track, view, qual, sprint, race, stages,      ║
-// ║           championship, testing, simResults, apiKey, runAccuracy...     ║
 // ║                                                                          ║
-// ║  Views:   garage → tracks → qualifying → sprint → race → commentary    ║
 // ║           → testing → multisim → championship                           ║
-// ║                                                                          ║
 // ║  Persistence: localStorage keys:                                         ║
-// ║    f1sim_drivers — serialised driver array                              ║
 // ║    f1sim_teams   — serialised team array                                ║
-// ║    f1sim_ak      — Anthropic API key (commentary only)                  ║
-// ╚══════════════════════════════════════════════════════════════════════════╝
 
-// ╔══════════════════════════════════════════════════════════════════════════╗
-// ║  ENTRY MENU — Championship / Series selector                            ║
 // ║  Shows on first load. F1 2027 is the only active series; F2/F3/F4/     ║
-// ║  Formula E / GT are placeholders styled with real series colours,       ║
 // ║  ready to be activated in future versions.                               ║
-// ╚══════════════════════════════════════════════════════════════════════════╝
 
-// ╔══════════════════════════════════════════════════════════════════════════╗
-// ║  SECTION 12 — COMMUNITY MODEL & SERVER INTEGRATION                      ║
 // ║  Anonymised race simulation data is sent to a Supabase backend.         ║
-// ║  Aggregate community results are fetched per-circuit to improve the     ║
 // ║  local model via Bayesian blending. All data is opt-in and anonymous.   ║
-// ╚══════════════════════════════════════════════════════════════════════════╝
 
-// ── Supabase credentials ──────────────────────────────────────────────────
+
 // Replace these with your own Supabase project URL and anon key.
 // See docs/SUPABASE_SETUP.md for the full setup guide.
 const SUPABASE_URL  = "https://tdsmjrbuplbjnajdzjnu.supabase.co";
 const SUPABASE_KEY  = "sb_publishable_XsC9JcwIvUb1ns7qeFegXw_CzsjStu2";
 const COMMUNITY_ENABLED_BY_DEFAULT = true;   // on by default - repo is private
 
-// ── API helpers ───────────────────────────────────────────────────────────
+
 const sbHeaders = () => ({
   "apikey": SUPABASE_KEY,
   "Authorization": `Bearer ${SUPABASE_KEY}`,
@@ -2111,7 +2013,7 @@ async function sbSelect(table, filters = "", limit = 500) {
   } catch(e) { return null; }
 }
 
-// ── Anonymous session ID ─────────────────────────────────────────────────
+
 function getSessionId() {
   let id;
   try { id = localStorage.getItem("f1sim_session"); } catch(e) {}
@@ -2122,7 +2024,7 @@ function getSessionId() {
   return id;
 }
 
-// ── Bayesian model fusion ─────────────────────────────────────────────────
+
 // Blends local Monte Carlo predictions with community aggregate data.
 // α = community weight, grows with sample size up to 0.40 (40%)
 // Below 30 community samples, community data is not trusted enough to blend.
@@ -2327,7 +2229,7 @@ export default function F1Sim(){
   const [raceSaved,setRaceSaved]=useState(false);
   const [dbSaving,setDbSaving]=useState(false);
   const [selectedRound,setSelectedRound]=useState(null);
-  // ── Auto-save to localStorage on championship/driver/team changes ────────
+  // auto-save
   React.useEffect(()=>{
     try{localStorage.setItem('f1sim_drivers',JSON.stringify(drivers));}catch(e){}
   },[drivers]);
@@ -2338,7 +2240,7 @@ export default function F1Sim(){
     try{localStorage.setItem('f1sim_champ',JSON.stringify(championship));}catch(e){}
   },[championship]);
 
-  // ── Save file export ──────────────────────────────────────────────────────
+  // save/load
   const exportSave=()=>{
     const save={
       version:"2027.1",
@@ -2355,7 +2257,7 @@ export default function F1Sim(){
     URL.revokeObjectURL(url);
   };
 
-  // ── Save file import ──────────────────────────────────────────────────────
+
   const importSave=(e)=>{
     const file=e.target.files[0];
     if(!file) return;
@@ -2377,7 +2279,7 @@ export default function F1Sim(){
  // id of round to view detail
   const [champTab,setChampTab]=useState("drivers");
   const [simCount,setSimCount]=useState(10);
-  // ── OpenF1 live data state ───────────────────────────────────────────
+
   const [liveSession,setLiveSession]=useState(null);
   const [liveLaps,setLiveLaps]=useState([]);
   const [liveDrivers,setLiveDrivers]=useState([]);
@@ -2389,7 +2291,7 @@ export default function F1Sim(){
   const [updatesApplied,setUpdatesApplied]=useState(false);
   const [simHistory,setSimHistory]=useState(()=>{try{const s=localStorage.getItem('f1sim_simhist');return s?JSON.parse(s):[];}catch{return [];}});
 
-  // ── Community model state ──────────────────────────────────────────────
+
   const [communityEnabled,setCommunityEnabled]=useState(()=>{
     try{
       const stored=localStorage.getItem('f1sim_community');
@@ -2401,12 +2303,10 @@ export default function F1Sim(){
   const [communityLoading,setCommunityLoading]=useState(false);
   const sessionId=React.useMemo(()=>getSessionId(),[]);
 
-  // Persist community toggle
   React.useEffect(()=>{
     try{localStorage.setItem('f1sim_community',communityEnabled?'1':'0');}catch(e){}
   },[communityEnabled]);
 
-  // Fetch community data when track changes and sharing is enabled
   React.useEffect(()=>{
     if(!communityEnabled||SUPABASE_URL.includes('YOUR_PROJECT')) return;
     setCommunityLoading(true);
@@ -2416,7 +2316,6 @@ export default function F1Sim(){
     });
   },[track.id,communityEnabled]);
 
-  // Fetch global aggregate stats + full circuit breakdown for Stats tab
   const [allCircuitData,setAllCircuitData]=useState(null);
   const [dbSubmitCount,setDbSubmitCount]=useState(0);
   const [dbError,setDbError]=useState(false);
@@ -2431,7 +2330,7 @@ export default function F1Sim(){
     });
   },[communityEnabled]);
 
-  // ── Submit simulation data to server ───────────────────────────────────
+
   const submitSimData=async(results,actualWinner=null)=>{
     if(!communityEnabled||SUPABASE_URL.includes('YOUR_PROJECT')||SUPABASE_KEY.includes('YOUR_')) return;
     const payload={
@@ -2515,7 +2414,7 @@ export default function F1Sim(){
       sprintResults:sprint?sprint.positions.reduce((a,e)=>({...a,[e.driver.id]:e.points}),{}):null,
       sprintWinner:sprint?sprint.positions.find(e=>!e.dnf)?.driver.name||null:null,
       sprintTop8:sprint?sprint.positions.filter(e=>!e.dnf&&e.points>0).map(e=>({name:e.driver.name,pts:e.points})):null,
-      // ── Full frozen snapshots (read-only after save) ──
+      // Full frozen snapshots (read-only after save)
       snapshot:{
         qual: qual ? {
           grid: qual.grid.map(e=>({
@@ -2552,7 +2451,7 @@ export default function F1Sim(){
     setChampionship(prev=>[...prev,entry]);
     setRaceSaved(true);
 
-    // ── Send to Supabase and trigger model update ─────────────────────────
+    // submit + refresh community model
     if(communityEnabled && !SUPABASE_URL.includes('YOUR_PROJECT')) {
       const actualWinnerId = race.positions[0]?.driver?.id||null;
       setDbSaving(true);
@@ -2782,7 +2681,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
 
   const showSprint=qual&&track.hasSprint;
 
-  // ── OpenF1 API helpers ────────────────────────────────────────────────
+
   const OF1 = "https://api.openf1.org/v1";
 
   const of1Get = async (endpoint, params={}) => {
@@ -2884,7 +2783,6 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
   };
 
 
-  // ── Background OpenF1 auto-fetch ─────────────────────────────────────────
   // Runs silently after each race is saved. Fetches latest qualifying session
   // from OpenF1, computes pace ratings, submits enriched data to Supabase.
   // No UI interaction needed — works in the background automatically.
@@ -3040,7 +2938,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
 
       <div style={{padding:18,maxWidth:1120,margin:"0 auto"}}>
 
-        {/* ══ GARAGE ══ */}
+        
         {view==="garage"&&(
           <div style={{animation:"fadeIn 0.2s ease"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
@@ -3126,7 +3024,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
           </div>
         )}
 
-        {/* ══ TRACKS ══ */}
+        
         {view==="tracks"&&(
           <div style={{animation:"fadeIn 0.2s ease"}}>
             <div style={{marginBottom:16}}>
@@ -3169,7 +3067,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
           </div>
         )}
 
-        {/* ══ QUALIFYING (Q1/Q2/Q3) ══ */}
+        
         {view==="qualifying"&&qual&&(()=>{
           const tabs=[
             {k:"q1",l:"Q1",sub:"ALL DRIVERS",dur:"18 MIN",elim:15,src:qual.q1,events:qual.q1Events,capFn:()=>buildQ1Caption(qual.q1,track),color:"#FF8844"},
@@ -3249,7 +3147,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
           );
         })()}
 
-        {/* ══ SPRINT ══ */}
+        
         {view==="sprint"&&sprint&&(
           <div style={{animation:"fadeIn 0.2s ease"}}>
             <div style={{marginBottom:14}}>
@@ -3294,7 +3192,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
           </div>
         )}
 
-        {/* ══ RACE ══ */}
+        
         {view==="race"&&race&&(
           <div style={{animation:"fadeIn 0.2s ease"}}>
             <div style={{marginBottom:12}}>
@@ -3356,7 +3254,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
           </div>
         )}
 
-        {/* ══ COMMENTARY ══ */}
+        
         {view==="commentary"&&(
           <div style={{animation:"fadeIn 0.2s ease"}}>
             {/* API key banner — shown when no key is stored */}
@@ -3490,7 +3388,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
           </div>
         )}
 
-        {/* ══ TESTING ══ */}
+        
         {view==="testing"&&(
           <div style={{animation:"fadeIn 0.2s ease"}}>
             <div style={{marginBottom:18}}>
@@ -3665,9 +3563,9 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
         )}
 
 
-        {/* ══ STATS ══ */}
+        
         {view==="stats"&&(()=>{
-          // ── COMPUTE MODEL METRICS ──────────────────────────────────────
+
           const totalRaces=championship.length;
           const simmed=simHistory.filter(h=>h.winnerCorrect!==undefined);
           const winAcc=simmed.length?simmed.filter(h=>h.winnerCorrect).length/simmed.length:null;
@@ -3905,29 +3803,29 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
               const sy=(v,mn,mx)=>P.t+iH-((v-mn)/((mx-mn)||1))*iH;
               const polyPts=(vals,mn,mx)=>vals.map((v,i)=>`${sx(i,vals.length)},${sy(v,mn,mx)}`).join(" ");
 
-              // ── Dataset 1: Rolling accuracy ───────────────────────
+
               const roll5 = simmed.map((_,i)=>{
                 const w=simmed.slice(Math.max(0,i-4),i+1);
                 return w.filter(h=>h.winnerCorrect).length/w.length;
               });
 
-              // ── Dataset 2: Predicted win% vs reality per round ────
+              // Dataset 2: Predicted win% vs reality per round
               const predVsActual = simmed.map(h=>({
                 pred: (h.predWinPct||0)*100,
                 actual: h.winnerCorrect?100:0,
               }));
 
-              // ── Dataset 3: Cumulative accuracy ────────────────────
+
               const cumAcc = simmed.map((_,i)=>{
                 const slice=simmed.slice(0,i+1);
                 return slice.filter(h=>h.winnerCorrect).length/slice.length;
               });
 
-              // ── Dataset 4: Sim depth trend ─────────────────────────
+
               const depths = simmed.map(h=>h.accuracy||10);
               const dMax = Math.max(...depths, 20);
 
-              // ── Dataset 5: Model score per round (0-100) ──────────
+
               // Combines accuracy + depth into a composite score
               const modelScore = simmed.map((_,i)=>{
                 const accW=cumAcc[i];
@@ -4130,7 +4028,6 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
 
               </div>);
             })()}
-
 
 
             {/* ── LIGHTGBM MODEL DASHBOARD ─────────────────────────────── */}
@@ -4376,7 +4273,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
           );
         })()}
 
-        {/* ══ MULTI-SIM ══ */}
+        
         {view==="multisim"&&(
           <div style={{animation:"fadeIn 0.2s ease"}}>
             {/* Header + controls */}
@@ -4553,7 +4450,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
           </div>
         )}
 
-        {/* ══ CHAMPIONSHIP ══ */}
+        
         {view==="championship"&&(
           <div style={{animation:"fadeIn 0.2s ease"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16,flexWrap:"wrap",gap:10}}>
@@ -4693,9 +4590,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
       </div>
 
 
-
-
-        {/* ══ GUIDE ══ */}
+        
         {view==="guide"&&(
           <div style={{animation:"fadeIn 0.2s ease",maxWidth:860,margin:"0 auto"}}>
 

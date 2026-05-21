@@ -1,18 +1,9 @@
 """
-openf1.py — OpenF1 API client and stat calibration pipeline
-============================================================
-Fetches real F1 data from openf1.org and uses it to:
-  1. Build accurate training features for LightGBM
-  2. Auto-calibrate driver Pace/Consistency/Wet stats
-  3. Generate per-circuit performance vectors
-  4. Produce calibrated team carPace ratings
-
-OpenF1 is a free, community-run real-time F1 API.
-No authentication required. Rate limit: ~60 req/min.
+OpenF1 API client and stat calibration pipeline.
+Fetches real F1 timing data, derives pace/consistency ratings, builds LightGBM features.
 
 Usage:
-    python -m f1sim_ml.openf1 --year 2024 --export
-    python -m f1sim_ml.openf1 --session latest --calibrate
+    python -m f1sim_ml.openf1 --year 2024 --calibrate --export
 """
 
 import os
@@ -27,7 +18,6 @@ from typing import Optional, List, Dict, Tuple
 from datetime import datetime, timezone
 
 
-# ── API base URL ──────────────────────────────────────────────────────────────
 OPENF1_BASE = "https://api.openf1.org/v1"
 
 # Cache directory — avoid re-fetching same data
@@ -35,7 +25,6 @@ CACHE_DIR = Path(__file__).parent.parent / "data" / "openf1_cache"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 
-# ── Driver number → F1 SIM driver ID mapping ─────────────────────────────────
 # Maps OpenF1 driver numbers to the internal IDs used in f1_simulator.jsx
 # Update this as the 2027 grid is confirmed
 DRIVER_NUMBER_MAP = {
@@ -88,8 +77,6 @@ TEAM_NAME_MAP = {
 }
 
 
-# ── HTTP helpers ──────────────────────────────────────────────────────────────
-
 class OpenF1Client:
     """
     HTTP client for the OpenF1 API with caching and rate limiting.
@@ -126,8 +113,7 @@ class OpenF1Client:
         cache_key = f"{url}?{param_str}" if param_str else url
         cache_file = self._cache_path(cache_key)
 
-        # Check cache
-        if not force_refresh and cache_file.exists():
+                if not force_refresh and cache_file.exists():
             age = time.time() - cache_file.stat().st_mtime
             if age < self.cache_ttl:
                 with open(cache_file) as f:
@@ -159,8 +145,6 @@ class OpenF1Client:
             print(f"  [error] {endpoint}: {e}")
             return None
 
-
-# ── Data fetching ─────────────────────────────────────────────────────────────
 
 class OpenF1Fetcher:
     """
@@ -261,8 +245,6 @@ class OpenF1Fetcher:
         }
 
 
-# ── Stat calibration ──────────────────────────────────────────────────────────
-
 class StatCalibrator:
     """
     Derives driver and team stat updates from real OpenF1 data.
@@ -282,8 +264,7 @@ class StatCalibrator:
         self.fetcher = fetcher
         self.results: List[dict] = []   # accumulates per-weekend results
 
-    # ── Qualifying analysis ──────────────────────────────────────────────────
-
+    
     def analyse_qualifying(self, session_data: dict, meeting_name: str = "") -> pd.DataFrame:
         """
         Extract qualifying performance from lap data.
@@ -335,8 +316,7 @@ class StatCalibrator:
 
         return best.sort_values("quali_rank")
 
-    # ── Race consistency analysis ────────────────────────────────────────────
-
+    
     def analyse_race_consistency(self, session_data: dict) -> pd.DataFrame:
         """
         Compute consistency score from race lap time standard deviation.
@@ -396,8 +376,7 @@ class StatCalibrator:
 
         return pd.DataFrame(results).sort_values("consistency_rating", ascending=False)
 
-    # ── Team car pace analysis ───────────────────────────────────────────────
-
+    
     def analyse_team_pace(self, quali_df: pd.DataFrame, race_df: pd.DataFrame) -> pd.DataFrame:
         """
         Estimate team car pace from average of both drivers' performance.
@@ -413,8 +392,7 @@ class StatCalibrator:
         # Get driver→team mapping from driver numbers
         driver_teams = {}
         for num, did in DRIVER_NUMBER_MAP.items():
-            # This is a placeholder — in production, fetch from /drivers endpoint
-            driver_teams[did] = "unknown"
+                        driver_teams[did] = "unknown"
 
         # Average qualifying pace per team (using driver_id team grouping)
         # Since we don't have team in quali_df, use rank-based approach
@@ -425,8 +403,7 @@ class StatCalibrator:
         # We'd need the team mapping — for now return per-driver ratings
         return quali_df[["driver_id", "pace_rating", "quali_rank"]].dropna()
 
-    # ── Wet weather analysis ─────────────────────────────────────────────────
-
+    
     def analyse_wet_performance(self, dry_session: dict, wet_session: dict) -> pd.DataFrame:
         """
         Compare a driver's performance delta between dry and wet sessions.
@@ -462,8 +439,7 @@ class StatCalibrator:
         merged["wet_adjustment"] = merged["wet_vs_field"].apply(wet_adj)
         return merged.sort_values("wet_adjustment", ascending=False)
 
-    # ── Season-wide calibration ──────────────────────────────────────────────
-
+    
     def calibrate_full_season(
         self,
         year: int,
@@ -569,8 +545,6 @@ class StatCalibrator:
         print(f"\n  Calibrated {len(result)} drivers across {len(meetings)} rounds")
         return result
 
-
-# ── Feature engineering for LightGBM ─────────────────────────────────────────
 
 class OpenF1FeatureBuilder:
     """
@@ -708,8 +682,6 @@ class OpenF1FeatureBuilder:
         return pd.DataFrame(results).dropna(subset=["driver_id"])
 
 
-# ── Export calibrated stats ───────────────────────────────────────────────────
-
 def format_stat_updates(calibrated: dict, current_js_drivers: list) -> dict:
     """
     Format calibrated stats as a diff that can be applied to the JS driver array.
@@ -769,8 +741,6 @@ def save_calibration(updates: dict, output_path: Optional[Path] = None) -> Path:
     print(f"\n✅ Calibration saved to {output_path}")
     return output_path
 
-
-# ── CLI entry point ───────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import argparse
