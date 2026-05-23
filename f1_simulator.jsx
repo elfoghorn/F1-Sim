@@ -481,43 +481,107 @@ function genQEvents(session, entries, track, elimLine) {
 }
 
 function runQ1Q2Q3(drivers, teams, track) {
-  // Each session generates a fresh random base for every driver:
-  //   sessionForm   — per-driver random offset ±3 (track day variance, tyre prep, lap timing)
-  //   tyreBonus     — Q2/Q3 get progressively fresher, faster rubber (+noise)
-  //   sessionNoise  — Q1 widest spread (traffic/traffic/banker laps), Q3 narrowest (pure flying lap)
+  // Per-session form: each driver gets a session-specific random offset that persists
+  // throughout that session (simulates car balance, traffic luck, tyre window hit).
+  // Crucially this is re-rolled per session, so Q1/Q2/Q3 positions are independently varied.
+  const makeSessionForm = (spread) => {
+    const m = {};
+    drivers.forEach(d => { m[d.id] = (Math.random()-0.5)*2*spread; });
+    return m;
+  };
 
-  const sessionScore = (d, team, sessionNoise, tyreGain=0, formSpread=3) => {
+  const sessionScore = (d, team, sessionNoise, tyreGain=0, lapSpread=3, sessionForm={}) => {
     const base = calcQualBase(d, team, track);
-    const form = (Math.random()-0.5)*2*formSpread;   // driver form this session (e.g. traffic, late banker)
+    const form = sessionForm[d.id] || 0;            // per-session driver form (consistent within session)
     const tyre = tyreGain * (0.7 + Math.random()*0.6); // fresh-tyre delta, randomised
-    const lap  = (Math.random()-0.5)*sessionNoise;    // single-lap execution variance
+    const lap  = (Math.random()-0.5)*2*lapSpread;   // single-lap execution variance
     return base + form + tyre + lap;
   };
 
-  // Q1: All 20 drivers, widest variance. Used/scrubbed tyres.
+  // Q1: All 20 drivers. High chaos — different tyre strategies, banker laps, traffic.
+  const q1Form = makeSessionForm(6);
   const q1 = drivers.map(d=>{
     const team=teams.find(t=>t.id===d.teamId)||teams[teams.length-1];
-    const s=sessionScore(d, team, 6, 0, 4);
+    const s=sessionScore(d, team, 5, 0, 3.5, q1Form);
     return {driver:d, team, score:s, q1Score:s};
   }).sort((a,b)=>b.score-a.score).map((e,i)=>({...e, q1Pos:i+1, elim1:i>=15}));
   const q1Events = genQEvents("Q1", q1, track, 15);
 
-  // Q2: Top 15 only. Medium-compound optimisation. Fresh run plans.
+  // Q2: Top 15 only. Fresh session form — car balance can shift significantly.
+  const q2Form = makeSessionForm(5);
   const q2base = q1.filter(e=>!e.elim1).map(e=>{
-    const s=sessionScore(e.driver, e.team, 5, 1.2, 3);
+    const s=sessionScore(e.driver, e.team, 4, 1.2, 3, q2Form);
     return {...e, score:s, q2Score:s};
   }).sort((a,b)=>b.score-a.score).map((e,i)=>({...e, q2Pos:i+1, elim2:i>=10}));
   const q2Events = genQEvents("Q2", q2base, track, 10);
 
-  // Q3: Top 10 only. Full-attack flying lap. Freshest softs.
+  // Q3: Top 10 only. Full-attack flying lap. Fresh form draw — pole shootout can produce surprises.
+  const q3Form = makeSessionForm(4);
   const q3base = q2base.filter(e=>!e.elim2).map(e=>{
-    const s=sessionScore(e.driver, e.team, 3.5, 2.5, 2.5);
+    const s=sessionScore(e.driver, e.team, 3, 2.5, 2.5, q3Form);
     return {...e, score:s, q3Score:s};
   }).sort((a,b)=>b.score-a.score).map((e,i)=>({...e, q3Pos:i+1}));
   const q3Events = genQEvents("Q3", q3base, track, null);
 
   const grid=[...q3base,...q2base.filter(e=>e.elim2),...q1.filter(e=>e.elim1)];
   return {q1, q2:q2base, q3:q3base, grid, q1Events, q2Events, q3Events};
+}
+
+// Free practice session: all 20 drivers, no elimination, high variance.
+// Simulates the exploratory nature of FP — mixed fuel loads, setup runs, track evolution.
+function runFP(sessionNum, drivers, teams, track) {
+  // FP1 has the highest chaos (first session on track); FP2 is slightly more representative
+  const formSpread = sessionNum===1 ? 9 : 7;
+  const lapSpread  = sessionNum===1 ? 6 : 5;
+  const tyreGain   = sessionNum===1 ? 0 : 0.8; // FP2 teams do short-run pace runs
+
+  // Per-session form factor: driver-specific session performance
+  const sessionForm = {};
+  drivers.forEach(d => { sessionForm[d.id] = (Math.random()-0.5)*2*formSpread; });
+
+  const positions = drivers.map(d => {
+    const team = teams.find(t=>t.id===d.teamId)||teams[teams.length-1];
+    const base  = calcQualBase(d, team, track);
+    const form  = sessionForm[d.id];
+    const tyre  = tyreGain * (0.7 + Math.random()*0.6);
+    const lap   = (Math.random()-0.5)*2*lapSpread;
+    // FP times are slower than quali (fuel load penalty + no push laps)
+    const fuelPenalty = sessionNum===1 ? -(Math.random()*3+1) : -(Math.random()*2+0.5);
+    const score = base + form + tyre + lap + fuelPenalty;
+    return {driver:d, team, score};
+  }).sort((a,b)=>b.score-a.score).map((e,i)=>({...e, pos:i+1}));
+
+  return {positions, sessionNum};
+}
+
+function buildFPCaption(fpData, track) {
+  if(!fpData||!fpData.positions||!fpData.positions.length) return [];
+  const {positions, sessionNum} = fpData;
+  const fastest = positions[0];
+  const second  = positions[1];
+  const gap = second ? ((fastest.score - second.score)*0.011).toFixed(3) : "0.000";
+  const label = `FP${sessionNum}`;
+  const topTeam = fastest.team;
+  const surprise = positions.find((e,i)=>i<5 && (e.driver.goodTracks||[]).includes(track.id));
+  const streetCtx = track.street ? "the barriers demand respect — no flying lap is risk-free in FP" : "the engineers will be studying tyre life carefully on this surface";
+
+  return [
+    _pick([
+      `${label} — ${track.circuit.toUpperCase()}\n\n${fastest.driver.name} sets the pace in ${label} for ${topTeam.name}. ${gap}s covers the top two — but read nothing into it. Fuel loads, tyre compounds and aero configurations vary wildly between teams in practice. The data engineers are collecting far more than lap times right now.`,
+      `FREE PRACTICE ${sessionNum} · ${track.name.toUpperCase()}\n\n${fastest.driver.name} (${topTeam.name}) topped the ${label} timesheet at ${track.circuit}. Practice times are notoriously misleading — teams run different fuel quantities and programmes — but the ${topTeam.name} looked genuinely quick on every compound.`,
+      `${label} REPORT — ${track.flag} ${track.circuit}\n\n${fastest.driver.name} leads the way with ${topTeam.name} after ${label}. The ${sessionNum===1?"first":"second"} free practice session at ${track.circuit} has given engineers a wealth of data, but comparisons between teams are difficult when programmes differ so significantly.`,
+    ]),
+    _pick([
+      `${second?.driver.name||"P2"} was ${gap}s back in second, though ${streetCtx}. The top ten is tightly packed — a tenth or two separates several cars through the midfield.`,
+      `The ${sessionNum===1?"track is still green — grip will improve significantly as rubber goes down over the weekend. The final practice session will tell a different story":"race simulation runs completed this afternoon give teams their first real picture of tyre degradation at race pace. Strategists will be poring over every data point tonight"}.`,
+      `${fastest.driver.name}'s effort looked clean and representative — ${second?.driver.name||"the chasing pack"} will be working to close that gap before qualifying.`,
+    ]),
+    surprise ? `${surprise.driver.name} looked particularly at home here — this is a circuit that suits their driving style, and the ${label} data will encourage the ${surprise.team.name} garage going into the rest of the weekend.` :
+    _pick([
+      `${sessionNum===1?"Teams will now assess the data and decide tyre allocations for the rest of the weekend. The real picture will only emerge in qualifying.":"With practice complete, attention turns to qualifying. The short-run pace was clearer in FP2 — expect the competitive order to resemble this more closely come Q1."}`,
+      `${positions[4]?.driver.name||"The midfield"} impressed in ${label} — an unexpected name in the top five that will have the data analysts at the other teams raising eyebrows.`,
+    ]),
+  ];
 }
 
 function runSprint(grid, teams, track) {
@@ -882,11 +946,13 @@ function RoundDetail({r, onBack}) {
   const snap = r.snapshot;
   if (!snap) return null;
   const qTabs = [
-    {k:"q1",l:"Q1",src:snap.qual?.q1,elimLine:15},
-    {k:"q2",l:"Q2",src:snap.qual?.q2,elimLine:10},
-    {k:"q3",l:"Q3",src:snap.qual?.q3,elimLine:null},
-  ];
-  const curQ = qTabs.find(t=>t.k===qDt);
+    snap.qual?.fp1 ? {k:"fp1",l:"FP1",src:snap.qual.fp1,elimLine:null,isFP:true} : null,
+    snap.qual?.fp2 ? {k:"fp2",l:"FP2",src:snap.qual.fp2,elimLine:null,isFP:true} : null,
+    {k:"q1",l:"Q1",src:snap.qual?.q1,elimLine:15,isFP:false},
+    {k:"q2",l:"Q2",src:snap.qual?.q2,elimLine:10,isFP:false},
+    {k:"q3",l:"Q3",src:snap.qual?.q3,elimLine:null,isFP:false},
+  ].filter(Boolean);
+  const curQ = qTabs.find(t=>t.k===qDt)||qTabs[0];
   return(
     <div style={{animation:"fadeIn 0.2s ease"}}>
       {/* Back + header */}
@@ -899,7 +965,7 @@ function RoundDetail({r, onBack}) {
       </div>
       {/* Sub-tabs */}
       <div style={{display:"flex",gap:3,marginBottom:14,background:"#0D0D10",padding:4,borderRadius:4,border:"1px solid #1E1E22"}}>
-        {[["race","🏁 RACE"],snap.qual?["qual","📋 QUALIFYING"]:null,snap.sprint?["sprint","⚡ SPRINT"]:null].filter(Boolean).map(([k,l])=>(
+        {[["race","🏁 RACE"],snap.qual?["qual","📋 WEEKEND"]:null,snap.sprint?["sprint","⚡ SPRINT"]:null].filter(Boolean).map(([k,l])=>(
           <button key={k} onClick={()=>setDetailTab(k)}
             style={{flex:1,background:detailTab===k?"#2A2A30":"transparent",color:detailTab===k?"#F0F0F0":"#778",border:"none",padding:"7px 0",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1,borderRadius:3}}>
             {l}
@@ -947,33 +1013,34 @@ function RoundDetail({r, onBack}) {
           )}
         </div>
       )}
-      {/* QUALIFYING */}
+      {/* QUALIFYING (includes FP1/FP2 tabs) */}
       {detailTab==="qual"&&snap.qual&&(
         <>
           <div style={{display:"flex",gap:3,marginBottom:12,background:"#0D0D10",padding:4,borderRadius:4,border:"1px solid #1E1E22"}}>
             {qTabs.map(t=>(
               <button key={t.k} onClick={()=>setQDt(t.k)}
-                style={{flex:1,background:qDt===t.k?"#2A2A30":"transparent",color:qDt===t.k?"#F0F0F0":"#778",border:"none",padding:"6px 0",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,borderRadius:3}}>
+                style={{flex:1,background:qDt===t.k?"#2A2A30":"transparent",color:qDt===t.k?(t.isFP?"#44AACC":"#F0F0F0"):"#778",border:"none",padding:"6px 0",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,borderRadius:3}}>
                 {t.l}
               </button>
             ))}
           </div>
-          {snap.qual.runsUsed>1&&<div style={{fontSize:12,color:"#E8002D",marginBottom:8}}>⟳ Averaged over ×{snap.qual.runsUsed} runs</div>}
+          {snap.qual.runsUsed>1&&!curQ?.isFP&&<div style={{fontSize:12,color:"#E8002D",marginBottom:8}}>⟳ Averaged over ×{snap.qual.runsUsed} runs</div>}
           {curQ&&curQ.src&&(
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:5}}>
               {[...curQ.src].sort((a,b)=>b.score-a.score).map((e,i)=>{
                 const sorted=[...curQ.src].sort((a2,b2)=>b2.score-a2.score);
-                const elim=curQ.elimLine!=null&&i>=curQ.elimLine;
+                const elim=!curQ.isFP&&curQ.elimLine!=null&&i>=curQ.elimLine;
                 const gap=i===0?null:(sorted[0].score-e.score)*0.011;
+                const accentColor = curQ.isFP?"#44AACC":elim?"#FF4444":i<3?"#FFC906":e.team.color;
                 return(
-                  <div key={e.driver.id||i} style={{display:"flex",alignItems:"center",gap:9,padding:"8px 11px",background:elim?"#1A1010":i<3?"#181810":"#161618",border:`1px solid ${elim?"#FF444433":i<3?"#FFC90618":"#1E1E22"}`,borderLeft:`3px solid ${elim?"#FF4444":e.team.color}`,borderRadius:3,opacity:elim?0.55:1}}>
-                    <div style={{width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?"#FFC906":i===1?"#aaa":i===2?"#CD7F32":"transparent",color:i<3?"#000":"#bbb",fontSize:11,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #2A2A30":"none",flexShrink:0}}>{i+1}</div>
+                  <div key={e.driver.id||i} style={{display:"flex",alignItems:"center",gap:9,padding:"8px 11px",background:elim?"#1A1010":i<3?"#181810":"#161618",border:`1px solid ${elim?"#FF444433":i<3?"#44AACC18":"#1E1E22"}`,borderLeft:`3px solid ${elim?"#FF4444":e.team.color}`,borderRadius:3,opacity:elim?0.55:1}}>
+                    <div style={{width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?(curQ.isFP?"#44AACC":"#FFC906"):i===1?"#aaa":i===2?"#CD7F32":"transparent",color:i<3?"#000":"#bbb",fontSize:11,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #2A2A30":"none",flexShrink:0}}>{i+1}</div>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:13,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{e.driver.flag} {e.driver.name}</div>
                       <div style={{fontSize:11,color:e.team.color}}>{e.team.name}</div>
                     </div>
                     <div style={{textAlign:"right",flexShrink:0}}>
-                      <div style={{fontSize:12,fontFamily:"monospace",color:i===0?"#FFC906":"#aaa"}}>{i===0?"POLE":gap?"+"+gap.toFixed(3)+"s":""}</div>
+                      <div style={{fontSize:12,fontFamily:"monospace",color:i===0?(curQ.isFP?"#44AACC":"#FFC906"):"#aaa"}}>{i===0?(curQ.isFP?"FASTEST":"POLE"):gap?"+"+gap.toFixed(3)+"s":""}</div>
                       {elim&&<div style={{fontSize:10,color:"#FF4444",fontWeight:700}}>ELIM</div>}
                     </div>
                   </div>
@@ -1160,15 +1227,19 @@ function QGrid({entries,gapFrom,posLabel,elimLine,elimColor="#FF4444"}){
   );
 }
 
-// Aggregated qualifying: run N times, average grid positions → canonical grid
+// Aggregated qualifying: run N times, average scores → canonical grid.
+// Session display (q1/q2/q3 tabs) uses a representative single run so each
+// session shows its own varied order rather than the same averaged ranking.
 function aggQual(n, drivers, teams, track) {
   if(n<=1) return runQ1Q2Q3(drivers,teams,track);
 
   const q1ScoreAcc={}, q2ScoreAcc={}, q3ScoreAcc={};
   drivers.forEach(d=>{ q1ScoreAcc[d.id]=[]; q2ScoreAcc[d.id]=[]; q3ScoreAcc[d.id]=[]; });
 
+  let displayRun=null; // representative run used for session-tab display
   for(let i=0;i<n;i++){
     const q=runQ1Q2Q3(drivers,teams,track);
+    if(i===Math.floor(n/2)) displayRun=q;
     q.q1.forEach(e=>q1ScoreAcc[e.driver.id].push(e.score));
     q.q2.forEach(e=>q2ScoreAcc[e.driver.id].push(e.score));
     q.q3.forEach(e=>q3ScoreAcc[e.driver.id].push(e.score));
@@ -1186,36 +1257,45 @@ function aggQual(n, drivers, teams, track) {
     };
   });
 
-  // Q1 — sort by averaged score
-  const q1=[...driverMap]
+  // Averaged grid — used for race/sprint starting positions
+  const q1Avg=[...driverMap]
     .sort((a,b)=>b.q1Score-a.q1Score)
     .map((e,i)=>({...e, score:e.q1Score, q1Pos:i+1, elim1:i>=15}));
 
-  // Q2 — drivers who rarely reached Q2 rank lower
   const q2All=[...driverMap]
     .map(e=>({...e, score:e.q2Score!==null ? e.q2Score : e.q1Score-3}))
     .sort((a,b)=>b.score-a.score);
-  const q2=[
+  const q2Avg=[
     ...q2All.slice(0,15).map((e,i)=>({...e, q2Pos:i+1, elim2:i>=10})),
     ...q2All.slice(15).map((e,i)=>({...e, q2Pos:16+i, elim2:true})),
   ];
 
-  // Q3
   const q3All=[...driverMap]
     .map(e=>({...e, score:e.q3Score!==null ? e.q3Score : (e.q2Score!==null ? e.q2Score-2 : e.q1Score-5)}))
     .sort((a,b)=>b.score-a.score);
-  const q3=q3All.slice(0,10).map((e,i)=>({...e, q3Pos:i+1}));
+  const q3Avg=q3All.slice(0,10).map((e,i)=>({...e, q3Pos:i+1}));
 
-  const q2Elim=q2.filter(e=>e.elim2).sort((a,b)=>a.q2Pos-b.q2Pos);
-  const q1Elim=q1.filter(e=>e.elim1).sort((a,b)=>a.q1Pos-b.q1Pos);
-  const grid=[...q3,...q2Elim,...q1Elim];
+  const q2Elim=q2Avg.filter(e=>e.elim2).sort((a,b)=>a.q2Pos-b.q2Pos);
+  const q1Elim=q1Avg.filter(e=>e.elim1).sort((a,b)=>a.q1Pos-b.q1Pos);
+  const grid=[...q3Avg,...q2Elim,...q1Elim];
 
-  return {q1,q2,q3,
-    grid:grid.map(e=>({...e,score:e.q3Score||e.q2Score||e.q1Score})),
-    runsUsed:n,
-    q1Events:genQEvents("Q1",q1,track,15),
-    q2Events:genQEvents("Q2",q2.slice(0,15),track,10),
-    q3Events:genQEvents("Q3",q3,track,null),
+  // Use the representative run for display so each session tab shows its own order.
+  // Patch elim flags to match averaged decisions so highlighted eliminations are consistent.
+  const avgElim1 = new Set(q1Elim.map(e=>e.driver.id));
+  const avgElim2 = new Set(q2Elim.map(e=>e.driver.id));
+  const q1Display  = displayRun ? displayRun.q1.map(e=>({...e, elim1:avgElim1.has(e.driver.id)}))  : q1Avg;
+  const q2Display  = displayRun ? displayRun.q2.map(e=>({...e, elim2:avgElim2.has(e.driver.id)}))  : q2Avg;
+  const q3Display  = displayRun ? displayRun.q3 : q3Avg;
+
+  return {
+    q1: q1Display,
+    q2: q2Display,
+    q3: q3Display,
+    grid: grid.map(e=>({...e,score:e.q3Score||e.q2Score||e.q1Score})),
+    runsUsed: n,
+    q1Events: genQEvents("Q1", q1Display, track, 15),
+    q2Events: genQEvents("Q2", q2Display, track, 10),
+    q3Events: genQEvents("Q3", q3Display, track, null),
   };
 }
 
@@ -2165,6 +2245,8 @@ export default function F1Sim(){
   const [view,setView]=useState("garage");
   const [gTab,setGTab]=useState("drivers");
   const [qual,setQual]=useState(null);       // {q1,q2,q3,grid}
+  const [fp1,setFp1]=useState(null);         // FP1 session results
+  const [fp2,setFp2]=useState(null);         // FP2 session results
   const [qTab,setQTab]=useState("q3");       // which qualifying session to display
   const [sprint,setSprint]=useState(null);
   const [race,setRace]=useState(null);
@@ -2333,9 +2415,11 @@ export default function F1Sim(){
   const teamDrivers=id=>drivers.filter(d=>d.teamId===id);
 
   const doQual=()=>{
+    setFp1(runFP(1,drivers,teams,track));
+    setFp2(runFP(2,drivers,teams,track));
     setQual(aggQual(runAccuracy,drivers,teams,track));
     setSprint(null); setRace(null); setStages(null); setRaceSaved(false); setDbSaving(false);
-    setQTab("q1"); setView("qualifying");
+    setQTab("fp1"); setView("qualifying");
   };
   const doSprint=()=>{
     if(!qual) return;
@@ -2371,6 +2455,8 @@ export default function F1Sim(){
             driverName:e.driver.name, driverFlag:e.driver.flag, driverAbbr:e.driver.abbr,
             teamName:e.team.name, teamColor:e.team.color, driverId:e.driver.id,
           })),
+          fp1: fp1 ? fp1.positions.map(e=>({pos:e.pos, driver:{name:e.driver.name,flag:e.driver.flag,abbr:e.driver.abbr,id:e.driver.id}, team:{name:e.team.name,color:e.team.color}, score:e.score})) : null,
+          fp2: fp2 ? fp2.positions.map(e=>({pos:e.pos, driver:{name:e.driver.name,flag:e.driver.flag,abbr:e.driver.abbr,id:e.driver.id}, team:{name:e.team.name,color:e.team.color}, score:e.score})) : null,
           q1: qual.q1.map(e=>({...e, driver:{name:e.driver.name,flag:e.driver.flag,abbr:e.driver.abbr,id:e.driver.id}, team:{name:e.team.name,color:e.team.color}})),
           q2: qual.q2.map(e=>({...e, driver:{name:e.driver.name,flag:e.driver.flag,abbr:e.driver.abbr,id:e.driver.id}, team:{name:e.team.name,color:e.team.color}})),
           q3: qual.q3.map(e=>({...e, driver:{name:e.driver.name,flag:e.driver.flag,abbr:e.driver.abbr,id:e.driver.id}, team:{name:e.team.name,color:e.team.color}})),
@@ -3012,14 +3098,18 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
               ))}
             </div>
             <div style={{marginTop:18,display:"flex",justifyContent:"flex-end"}}>
-              <button onClick={doQual} style={{background:"#E8002D",color:"#fff",border:"none",padding:"11px 28px",cursor:"pointer",fontFamily:"inherit",fontSize:16,fontWeight:700,letterSpacing:3,borderRadius:3}}>SIMULATE QUALIFYING →</button>
+              <button onClick={doQual} style={{background:"#E8002D",color:"#fff",border:"none",padding:"11px 28px",cursor:"pointer",fontFamily:"inherit",fontSize:16,fontWeight:700,letterSpacing:3,borderRadius:3}}>SIMULATE WEEKEND →</button>
             </div>
           </div>
         )}
 
         
         {view==="qualifying"&&qual&&(()=>{
+          const isFP = qTab==="fp1"||qTab==="fp2";
+          const fpData = qTab==="fp1"?fp1:qTab==="fp2"?fp2:null;
           const tabs=[
+            {k:"fp1",l:"FP1",sub:"ALL DRIVERS",dur:"60 MIN",elim:null,src:fp1?.positions,events:[],capFn:()=>buildFPCaption(fp1,track),color:"#44AACC"},
+            {k:"fp2",l:"FP2",sub:"ALL DRIVERS",dur:"60 MIN",elim:null,src:fp2?.positions,events:[],capFn:()=>buildFPCaption(fp2,track),color:"#44AACC"},
             {k:"q1",l:"Q1",sub:"ALL DRIVERS",dur:"18 MIN",elim:15,src:qual.q1,events:qual.q1Events,capFn:()=>buildQ1Caption(qual.q1,track),color:"#FF8844"},
             {k:"q2",l:"Q2",sub:"TOP 15",     dur:"15 MIN",elim:10,src:qual.q2,events:qual.q2Events,capFn:()=>buildQ2Caption(qual.q2,track),color:"#FFC906"},
             {k:"q3",l:"Q3",sub:"POLE SHOOT", dur:"12 MIN",elim:null,src:qual.q3,events:qual.q3Events,capFn:()=>buildQ3Caption(qual.q3,track),color:"#E8002D"},
@@ -3028,34 +3118,65 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
           return(
             <div style={{animation:"fadeIn 0.2s ease"}}>
               <div style={{marginBottom:14}}>
-                <div style={{fontSize:26,fontWeight:700,letterSpacing:3}}>QUALIFYING — {track.name.toUpperCase()}</div>
+                <div style={{fontSize:26,fontWeight:700,letterSpacing:3}}>RACE WEEKEND — {track.name.toUpperCase()}</div>
                 <div style={{display:"flex",gap:8,alignItems:"center",marginTop:4,flexWrap:"wrap"}}>
                   <div style={{fontSize:14,color:"#778",letterSpacing:1.5}}>{track.flag} {track.circuit}</div>
                   {qual.runsUsed>1&&<span style={{background:"#E8002D18",color:"#E8002D",fontSize:12,fontWeight:700,padding:"2px 8px",borderRadius:2,letterSpacing:1}}>⟳ ×{qual.runsUsed} RUNS AVERAGED</span>}
                 </div>
               </div>
 
-              {/* Session tabs */}
+              {/* Session tabs — FP1, FP2, Q1, Q2, Q3 */}
               <div style={{display:"flex",gap:4,marginBottom:16,background:"#0D0D10",padding:5,borderRadius:5,border:"1px solid #1E1E22"}}>
                 {tabs.map(t=>(
                   <button key={t.k} onClick={()=>setQTab(t.k)}
-                    style={{flex:1,background:qTab===t.k?`${t.color}18`:"transparent",color:qTab===t.k?t.color:"#899",border:`1px solid ${qTab===t.k?t.color+"55":"transparent"}`,padding:"8px 4px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,borderRadius:3,transition:"all 0.15s"}}>
+                    style={{flex:1,background:qTab===t.k?`${t.color}18`:"transparent",color:qTab===t.k?t.color:"#899",border:`1px solid ${qTab===t.k?t.color+"55":"transparent"}`,padding:"8px 2px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1,borderRadius:3,transition:"all 0.15s"}}>
                     <div>{t.l}</div>
-                    <div style={{fontSize:10,color:qTab===t.k?t.color:"#555",marginTop:2}}>{t.sub} · {t.dur}</div>
+                    <div style={{fontSize:9,color:qTab===t.k?t.color:"#555",marginTop:2}}>{t.sub}</div>
                   </button>
                 ))}
               </div>
 
-              {cur&&(
+              {/* FP session display */}
+              {isFP&&fpData&&cur?.src&&(
                 <div style={{display:"grid",gridTemplateColumns:"1fr 340px",gap:16,alignItems:"start"}}>
-                  {/* Grid */}
+                  <div>
+                    <div style={{fontSize:11,color:"#44AACC",letterSpacing:2,marginBottom:8,fontWeight:700}}>FREE PRACTICE {fpData.sessionNum} — TIMESHEET · ALL 20 DRIVERS</div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                      {cur.src.map((e,i)=>{
+                        const gap = i===0 ? null : ((cur.src[0].score-e.score)*0.011);
+                        return(
+                          <div key={e.driver.id} style={{background:i<3?"#181810":"#161618",border:`1px solid ${i<3?"#44AACC22":"#1E1E22"}`,borderLeft:`3px solid ${e.team.color}`,borderRadius:3,padding:"10px 13px",display:"flex",alignItems:"center",gap:9}}>
+                            <div style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?"#44AACC":i===1?"#2A7A9A":i===2?"#1A5A7A":"transparent",color:i<3?"#fff":"#bbb",fontSize:12,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #2A2A30":"none",flexShrink:0}}>{i+1}</div>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:14,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{e.driver.name}</div>
+                              <div style={{fontSize:12,color:e.team.color,letterSpacing:1.5}}>{e.team.name}</div>
+                            </div>
+                            <div style={{textAlign:"right",flexShrink:0}}>
+                              <div style={{fontSize:13,fontFamily:"monospace",color:i===0?"#44AACC":"#aaa"}}>{i===0?"FASTEST":gap?"+"+gap.toFixed(3)+"s":""}</div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{background:"#0F0F12",border:"1px solid #44AACC22",borderLeft:"4px solid #44AACC",borderRadius:"0 6px 6px 0",padding:"14px 16px"}}>
+                      <div style={{fontSize:11,color:"#44AACC",fontWeight:700,letterSpacing:2,marginBottom:10}}>FP{fpData.sessionNum} REPORT</div>
+                      {buildFPCaption(fpData,track).map((c,i)=>(
+                        <p key={i} style={{fontSize:13,color:i===0?"#F0F0F0":"#aaa",lineHeight:1.8,marginBottom:8,whiteSpace:"pre-line"}}>{c}</p>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Qualifying session display */}
+              {!isFP&&cur&&(
+                <div style={{display:"grid",gridTemplateColumns:"1fr 340px",gap:16,alignItems:"start"}}>
                   <div>
                     <QGrid entries={cur.src} gapFrom={cur.src} elimLine={cur.elim} elimColor={cur.color}/>
                   </div>
-
-                  {/* Session sidebar: events + caption */}
                   <div>
-                    {/* Session events log */}
                     {cur.events&&cur.events.length>0&&(
                       <div style={{marginBottom:12}}>
                         <div style={{fontSize:11,color:cur.color,fontWeight:700,letterSpacing:2,marginBottom:8}}>{cur.l} SESSION EVENTS</div>
@@ -3066,8 +3187,6 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                         ))}
                       </div>
                     )}
-
-                    {/* Per-session caption */}
                     <div style={{background:"#0F0F12",border:`1px solid ${cur.color}22`,borderLeft:`4px solid ${cur.color}`,borderRadius:"0 6px 6px 0",padding:"14px 16px"}}>
                       <div style={{fontSize:11,color:cur.color,fontWeight:700,letterSpacing:2,marginBottom:10}}>{cur.l} REPORT</div>
                       {cur.capFn().map((c,i)=>(
@@ -3078,7 +3197,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                 </div>
               )}
 
-              {/* Overall qualifying story — below grid */}
+              {/* Overall qualifying story */}
               {qTab==="q3"&&(
                 <div style={{marginTop:16,background:"#0F0F12",border:"1px solid #FFC90622",borderLeft:"4px solid #FFC906",borderRadius:"0 6px 6px 0",padding:"16px 20px"}}>
                   <div style={{fontSize:12,color:"#FFC906",fontWeight:700,letterSpacing:2,marginBottom:10}}>🎙 FULL QUALIFYING REPORT</div>
@@ -3089,7 +3208,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
               )}
 
               <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:16,flexWrap:"wrap"}}>
-                <button onClick={doQual} style={{background:"#2A2A30",color:"#ccc",border:"none",padding:"10px 20px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:2.5,borderRadius:3}}>↺ RE-QUALIFY</button>
+                <button onClick={doQual} style={{background:"#2A2A30",color:"#ccc",border:"none",padding:"10px 20px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:2.5,borderRadius:3}}>↺ RE-SIMULATE</button>
                 {track.hasSprint&&<button onClick={doSprint} style={{background:"#FFC906",color:"#000",border:"none",padding:"10px 22px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:2.5,borderRadius:3}}>⚡ RUN SPRINT →</button>}
                 <button onClick={doRace} style={{background:"#E8002D",color:"#fff",border:"none",padding:"10px 24px",cursor:"pointer",fontFamily:"inherit",fontSize:16,fontWeight:700,letterSpacing:3,borderRadius:3}}>START RACE →</button>
               </div>
@@ -3308,7 +3427,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
 
                   <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:12}}>
                     <button onClick={doCommentary} style={{background:"#2A2A30",color:"#ccc",border:"none",padding:"9px 18px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>↺ REGENERATE</button>
-                    <button onClick={()=>{setView("tracks");setQual(null);setSprint(null);setRace(null);setStages(null);}} style={{background:"#E8002D",color:"#fff",border:"none",padding:"9px 22px",cursor:"pointer",fontFamily:"inherit",fontSize:15,fontWeight:700,letterSpacing:2.5,borderRadius:3}}>NEW RACE →</button>
+                    <button onClick={()=>{setView("tracks");setQual(null);setFp1(null);setFp2(null);setSprint(null);setRace(null);setStages(null);}} style={{background:"#E8002D",color:"#fff",border:"none",padding:"9px 22px",cursor:"pointer",fontFamily:"inherit",fontSize:15,fontWeight:700,letterSpacing:2.5,borderRadius:3}}>NEW RACE →</button>
                   </div>
                 </>
               );
