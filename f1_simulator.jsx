@@ -584,6 +584,131 @@ function buildFPCaption(fpData, track) {
   ];
 }
 
+// Sprint qualifying: SQ1/SQ2/SQ3 — shorter sessions, same knockout structure as Q1/Q2/Q3.
+// SQ1: 12 min, all 20, bottom 5 out. SQ2: 10 min, top 15, bottom 5 out. SQ3: 8 min, top 10.
+function runSprintQual(drivers, teams, track) {
+  const makeSessionForm = (spread) => {
+    const m = {};
+    drivers.forEach(d => { m[d.id] = (Math.random()-0.5)*2*spread; });
+    return m;
+  };
+
+  const sessionScore = (d, team, lapSpread, tyreGain=0, sessionForm={}) => {
+    const base = calcQualBase(d, team, track);
+    const form = sessionForm[d.id] || 0;
+    const tyre = tyreGain * (0.7 + Math.random()*0.6);
+    const lap  = (Math.random()-0.5)*2*lapSpread;
+    return base + form + tyre + lap;
+  };
+
+  // SQ1: All 20, similar chaos level to Q1 but slightly tighter (shorter session)
+  const sq1Form = makeSessionForm(6);
+  const sq1 = drivers.map(d => {
+    const team = teams.find(t=>t.id===d.teamId)||teams[teams.length-1];
+    const s = sessionScore(d, team, 3.5, 0, sq1Form);
+    return {driver:d, team, score:s, sq1Score:s};
+  }).sort((a,b)=>b.score-a.score).map((e,i)=>({...e, sq1Pos:i+1, sqElim1:i>=15}));
+  const sq1Events = genQEvents("Q1", sq1, track, 15);
+
+  // SQ2: Top 15 only. Fresh form draw — compact session with less tyre prep time.
+  const sq2Form = makeSessionForm(5);
+  const sq2base = sq1.filter(e=>!e.sqElim1).map(e => {
+    const s = sessionScore(e.driver, e.team, 3, 1.0, sq2Form);
+    return {...e, score:s, sq2Score:s};
+  }).sort((a,b)=>b.score-a.score).map((e,i)=>({...e, sq2Pos:i+1, sqElim2:i>=10}));
+  const sq2Events = genQEvents("Q2", sq2base, track, 10);
+
+  // SQ3: Top 10, freshest softs — pure sprint shootout
+  const sq3Form = makeSessionForm(4);
+  const sq3base = sq2base.filter(e=>!e.sqElim2).map(e => {
+    const s = sessionScore(e.driver, e.team, 2.5, 2.0, sq3Form);
+    return {...e, score:s, sq3Score:s};
+  }).sort((a,b)=>b.score-a.score).map((e,i)=>({...e, sq3Pos:i+1}));
+  const sq3Events = genQEvents("Q3", sq3base, track, null);
+
+  const sprintGrid = [...sq3base, ...sq2base.filter(e=>e.sqElim2), ...sq1.filter(e=>e.sqElim1)];
+  return {sq1, sq2:sq2base, sq3:sq3base, sprintGrid, sq1Events, sq2Events, sq3Events};
+}
+
+function aggSprintQual(n, drivers, teams, track) {
+  if(n<=1) return runSprintQual(drivers,teams,track);
+
+  const sq1Acc={}, sq2Acc={}, sq3Acc={};
+  drivers.forEach(d=>{ sq1Acc[d.id]=[]; sq2Acc[d.id]=[]; sq3Acc[d.id]=[]; });
+
+  let displayRun=null;
+  for(let i=0;i<n;i++){
+    const q=runSprintQual(drivers,teams,track);
+    if(i===Math.floor(n/2)) displayRun=q;
+    q.sq1.forEach(e=>sq1Acc[e.driver.id].push(e.score));
+    q.sq2.forEach(e=>sq2Acc[e.driver.id].push(e.score));
+    q.sq3.forEach(e=>sq3Acc[e.driver.id].push(e.score));
+  }
+
+  const avg=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:null;
+  const driverMap=drivers.map(d=>{
+    const team=teams.find(t=>t.id===d.teamId)||teams[teams.length-1];
+    return {driver:d, team, sq1Score:avg(sq1Acc[d.id])||0, sq2Score:avg(sq2Acc[d.id]), sq3Score:avg(sq3Acc[d.id])};
+  });
+
+  const sq1Avg=[...driverMap].sort((a,b)=>b.sq1Score-a.sq1Score)
+    .map((e,i)=>({...e, score:e.sq1Score, sq1Pos:i+1, sqElim1:i>=15}));
+
+  const sq2All=[...driverMap].map(e=>({...e, score:e.sq2Score!==null?e.sq2Score:e.sq1Score-3}))
+    .sort((a,b)=>b.score-a.score);
+  const sq2Avg=[
+    ...sq2All.slice(0,15).map((e,i)=>({...e, sq2Pos:i+1, sqElim2:i>=10})),
+    ...sq2All.slice(15).map((e,i)=>({...e, sq2Pos:16+i, sqElim2:true})),
+  ];
+
+  const sq3All=[...driverMap].map(e=>({...e, score:e.sq3Score!==null?e.sq3Score:(e.sq2Score!==null?e.sq2Score-2:e.sq1Score-5)}))
+    .sort((a,b)=>b.score-a.score);
+  const sq3Avg=sq3All.slice(0,10).map((e,i)=>({...e, sq3Pos:i+1}));
+
+  const sq2Elim=sq2Avg.filter(e=>e.sqElim2).sort((a,b)=>a.sq2Pos-b.sq2Pos);
+  const sq1Elim=sq1Avg.filter(e=>e.sqElim1).sort((a,b)=>a.sq1Pos-b.sq1Pos);
+  const sprintGrid=[...sq3Avg,...sq2Elim,...sq1Elim];
+
+  const avgElim1=new Set(sq1Elim.map(e=>e.driver.id));
+  const avgElim2=new Set(sq2Elim.map(e=>e.driver.id));
+  const sq1Display=displayRun?displayRun.sq1.map(e=>({...e, sqElim1:avgElim1.has(e.driver.id)})):sq1Avg;
+  const sq2Display=displayRun?displayRun.sq2.map(e=>({...e, sqElim2:avgElim2.has(e.driver.id)})):sq2Avg;
+  const sq3Display=displayRun?displayRun.sq3:sq3Avg;
+
+  return {
+    sq1:sq1Display, sq2:sq2Display, sq3:sq3Display,
+    sprintGrid:sprintGrid.map(e=>({...e,score:e.sq3Score||e.sq2Score||e.sq1Score})),
+    runsUsed:n,
+    sq1Events:genQEvents("Q1",sq1Display,track,15),
+    sq2Events:genQEvents("Q2",sq2Display,track,10),
+    sq3Events:genQEvents("Q3",sq3Display,track,null),
+  };
+}
+
+function buildSQCaption(session, entries, track) {
+  if(!entries||!entries.length) return [];
+  const sorted=[...entries].sort((a,b)=>b.score-a.score);
+  const fastest=sorted[0], second=sorted[1];
+  const gap=second?((fastest.score-second.score)*0.011).toFixed(3):"0.000";
+  const elim = session==="SQ1"?5:session==="SQ2"?5:null;
+  const dropped = elim ? sorted.slice(sorted.length-elim) : [];
+  const sessionDesc = session==="SQ1"?"12-minute sprint qualifying opener":session==="SQ2"?"10-minute battle for the SQ3 places":"8-minute sprint pole shootout";
+  return [
+    _pick([
+      `${session} — ${track.circuit.toUpperCase()} | SPRINT QUALIFYING\n\n${fastest.driver.name} (${fastest.team.name}) sets the pace in ${session} with ${gap}s over ${second?.driver.name||"P2"}. The ${sessionDesc} — shorter, sharper, less margin for error than standard qualifying.`,
+      `SPRINT QUALIFYING ${session} · ${track.name.toUpperCase()}\n\n${fastest.driver.name} leads ${session} for ${fastest.team.name}. ${gap}s covers P1 and P2 — in sprint qualifying every tenth matters because there are no second chances.`,
+    ]),
+    session==="SQ3"
+      ? _pick([
+          `${fastest.driver.name} takes sprint pole. The ${fastest.team.name} driver nails the ${sessionDesc} — a vital advantage for tomorrow's sprint. ${gap}s is the margin, and from the front ${fastest.driver.name} controls the race.`,
+          `Sprint pole belongs to ${fastest.driver.name}. The ${fastest.team.name} driver delivered a clean lap in SQ3 to head the sprint grid. ${second?.driver.name||"P2"} lines up alongside — expect a battle to the first braking zone.`,
+        ])
+      : dropped.length
+        ? `${session} eliminations: ${dropped.map(e=>e.driver.name).join(", ")} — knocked out with sprint qualifying complete for them. ${dropped[0].driver.name} will be particularly disappointed having looked quick earlier in the session.`
+        : `All drivers progress from ${session} — no major shocks at this stage.`,
+  ];
+}
+
 function runSprint(grid, teams, track) {
   const spLaps=track.lapLen?Math.max(12,Math.round(100/track.lapLen)):Math.max(12,Math.floor(track.laps*0.33));
   const entries=grid.map((q,i)=>{
@@ -945,12 +1070,16 @@ function RoundDetail({r, onBack}) {
   const [qDt, setQDt] = useState("q3");
   const snap = r.snapshot;
   if (!snap) return null;
+  const sq=snap.qual?.sprintQual;
   const qTabs = [
-    snap.qual?.fp1 ? {k:"fp1",l:"FP1",src:snap.qual.fp1,elimLine:null,isFP:true} : null,
-    snap.qual?.fp2 ? {k:"fp2",l:"FP2",src:snap.qual.fp2,elimLine:null,isFP:true} : null,
-    {k:"q1",l:"Q1",src:snap.qual?.q1,elimLine:15,isFP:false},
-    {k:"q2",l:"Q2",src:snap.qual?.q2,elimLine:10,isFP:false},
-    {k:"q3",l:"Q3",src:snap.qual?.q3,elimLine:null,isFP:false},
+    snap.qual?.fp1 ? {k:"fp1",l:"FP1",src:snap.qual.fp1,elimLine:null,isFP:true,isSQ:false} : null,
+    snap.qual?.fp2 ? {k:"fp2",l:"FP2",src:snap.qual.fp2,elimLine:null,isFP:true,isSQ:false} : null,
+    sq?.sq1 ? {k:"sq1",l:"SQ1",src:sq.sq1,elimLine:15,isFP:false,isSQ:true,color:"#BB66FF"} : null,
+    sq?.sq2 ? {k:"sq2",l:"SQ2",src:sq.sq2,elimLine:10,isFP:false,isSQ:true,color:"#CC88FF"} : null,
+    sq?.sq3 ? {k:"sq3",l:"SQ3",src:sq.sq3,elimLine:null,isFP:false,isSQ:true,color:"#FFC906"} : null,
+    {k:"q1",l:"Q1",src:snap.qual?.q1,elimLine:15,isFP:false,isSQ:false},
+    {k:"q2",l:"Q2",src:snap.qual?.q2,elimLine:10,isFP:false,isSQ:false},
+    {k:"q3",l:"Q3",src:snap.qual?.q3,elimLine:null,isFP:false,isSQ:false},
   ].filter(Boolean);
   const curQ = qTabs.find(t=>t.k===qDt)||qTabs[0];
   return(
@@ -1013,35 +1142,36 @@ function RoundDetail({r, onBack}) {
           )}
         </div>
       )}
-      {/* QUALIFYING (includes FP1/FP2 tabs) */}
+      {/* WEEKEND (FP1/FP2 + SQ1/SQ2/SQ3 + Q1/Q2/Q3) */}
       {detailTab==="qual"&&snap.qual&&(
         <>
-          <div style={{display:"flex",gap:3,marginBottom:12,background:"#0D0D10",padding:4,borderRadius:4,border:"1px solid #1E1E22"}}>
+          <div style={{display:"flex",gap:2,marginBottom:12,background:"#0D0D10",padding:4,borderRadius:4,border:"1px solid #1E1E22",flexWrap:"wrap"}}>
             {qTabs.map(t=>(
               <button key={t.k} onClick={()=>setQDt(t.k)}
-                style={{flex:1,background:qDt===t.k?"#2A2A30":"transparent",color:qDt===t.k?(t.isFP?"#44AACC":"#F0F0F0"):"#778",border:"none",padding:"6px 0",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,borderRadius:3}}>
+                style={{flex:"1 1 auto",minWidth:36,background:qDt===t.k?"#2A2A30":"transparent",color:qDt===t.k?(t.isFP?"#44AACC":t.isSQ?(t.color||"#BB66FF"):"#F0F0F0"):"#778",border:"none",padding:"6px 4px",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:700,borderRadius:3}}>
                 {t.l}
               </button>
             ))}
           </div>
-          {snap.qual.runsUsed>1&&!curQ?.isFP&&<div style={{fontSize:12,color:"#E8002D",marginBottom:8}}>⟳ Averaged over ×{snap.qual.runsUsed} runs</div>}
+          {snap.qual.runsUsed>1&&!curQ?.isFP&&!curQ?.isSQ&&<div style={{fontSize:12,color:"#E8002D",marginBottom:8}}>⟳ Averaged over ×{snap.qual.runsUsed} runs</div>}
           {curQ&&curQ.src&&(
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:5}}>
               {[...curQ.src].sort((a,b)=>b.score-a.score).map((e,i)=>{
                 const sorted=[...curQ.src].sort((a2,b2)=>b2.score-a2.score);
-                const elim=!curQ.isFP&&curQ.elimLine!=null&&i>=curQ.elimLine;
+                const isElimRow = !curQ.isFP && curQ.elimLine!=null && i>=curQ.elimLine;
                 const gap=i===0?null:(sorted[0].score-e.score)*0.011;
-                const accentColor = curQ.isFP?"#44AACC":elim?"#FF4444":i<3?"#FFC906":e.team.color;
+                const p1Color = curQ.isFP?"#44AACC":curQ.isSQ?(curQ.color||"#BB66FF"):"#FFC906";
+                const p1Label = curQ.isFP?"FASTEST":curQ.isSQ&&curQ.k==="sq3"?"SP POLE":curQ.isSQ?"FASTEST":"POLE";
                 return(
-                  <div key={e.driver.id||i} style={{display:"flex",alignItems:"center",gap:9,padding:"8px 11px",background:elim?"#1A1010":i<3?"#181810":"#161618",border:`1px solid ${elim?"#FF444433":i<3?"#44AACC18":"#1E1E22"}`,borderLeft:`3px solid ${elim?"#FF4444":e.team.color}`,borderRadius:3,opacity:elim?0.55:1}}>
-                    <div style={{width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?(curQ.isFP?"#44AACC":"#FFC906"):i===1?"#aaa":i===2?"#CD7F32":"transparent",color:i<3?"#000":"#bbb",fontSize:11,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #2A2A30":"none",flexShrink:0}}>{i+1}</div>
+                  <div key={e.driver.id||i} style={{display:"flex",alignItems:"center",gap:9,padding:"8px 11px",background:isElimRow?"#1A1010":i<3?"#181810":"#161618",border:`1px solid ${isElimRow?"#FF444433":i<3?p1Color+"18":"#1E1E22"}`,borderLeft:`3px solid ${isElimRow?"#FF4444":e.team.color}`,borderRadius:3,opacity:isElimRow?0.55:1}}>
+                    <div style={{width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?p1Color:i===1?"#aaa":i===2?"#CD7F32":"transparent",color:i<3?"#000":"#bbb",fontSize:11,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #2A2A30":"none",flexShrink:0}}>{i+1}</div>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:13,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{e.driver.flag} {e.driver.name}</div>
                       <div style={{fontSize:11,color:e.team.color}}>{e.team.name}</div>
                     </div>
                     <div style={{textAlign:"right",flexShrink:0}}>
-                      <div style={{fontSize:12,fontFamily:"monospace",color:i===0?(curQ.isFP?"#44AACC":"#FFC906"):"#aaa"}}>{i===0?(curQ.isFP?"FASTEST":"POLE"):gap?"+"+gap.toFixed(3)+"s":""}</div>
-                      {elim&&<div style={{fontSize:10,color:"#FF4444",fontWeight:700}}>ELIM</div>}
+                      <div style={{fontSize:12,fontFamily:"monospace",color:i===0?p1Color:"#aaa"}}>{i===0?p1Label:gap?"+"+gap.toFixed(3)+"s":""}</div>
+                      {isElimRow&&<div style={{fontSize:10,color:"#FF4444",fontWeight:700}}>ELIM</div>}
                     </div>
                   </div>
                 );
@@ -2244,10 +2374,11 @@ export default function F1Sim(){
   const [track,setTrack]=useState(TRACKS[0]);
   const [view,setView]=useState("garage");
   const [gTab,setGTab]=useState("drivers");
-  const [qual,setQual]=useState(null);       // {q1,q2,q3,grid}
-  const [fp1,setFp1]=useState(null);         // FP1 session results
-  const [fp2,setFp2]=useState(null);         // FP2 session results
-  const [qTab,setQTab]=useState("q3");       // which qualifying session to display
+  const [qual,setQual]=useState(null);           // {q1,q2,q3,grid}
+  const [sprintQual,setSprintQual]=useState(null); // {sq1,sq2,sq3,sprintGrid} — sprint tracks only
+  const [fp1,setFp1]=useState(null);             // FP1 session results
+  const [fp2,setFp2]=useState(null);             // FP2 session results (null on sprint weekends)
+  const [qTab,setQTab]=useState("q3");           // which qualifying session to display
   const [sprint,setSprint]=useState(null);
   const [race,setRace]=useState(null);
   const [stages,setStages]=useState(null);
@@ -2416,14 +2547,23 @@ export default function F1Sim(){
 
   const doQual=()=>{
     setFp1(runFP(1,drivers,teams,track));
-    setFp2(runFP(2,drivers,teams,track));
+    // Sprint weekends have no FP2; non-sprint weekends get FP2
+    if(track.hasSprint){
+      setFp2(null);
+      setSprintQual(aggSprintQual(runAccuracy,drivers,teams,track));
+    } else {
+      setFp2(runFP(2,drivers,teams,track));
+      setSprintQual(null);
+    }
     setQual(aggQual(runAccuracy,drivers,teams,track));
     setSprint(null); setRace(null); setStages(null); setRaceSaved(false); setDbSaving(false);
     setQTab("fp1"); setView("qualifying");
   };
   const doSprint=()=>{
     if(!qual) return;
-    setSprint(aggSprint(runAccuracy,qual.grid,teams,track));
+    // Use sprint qual grid if available, otherwise fall back to main qual grid
+    const sprintGrid = sprintQual ? sprintQual.sprintGrid : qual.grid;
+    setSprint(aggSprint(runAccuracy,sprintGrid,teams,track));
     setView("sprint");
   };
   const doRace=()=>{
@@ -2457,6 +2597,11 @@ export default function F1Sim(){
           })),
           fp1: fp1 ? fp1.positions.map(e=>({pos:e.pos, driver:{name:e.driver.name,flag:e.driver.flag,abbr:e.driver.abbr,id:e.driver.id}, team:{name:e.team.name,color:e.team.color}, score:e.score})) : null,
           fp2: fp2 ? fp2.positions.map(e=>({pos:e.pos, driver:{name:e.driver.name,flag:e.driver.flag,abbr:e.driver.abbr,id:e.driver.id}, team:{name:e.team.name,color:e.team.color}, score:e.score})) : null,
+          sprintQual: sprintQual ? {
+            sq1: sprintQual.sq1.map(e=>({...e, driver:{name:e.driver.name,flag:e.driver.flag,abbr:e.driver.abbr,id:e.driver.id}, team:{name:e.team.name,color:e.team.color}})),
+            sq2: sprintQual.sq2.map(e=>({...e, driver:{name:e.driver.name,flag:e.driver.flag,abbr:e.driver.abbr,id:e.driver.id}, team:{name:e.team.name,color:e.team.color}})),
+            sq3: sprintQual.sq3.map(e=>({...e, driver:{name:e.driver.name,flag:e.driver.flag,abbr:e.driver.abbr,id:e.driver.id}, team:{name:e.team.name,color:e.team.color}})),
+          } : null,
           q1: qual.q1.map(e=>({...e, driver:{name:e.driver.name,flag:e.driver.flag,abbr:e.driver.abbr,id:e.driver.id}, team:{name:e.team.name,color:e.team.color}})),
           q2: qual.q2.map(e=>({...e, driver:{name:e.driver.name,flag:e.driver.flag,abbr:e.driver.abbr,id:e.driver.id}, team:{name:e.team.name,color:e.team.color}})),
           q3: qual.q3.map(e=>({...e, driver:{name:e.driver.name,flag:e.driver.flag,abbr:e.driver.abbr,id:e.driver.id}, team:{name:e.team.name,color:e.team.color}})),
@@ -3105,15 +3250,22 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
 
         
         {view==="qualifying"&&qual&&(()=>{
-          const isFP = qTab==="fp1"||qTab==="fp2";
+          const isFP  = qTab==="fp1"||qTab==="fp2";
+          const isSQ  = qTab==="sq1"||qTab==="sq2"||qTab==="sq3";
           const fpData = qTab==="fp1"?fp1:qTab==="fp2"?fp2:null;
           const tabs=[
-            {k:"fp1",l:"FP1",sub:"ALL DRIVERS",dur:"60 MIN",elim:null,src:fp1?.positions,events:[],capFn:()=>buildFPCaption(fp1,track),color:"#44AACC"},
-            {k:"fp2",l:"FP2",sub:"ALL DRIVERS",dur:"60 MIN",elim:null,src:fp2?.positions,events:[],capFn:()=>buildFPCaption(fp2,track),color:"#44AACC"},
-            {k:"q1",l:"Q1",sub:"ALL DRIVERS",dur:"18 MIN",elim:15,src:qual.q1,events:qual.q1Events,capFn:()=>buildQ1Caption(qual.q1,track),color:"#FF8844"},
-            {k:"q2",l:"Q2",sub:"TOP 15",     dur:"15 MIN",elim:10,src:qual.q2,events:qual.q2Events,capFn:()=>buildQ2Caption(qual.q2,track),color:"#FFC906"},
-            {k:"q3",l:"Q3",sub:"POLE SHOOT", dur:"12 MIN",elim:null,src:qual.q3,events:qual.q3Events,capFn:()=>buildQ3Caption(qual.q3,track),color:"#E8002D"},
-          ];
+            {k:"fp1",l:"FP1",sub:"ALL DRIVERS",dur:"60 MIN",elim:null,src:fp1?.positions,events:[],capFn:()=>buildFPCaption(fp1,track),color:"#44AACC",isFP:true,isSQ:false},
+            // FP2 only on non-sprint weekends
+            fp2?{k:"fp2",l:"FP2",sub:"ALL DRIVERS",dur:"60 MIN",elim:null,src:fp2?.positions,events:[],capFn:()=>buildFPCaption(fp2,track),color:"#44AACC",isFP:true,isSQ:false}:null,
+            // Sprint qualifying tabs — sprint tracks only
+            sprintQual?{k:"sq1",l:"SQ1",sub:"ALL DRIVERS",dur:"12 MIN",elim:15,src:sprintQual.sq1,events:sprintQual.sq1Events,capFn:()=>buildSQCaption("SQ1",sprintQual.sq1,track),color:"#BB66FF",isFP:false,isSQ:true}:null,
+            sprintQual?{k:"sq2",l:"SQ2",sub:"TOP 15",     dur:"10 MIN",elim:10,src:sprintQual.sq2,events:sprintQual.sq2Events,capFn:()=>buildSQCaption("SQ2",sprintQual.sq2,track),color:"#CC88FF",isFP:false,isSQ:true}:null,
+            sprintQual?{k:"sq3",l:"SQ3",sub:"SPRINT POLE",dur:"8 MIN", elim:null,src:sprintQual.sq3,events:sprintQual.sq3Events,capFn:()=>buildSQCaption("SQ3",sprintQual.sq3,track),color:"#FFC906",isFP:false,isSQ:true}:null,
+            // Main qualifying
+            {k:"q1",l:"Q1",sub:"ALL DRIVERS",dur:"18 MIN",elim:15,src:qual.q1,events:qual.q1Events,capFn:()=>buildQ1Caption(qual.q1,track),color:"#FF8844",isFP:false,isSQ:false},
+            {k:"q2",l:"Q2",sub:"TOP 15",     dur:"15 MIN",elim:10,src:qual.q2,events:qual.q2Events,capFn:()=>buildQ2Caption(qual.q2,track),color:"#FFC906",isFP:false,isSQ:false},
+            {k:"q3",l:"Q3",sub:"POLE SHOOT", dur:"12 MIN",elim:null,src:qual.q3,events:qual.q3Events,capFn:()=>buildQ3Caption(qual.q3,track),color:"#E8002D",isFP:false,isSQ:false},
+          ].filter(Boolean);
           const cur=tabs.find(t=>t.k===qTab);
           return(
             <div style={{animation:"fadeIn 0.2s ease"}}>
@@ -3136,6 +3288,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                 ))}
               </div>
 
+              {/* FP session display */}
               {/* FP session display */}
               {isFP&&fpData&&cur?.src&&(
                 <div style={{display:"grid",gridTemplateColumns:"1fr 340px",gap:16,alignItems:"start"}}>
@@ -3170,8 +3323,40 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                 </div>
               )}
 
-              {/* Qualifying session display */}
-              {!isFP&&cur&&(
+              {/* Sprint qualifying display (SQ1/SQ2/SQ3) */}
+              {isSQ&&cur&&cur.src&&(
+                <div style={{display:"grid",gridTemplateColumns:"1fr 340px",gap:16,alignItems:"start"}}>
+                  <div>
+                    <div style={{fontSize:11,color:cur.color,letterSpacing:2,marginBottom:8,fontWeight:700}}>
+                      ⚡ SPRINT QUALIFYING — {cur.l} · {cur.sub} · {cur.dur}
+                      {qTab==="sq3"&&sprintQual&&<span style={{marginLeft:8,background:"#FFC90622",color:"#FFC906",padding:"2px 6px",borderRadius:2}}>SETS SPRINT GRID</span>}
+                    </div>
+                    <QGrid entries={cur.src} gapFrom={cur.src} elimLine={cur.elim} elimColor={cur.color}
+                           posLabel={qTab==="sq3"?"SPRINT POLE":undefined}/>
+                  </div>
+                  <div>
+                    {cur.events&&cur.events.length>0&&(
+                      <div style={{marginBottom:12}}>
+                        <div style={{fontSize:11,color:cur.color,fontWeight:700,letterSpacing:2,marginBottom:8}}>⚡ {cur.l} SESSION EVENTS</div>
+                        {cur.events.map((ev,i)=>(
+                          <div key={i} style={{borderLeft:`3px solid ${ev.type==="yellow"?"#FFC906":ev.type==="battle"?"#FF8844":ev.type==="strategy"?"#BB66FF":ev.type==="surprise"?"#44CC88":"#4488FF"}`,padding:"9px 12px",marginBottom:6,background:"#161618",borderRadius:"0 4px 4px 0"}}>
+                            <div style={{fontSize:13,lineHeight:1.6}}>{ev.icon} {ev.text}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{background:"#0F0F12",border:`1px solid ${cur.color}22`,borderLeft:`4px solid ${cur.color}`,borderRadius:"0 6px 6px 0",padding:"14px 16px"}}>
+                      <div style={{fontSize:11,color:cur.color,fontWeight:700,letterSpacing:2,marginBottom:10}}>⚡ {cur.l} REPORT</div>
+                      {cur.capFn().map((c,i)=>(
+                        <p key={i} style={{fontSize:13,color:i===0?"#F0F0F0":"#aaa",lineHeight:1.8,marginBottom:8,whiteSpace:"pre-line"}}>{c}</p>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Main qualifying session display */}
+              {!isFP&&!isSQ&&cur&&(
                 <div style={{display:"grid",gridTemplateColumns:"1fr 340px",gap:16,alignItems:"start"}}>
                   <div>
                     <QGrid entries={cur.src} gapFrom={cur.src} elimLine={cur.elim} elimColor={cur.color}/>
@@ -3207,9 +3392,20 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                 </div>
               )}
 
+              {/* Sprint pole summary when on SQ3 tab */}
+              {qTab==="sq3"&&sprintQual&&sprintQual.sq3&&sprintQual.sq3.length>0&&(
+                <div style={{marginTop:16,background:"#0F0F12",border:"1px solid #BB66FF22",borderLeft:"4px solid #BB66FF",borderRadius:"0 6px 6px 0",padding:"16px 20px"}}>
+                  <div style={{fontSize:12,color:"#BB66FF",fontWeight:700,letterSpacing:2,marginBottom:10}}>⚡ SPRINT GRID SET — {sprintQual.sq3[0].driver.name} ON SPRINT POLE</div>
+                  <p style={{fontSize:13,color:"#aaa",lineHeight:1.8,margin:0}}>
+                    {sprintQual.sq3[0].driver.name} leads the sprint grid for {sprintQual.sq3[0].team.name}.
+                    {sprintQual.sq3[1]?" "+sprintQual.sq3[1].driver.name+" ("+sprintQual.sq3[1].team.name+") starts from P2.":""} The sprint race order is now locked in — main qualifying for the grand prix grid follows separately.
+                  </p>
+                </div>
+              )}
+
               <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:16,flexWrap:"wrap"}}>
                 <button onClick={doQual} style={{background:"#2A2A30",color:"#ccc",border:"none",padding:"10px 20px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:2.5,borderRadius:3}}>↺ RE-SIMULATE</button>
-                {track.hasSprint&&<button onClick={doSprint} style={{background:"#FFC906",color:"#000",border:"none",padding:"10px 22px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:2.5,borderRadius:3}}>⚡ RUN SPRINT →</button>}
+                {track.hasSprint&&<button onClick={doSprint} style={{background:"#BB66FF",color:"#fff",border:"none",padding:"10px 22px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:2.5,borderRadius:3}}>⚡ RUN SPRINT →</button>}
                 <button onClick={doRace} style={{background:"#E8002D",color:"#fff",border:"none",padding:"10px 24px",cursor:"pointer",fontFamily:"inherit",fontSize:16,fontWeight:700,letterSpacing:3,borderRadius:3}}>START RACE →</button>
               </div>
             </div>
@@ -3427,7 +3623,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
 
                   <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:12}}>
                     <button onClick={doCommentary} style={{background:"#2A2A30",color:"#ccc",border:"none",padding:"9px 18px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>↺ REGENERATE</button>
-                    <button onClick={()=>{setView("tracks");setQual(null);setFp1(null);setFp2(null);setSprint(null);setRace(null);setStages(null);}} style={{background:"#E8002D",color:"#fff",border:"none",padding:"9px 22px",cursor:"pointer",fontFamily:"inherit",fontSize:15,fontWeight:700,letterSpacing:2.5,borderRadius:3}}>NEW RACE →</button>
+                    <button onClick={()=>{setView("tracks");setQual(null);setSprintQual(null);setFp1(null);setFp2(null);setSprint(null);setRace(null);setStages(null);}} style={{background:"#E8002D",color:"#fff",border:"none",padding:"9px 22px",cursor:"pointer",fontFamily:"inherit",fontSize:15,fontWeight:700,letterSpacing:2.5,borderRadius:3}}>NEW RACE →</button>
                   </div>
                 </>
               );
