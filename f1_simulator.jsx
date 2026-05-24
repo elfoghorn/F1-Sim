@@ -8,21 +8,239 @@ import { useState, useRef } from "react";
 
 // ===================== DATA =====================
 
+
+// ── Car parts catalogue ─────────────────────────────────────────────────────
+// Each team equips one part from each of the 5 slots.
+// Parts replace the flat carPace/reliability/pitSpeed with a composite system.
+// getTeamStats(team) derives effective stats from the equipped parts.
+
+const PARTS = {
+
+  powerUnit: [
+    {id:"pu_mercedes_a",  name:"Mercedes PU — Spec A", mfr:"Mercedes", spec:3,
+     pace:8, reliability:7, fuel:-1, straightSpeed:9, description:"Dominant hybrid unit. Best peak power in the field but demands careful fuel management over race distance."},
+    {id:"pu_ferrari_a",   name:"Ferrari PU — Spec A", mfr:"Ferrari", spec:3,
+     pace:9, reliability:6, fuel:-2, straightSpeed:10, description:"Highest peak power. Phenomenal qualifying engine but harder on fuel — forces conservative mapping in long stints."},
+    {id:"pu_honda_rbpt",  name:"Honda RBPT — Spec B", mfr:"Honda", spec:3,
+     pace:7, reliability:9, fuel:0, straightSpeed:7, description:"Bulletproof reliability. Lower peak power but exceptional harvest efficiency — suits high-downforce circuits."},
+    {id:"pu_audi_a",      name:"Audi PU — Spec A", mfr:"Audi", spec:2,
+     pace:5, reliability:8, fuel:1, straightSpeed:6, description:"New manufacturer finding its feet. Thermally efficient and fuel-friendly but not yet at the top teams' level."},
+    {id:"pu_ford_rbpt",   name:"Ford/RBPT — Spec A", mfr:"Ford", spec:2,
+     pace:6, reliability:7, fuel:0, straightSpeed:7, description:"Ford-badged RBPT unit for customer teams. Solid mid-tier performance, good straight-line speed relative to reliability."},
+    {id:"pu_alpine_a",    name:"Alpine PU — Spec B", mfr:"Alpine", spec:2,
+     pace:4, reliability:7, fuel:1, straightSpeed:5, description:"Improved from last year's troubled unit. Better reliability but still a meaningful deficit to the leading manufacturers."},
+    {id:"pu_customer_a",  name:"Customer Spec — Gen 3", mfr:"Generic", spec:1,
+     pace:2, reliability:8, fuel:0, straightSpeed:3, description:"Standard customer power unit. Nothing special but nothing that will let you down. Safe choice for a developing team."},
+    {id:"pu_experimental",name:"Experimental MGU-H — Proto", mfr:"Classified", spec:3,
+     pace:10, reliability:4, fuel:-3, straightSpeed:9, description:"Cutting-edge prototype unit. Extraordinary power when it works — but thermal management issues mean elevated retirement risk."},
+  ],
+
+  aero: [
+    {id:"aero_high",      name:"High Downforce Package", spec:"Monaco",
+     cornerSpeed:10, straightSpeed:-5, tyreWear:1, wetPerformance:2,
+     circuitBonus:{street:4,technical:3,"high-downforce":2},
+     description:"Maximum mechanical grip. Dominates Monaco, Singapore, Hungary. Severely compromised at power circuits — expect to be overtaken on every straight at Monza."},
+    {id:"aero_medhi",     name:"Medium-High Package", spec:"Versatile+",
+     cornerSpeed:7, straightSpeed:-2, tyreWear:0, wetPerformance:1,
+     circuitBonus:{technical:2,street:2},
+     description:"Balanced towards downforce. Works well at the majority of circuits, particularly technical layouts. Competitive at most rounds without being optimal at any."},
+    {id:"aero_balanced",  name:"Balanced Package", spec:"Standard",
+     cornerSpeed:5, straightSpeed:0, tyreWear:0, wetPerformance:0,
+     circuitBonus:{},
+     description:"True all-rounder. No specific weakness. The benchmark spec — teams with better-optimised packages beat this at specific circuits but this is competitive everywhere."},
+    {id:"aero_medlo",     name:"Medium-Low Package", spec:"Speed Bias",
+     cornerSpeed:2, straightSpeed:3, tyreWear:-1, wetPerformance:-1,
+     circuitBonus:{"high-speed":2,"low-downforce":3},
+     description:"Optimised for power circuits. Better straight-line speed at the cost of corner stability. Strong at Spa, Austria, Silverstone. Struggles in slow-speed corners."},
+    {id:"aero_low",       name:"Low Drag Package", spec:"Monza",
+     cornerSpeed:-3, straightSpeed:8, tyreWear:-2, wetPerformance:-3,
+     circuitBonus:{"low-downforce":6,"high-speed":4},
+     description:"Minimum wing configuration. Blistering on the straights at Monza and Las Vegas. A liability anywhere else — the car slides through medium and slow corners."},
+    {id:"aero_groundfx",  name:"Ground Effect Max", spec:"Technical",
+     cornerSpeed:8, straightSpeed:1, tyreWear:2, wetPerformance:-1,
+     circuitBonus:{technical:5,mixed:3},
+     description:"Maximises Venturi floor aerodynamics. Generates extraordinary cornering grip at medium-high speed but increases tyre wear and is sensitive to surface irregularities."},
+    {id:"aero_adaptive",  name:"Adaptive Wing System", spec:"Active",
+     cornerSpeed:6, straightSpeed:4, tyreWear:0, wetPerformance:1,
+     circuitBonus:{mixed:4,"high-speed":3,technical:2},
+     description:"Active aero elements adjust downforce between corners and straights. Excellent across all circuit types — the future of F1 aero but complex to set up reliably."},
+    {id:"aero_experimental",name:"Experimental Beam Wing", spec:"Prototype",
+     cornerSpeed:9, straightSpeed:2, tyreWear:3, wetPerformance:0,
+     circuitBonus:{technical:6,"high-downforce":5,street:3},
+     description:"Radical rear aero concept. Extraordinary downforce figures in testing. Significant tyre wear penalty and questionable durability over full race distance."},
+  ],
+
+  suspension: [
+    {id:"sus_aggressive",  name:"Aggressive Active Suspension", spec:"Quali",
+     pace:8, tyreWear:3, consistency:-2, wetPerformance:-2,
+     description:"Maximum mechanical compliance on a single lap. Drives the tyres hard into the surface for extraordinary grip in qualifying. Burns through rubber over 50+ laps."},
+    {id:"sus_semi_rigid",  name:"Semi-Rigid Setup", spec:"Performance",
+     pace:6, tyreWear:1, consistency:0, wetPerformance:-1,
+     description:"Good single-lap pace with manageable tyre life. The go-to choice for teams that want to compete in qualifying without sacrificing the race."},
+    {id:"sus_balanced",    name:"Balanced Geometry", spec:"Standard",
+     pace:4, tyreWear:0, consistency:2, wetPerformance:0,
+     description:"Textbook setup. Predictable at all circuit types, consistent tyre wear, no surprises in race trim. The engineering team's default when circuit data is limited."},
+    {id:"sus_compliant",   name:"Compliant Tyre-Friendly", spec:"Race",
+     pace:1, tyreWear:-3, consistency:4, wetPerformance:2,
+     description:"Maximises tyre life over race distance. Loses pace in qualifying but enables one-stop strategies where others cannot. Strong in desert and abrasive conditions."},
+    {id:"sus_high_rake",   name:"High Rake Configuration", spec:"Ferrari",
+     pace:5, tyreWear:2, consistency:-1, wetPerformance:1,
+     description:"Extreme nose-up attitude generates massive mechanical grip in slow corners. Ferrari-style philosophy. Excellent at Monaco and Hungary, complicated to optimise."},
+    {id:"sus_low_rake",    name:"Low Rake Configuration", spec:"Mercedes",
+     pace:6, tyreWear:0, consistency:3, wetPerformance:0,
+     description:"Flat geometry for high-speed aerodynamic stability. Mercedes philosophy. Predictable at 200km/h+. Loses something in the tight stuff but consistent over race stints."},
+    {id:"sus_adaptive",   name:"Computer-Controlled Active", spec:"Advanced",
+     pace:7, tyreWear:-1, consistency:4, wetPerformance:2,
+     description:"FIA-legal active elements adjust damping in real time. Best of both worlds — qualifying pace with manageable tyre wear. Expensive and complex to run reliably."},
+    {id:"sus_track_spec",  name:"Track-Specific Stiff Geometry", spec:"Specialist",
+     pace:8, tyreWear:2, consistency:-3, wetPerformance:-3,
+     description:"Ultra-rigid setup optimised for smooth, fast circuits. Spectacular at Bahrain and Jeddah in the dry. Completely wrong for bumpy street circuits or wet conditions."},
+  ],
+
+  gearbox: [
+    {id:"gb_cutting_edge", name:"Cutting-Edge 9-Speed Seamless", spec:"Prototype",
+     pace:8, reliability:-3, cornerExit:9,
+     description:"Fastest shifts in the paddock. Sub-40ms paddle response gives measurable pace on traction zones. Experimental metallurgy means elevated failure risk at high mileage."},
+    {id:"gb_proven",       name:"Proven 8-Speed Spec", spec:"Reliable",
+     pace:5, reliability:5, cornerExit:6,
+     description:"Race-proven unit accumulated across thousands of competitive miles. Won't let you down. Won't blow anyone away either. The engineering director's safe option."},
+    {id:"gb_high_torque",  name:"High Torque Sequential", spec:"Power",
+     pace:6, reliability:2, cornerExit:8,
+     description:"Optimised for low-speed traction out of hairpins and chicanes. Big benefit at Monaco, Singapore, Hungary. Puts extra stress on internals over longer race distances."},
+    {id:"gb_lightweight",  name:"Lightweight Carbon Unit", spec:"Weight Saving",
+     pace:7, reliability:0, cornerExit:5,
+     description:"Sheds 2.1kg over the standard unit. Marginal pace gain across every corner exit of every lap. Carbon internals are susceptible to shock loads over kerbs."},
+    {id:"gb_conservative", name:"Conservative Long-Life Spec", spec:"Endurance",
+     pace:2, reliability:9, cornerExit:3,
+     description:"Engineered for multiple race weekends without a grid penalty. Sacrifices outright performance for longevity — the right call for teams on a tight tokens budget."},
+    {id:"gb_midfield",     name:"Standard Sequential Paddle", spec:"Mid-Tier",
+     pace:4, reliability:6, cornerExit:5,
+     description:"Solid all-rounder. Decent shift times, decent reliability, no strong opinion in either direction. Midfield teams running this won't be disadvantaged or advantaged by it."},
+    {id:"gb_torque_split",  name:"Torque Vectoring Differential", spec:"Advanced",
+     pace:7, reliability:3, cornerExit:10,
+     description:"Actively distributes torque between rear wheels mid-corner. Remarkable traction on corner exit, particularly in wet conditions. Complex calibration required."},
+    {id:"gb_hybrid_mguk",  name:"Enhanced MGU-K Integration", spec:"Hybrid",
+     pace:9, reliability:4, cornerExit:7,
+     description:"Deep integration with the hybrid system for maximum energy deployment on traction zones. Blistering out of low-speed corners with full battery. High heat generation under sustained use."},
+  ],
+
+  frontWing: [
+    {id:"fw_high_cascade",  name:"High Downforce Cascade Wing", spec:"Maximum",
+     cornerSpeed:9, straightSpeed:-4, wetPerformance:3, balance:8,
+     description:"Multiple flap cascade generating extraordinary downforce. Nose stability through high-speed corners is class-leading. Significant drag penalty on long straights."},
+    {id:"fw_adjustable",    name:"Adjustable Multi-Plate", spec:"Flexible",
+     cornerSpeed:7, straightSpeed:-1, wetPerformance:2, balance:6,
+     description:"Fully adjustable flap angles give engineers wide setup latitude. Can be configured across the downforce spectrum between sessions. Good general-purpose choice."},
+    {id:"fw_standard",      name:"Standard Spec Wing", spec:"Balanced",
+     cornerSpeed:5, straightSpeed:0, wetPerformance:0, balance:5,
+     description:"The regulation minimum configuration. Compliant, predictable, gives the baseline. Most teams run something more developed — this is the starting point, not the destination."},
+    {id:"fw_low_drag",      name:"Low-Drag Single Plane", spec:"Speed",
+     cornerSpeed:1, straightSpeed:7, wetPerformance:-3, balance:3,
+     description:"Minimal frontal area for maximum straight-line speed. The monza wing. Borderline understeery everywhere except power circuits. Unpleasant in the wet — front grip evaporates."},
+    {id:"fw_mech_grip",     name:"Mechanical Grip Focus", spec:"Slow Corner",
+     cornerSpeed:8, straightSpeed:-2, wetPerformance:2, balance:7,
+     description:"Generates front-end grip through mechanical means rather than aerodynamic load. Less sensitive to dirty air — can follow closely in traffic without severe understeer."},
+    {id:"fw_aero_eff",      name:"Aerodynamic Efficiency Spec", spec:"High Speed",
+     cornerSpeed:6, straightSpeed:3, wetPerformance:1, balance:6,
+     description:"Optimised for high-speed aerodynamic efficiency. Generates downforce at high speed with reduced drag. Strong through the fast corners of Silverstone and Spa."},
+    {id:"fw_experimental",  name:"Experimental Carbon Compound", spec:"Prototype",
+     cornerSpeed:10, straightSpeed:-1, wetPerformance:1, balance:4,
+     description:"Exotic carbon layup generates exceptional downforce figures. Unparalleled in corners. Sensitivity to yaw angle is higher than conventional wings — tricky balance to find."},
+    {id:"fw_x_flow",        name:"X-Flow Vortex Generator", spec:"Innovative",
+     cornerSpeed:7, straightSpeed:2, wetPerformance:2, balance:8,
+     description:"Vortex generators accelerate airflow to the sidepods and floor. Unusually broad operating window — works across circuit types. Used by several midfield teams to punch above their weight."},
+  ],
+};
+
+// Derive effective team stats from equipped parts
+// Returns { carPace, reliability, pitSpeed, tyreLife, wetBonus, cornerBonus, straightBonus }
+function getTeamStats(team) {
+  const parts = team.parts || {};
+  const pu  = PARTS.powerUnit.find(p=>p.id===parts.powerUnit)  || PARTS.powerUnit[6];
+  const ae  = PARTS.aero.find(p=>p.id===parts.aero)            || PARTS.aero[2];
+  const sus = PARTS.suspension.find(p=>p.id===parts.suspension) || PARTS.suspension[2];
+  const gb  = PARTS.gearbox.find(p=>p.id===parts.gearbox)      || PARTS.gearbox[1];
+  const fw  = PARTS.frontWing.find(p=>p.id===parts.frontWing)  || PARTS.frontWing[2];
+
+  // Base pace from PU and aero (primary contributors)
+  // pace: base 60 + weighted part contributions (top PU+aero stack → ~99, bottom → ~65)
+  const rawPace = 60 + (
+    (pu.pace||5)*1.8 +
+    (ae.cornerSpeed||5)*0.7 +
+    Math.max(0,(ae.straightSpeed||0))*0.5 +
+    (sus.pace||4)*0.6 +
+    (gb.pace||4)*0.5 +
+    (fw.cornerSpeed||5)*0.4
+  );
+
+  // reliability: PU and gearbox are primary failure modes
+  const rawReliability = 50 + (
+    (pu.reliability||7)*2.2 +
+    (gb.reliability||5)*1.8 +
+    (sus.tyreWear>2?-3:0)    // aggressive suspension stresses drivetrain
+  );
+
+  // Tyre life from suspension and aero
+  const tyreLife = 50 + (sus.tyreWear||0)*(-4) + (ae.tyreWear||0)*(-3);
+
+  // Wet performance bonus
+  const wetBonus = (ae.wetPerformance||0)*1.5 + (sus.wetPerformance||0)*1.2 + (fw.wetPerformance||0);
+
+  // Corner vs straight breakdown (for circuit-type bonus in calcBase)
+  const cornerBonus = (ae.cornerSpeed||5) + (fw.cornerSpeed||5) + (sus.pace||4)*0.5;
+  const straightBonus = (ae.straightSpeed||0) + (pu.straightSpeed||5)*0.8;
+
+  // Pit speed from gearbox and team infrastructure (keep base pitSpeed)
+  const pitSpeed = team.basePitSpeed||80;
+
+  return {
+    carPace:      Math.round(Math.max(55, Math.min(99, rawPace))),
+    reliability:  Math.round(Math.max(50, Math.min(99, rawReliability))),
+    pitSpeed,
+    tyreLife:     Math.round(Math.max(30, Math.min(90, tyreLife))),
+    wetBonus:     Math.round(wetBonus),
+    cornerBonus,
+    straightBonus,
+    // Store circuit bonuses for calcBase
+    aeroCircuitBonus: ae.circuitBonus||{},
+    pu, ae, sus, gb, fw,
+  };
+}
+
+// Default parts per team (fits their real-world philosophy)
+const TEAM_DEFAULT_PARTS = {
+  mclaren:    { powerUnit:"pu_mercedes_a", aero:"aero_medhi",   suspension:"sus_semi_rigid", gearbox:"gb_high_torque",  frontWing:"fw_adjustable" },
+  mercedes:   { powerUnit:"pu_mercedes_a", aero:"aero_balanced", suspension:"sus_low_rake",  gearbox:"gb_cutting_edge", frontWing:"fw_aero_eff" },
+  redbull:    { powerUnit:"pu_ford_rbpt",  aero:"aero_groundfx", suspension:"sus_balanced",   gearbox:"gb_cutting_edge", frontWing:"fw_experimental" },
+  ferrari:    { powerUnit:"pu_ferrari_a",  aero:"aero_high",     suspension:"sus_high_rake",  gearbox:"gb_hybrid_mguk",  frontWing:"fw_high_cascade" },
+  williams:   { powerUnit:"pu_mercedes_a", aero:"aero_balanced", suspension:"sus_compliant",  gearbox:"gb_proven",       frontWing:"fw_standard" },
+  racingbulls:{ powerUnit:"pu_ford_rbpt",  aero:"aero_medlo",    suspension:"sus_balanced",   gearbox:"gb_midfield",     frontWing:"fw_adjustable" },
+  astonmartin:{ powerUnit:"pu_honda_rbpt", aero:"aero_medhi",    suspension:"sus_balanced",   gearbox:"gb_proven",       frontWing:"fw_mech_grip" },
+  haas:       { powerUnit:"pu_ferrari_a",  aero:"aero_medlo",    suspension:"sus_semi_rigid", gearbox:"gb_midfield",     frontWing:"fw_standard" },
+  audi:       { powerUnit:"pu_audi_a",     aero:"aero_balanced", suspension:"sus_balanced",   gearbox:"gb_conservative", frontWing:"fw_standard" },
+  alpine:     { powerUnit:"pu_alpine_a",   aero:"aero_medhi",    suspension:"sus_balanced",   gearbox:"gb_midfield",     frontWing:"fw_adjustable" },
+  cadillac:   { powerUnit:"pu_customer_a", aero:"aero_balanced", suspension:"sus_compliant",  gearbox:"gb_conservative", frontWing:"fw_standard" },
+};
+
 const TEAMS = [
-  {id:"mclaren",strategy:"aggressive_two",   name:"McLaren",      abbr:"MCL",color:"#FF8000",tc:"#000",carPace:92,reliability:88,pitSpeed:90,engine:"Mercedes"},
-  {id:"mercedes",strategy:"undercut_king",  name:"Mercedes",     abbr:"MER",color:"#00D2BE",tc:"#000",carPace:94,reliability:86,pitSpeed:88,engine:"Mercedes"},
-  {id:"redbull",strategy:"one_stop",   name:"Red Bull",     abbr:"RBR",color:"#3671C6",tc:"#fff",carPace:89,reliability:85,pitSpeed:95,engine:"Ford/RBPT"},
-  {id:"ferrari",strategy:"overcut",   name:"Ferrari",      abbr:"FER",color:"#E8002D",tc:"#fff",carPace:90,reliability:84,pitSpeed:87,engine:"Ferrari"},
-  {id:"williams",strategy:"fuel_save",  name:"Williams",     abbr:"WIL",color:"#37BEDD",tc:"#000",carPace:78,reliability:80,pitSpeed:83,engine:"Mercedes"},
-  {id:"racingbulls",strategy:"reactive",name:"Racing Bulls",abbr:"RBX",color:"#6692FF",tc:"#fff",carPace:75,reliability:82,pitSpeed:84,engine:"Ford/RBPT"},
-  {id:"astonmartin",strategy:"safety_car",name:"Aston Martin",abbr:"AMR",color:"#358C75",tc:"#fff",carPace:82,reliability:83,pitSpeed:82,engine:"Honda"},
-  {id:"haas",strategy:"tyre_banker",      name:"Haas",         abbr:"HAS",color:"#B6BABD",tc:"#000",carPace:70,reliability:78,pitSpeed:80,engine:"Ferrari"},
-  {id:"audi",strategy:"one_stop",      name:"Audi",         abbr:"AUD",color:"#B30000",tc:"#fff",carPace:72,reliability:75,pitSpeed:78,engine:"Audi"},
-  {id:"alpine",strategy:"reactive",    name:"Alpine",       abbr:"ALP",color:"#0093CC",tc:"#fff",carPace:68,reliability:77,pitSpeed:79,engine:"Mercedes"},
-  {id:"cadillac",strategy:"fuel_save",  name:"Cadillac",     abbr:"CAD",color:"#6B6B6B",tc:"#fff",carPace:62,reliability:72,pitSpeed:76,engine:"Ferrari"},
+  {id:"mclaren",strategy:"aggressive_two",   name:"McLaren",      abbr:"MCL",color:"#FF8000",tc:"#000",basePitSpeed:90,parts:{...TEAM_DEFAULT_PARTS.mclaren}},
+  {id:"mercedes",strategy:"undercut_king",  name:"Mercedes",     abbr:"MER",color:"#00D2BE",tc:"#000",basePitSpeed:88,parts:{...TEAM_DEFAULT_PARTS.mercedes}},
+  {id:"redbull",strategy:"one_stop",   name:"Red Bull",     abbr:"RBR",color:"#3671C6",tc:"#fff",basePitSpeed:95,parts:{...TEAM_DEFAULT_PARTS.redbull}},
+  {id:"ferrari",strategy:"overcut",   name:"Ferrari",      abbr:"FER",color:"#E8002D",tc:"#fff",basePitSpeed:87,parts:{...TEAM_DEFAULT_PARTS.ferrari}},
+  {id:"williams",strategy:"fuel_save",  name:"Williams",     abbr:"WIL",color:"#37BEDD",tc:"#000",basePitSpeed:83,parts:{...TEAM_DEFAULT_PARTS.williams}},
+  {id:"racingbulls",strategy:"reactive",name:"Racing Bulls",abbr:"RBX",color:"#6692FF",tc:"#fff",basePitSpeed:84,parts:{...TEAM_DEFAULT_PARTS.racingbulls}},
+  {id:"astonmartin",strategy:"safety_car",name:"Aston Martin",abbr:"AMR",color:"#358C75",tc:"#fff",basePitSpeed:82,parts:{...TEAM_DEFAULT_PARTS.astonmartin}},
+  {id:"haas",strategy:"tyre_banker",      name:"Haas",         abbr:"HAS",color:"#B6BABD",tc:"#000",basePitSpeed:80,parts:{...TEAM_DEFAULT_PARTS.haas}},
+  {id:"audi",strategy:"one_stop",      name:"Audi",         abbr:"AUD",color:"#B30000",tc:"#fff",basePitSpeed:78,parts:{...TEAM_DEFAULT_PARTS.audi}},
+  {id:"alpine",strategy:"reactive",    name:"Alpine",       abbr:"ALP",color:"#0093CC",tc:"#fff",basePitSpeed:79,parts:{...TEAM_DEFAULT_PARTS.alpine}},
+  {id:"cadillac",strategy:"fuel_save",  name:"Cadillac",     abbr:"CAD",color:"#6B6B6B",tc:"#fff",basePitSpeed:76,parts:{...TEAM_DEFAULT_PARTS.cadillac}},
 ];
 
 
+// ║  Defines 8 race strategy archetypes. Each strategy carries numeric      ║
+// ║  directly into runRace() and runSprint(). Teams are assigned a default  ║
+// ║                                                                          ║
+// ║  Overcut Gamble · Fuel Saving Mode · Safety Car Hunter · Tyre Banker    ║
 // ===================== TEAM STRATEGIES =====================
 const TEAM_STRATEGIES = [
   {
@@ -87,6 +305,10 @@ function getTeamStrategy(team) {
   return TEAM_STRATEGIES.find(s=>s.id===team.strategy)||TEAM_STRATEGIES[1];
 }
 
+// Known rivalries for richer narrative
+
+// ║  Rivals are stored per-driver as rivals:[] arrays. getRivalry() checks  ║
+// ║  description string used in qualifying, sprint and race narratives.     ║
 /**
  * Returns a rivalry object if dA and dB have a mutual rivalry set.
  * @param {object} dA - First driver object (with .rivals array)
@@ -171,14 +393,18 @@ const CPDS       = ["Softs","Mediums","Hards","Intermediates"];
 const FAIL       = ["engine failure","hydraulics failure","gearbox failure","suspension damage","power unit issue","brake failure","water pressure loss"];
 const EVT_C      = {incident:"#FF4444",dnf:"#FF6644",safetycar:"#FFC906",weather:"#4488FF",charge:"#44CC88",fastestlap:"#CC44FF",battle:"#FF8844",pitstop:"#44AAFF",drop:"#FF8844",start:"#E8002D",strategy:"#BB66FF"};
 
+const pick  = a => a[Math.floor(Math.random()*a.length)];
 const pickN = (a,n) => [...a].sort(()=>Math.random()-0.5).slice(0,n);
 const Lf    = (t,f) => Math.max(1,Math.floor(t*f));
 
 // ===================== SIMULATION ENGINE =====================
 
 
-const pick=(a)=>a[Math.floor(Math.random()*a.length)];
-const _pick=pick;
+const _pick=(a)=>a[Math.floor(Math.random()*a.length)];
+
+// ║  8 driver style archetypes, each applying stat modifiers to the         ║
+// ║  race pace (overallPace), DNF risk, overtaking/defense weighting.       ║
+// ║  Styles: Aggressive · Smooth · Qualifier · Defender · Charger           ║
 
 // ===================== DRIVING STYLES =====================
 const DRIVING_STYLES = [
@@ -237,6 +463,11 @@ function getStyleMods(d) {
   return style ? style.mods : {pace:0,consistency:0,overtaking:0,defense:0,wet:0,experience:0,dnfRisk:0,qualBonus:0,racePace:0};
 }
 
+// ║  calcBase()      — Deterministic base score from driver+team+track.     ║
+// ║  calcQualBase()  — calcBase + qualifying style bonus.                   ║
+// ║                    traffic, rivalries, mechanical issues, strategy).     ║
+// ║  runSprint()     — Abbreviated race (~100km). Sprint points for top 8.  ║
+// ║                    DNFs, weather, fastest lap, position battles.        ║
 /**
  * Calculates a driver's base performance score for a given track.
  * Incorporates: car pace, driver stats, driving style mods, circuit type,
@@ -254,29 +485,38 @@ function calcBase(d, team, track) {
   const eo = d.overtaking + sm.overtaking;
   const edf= d.defense    + sm.defense;
   const ex = d.experience + sm.experience;
-
-  let s = team.carPace*0.55 + ep*0.45;
-  // Circuit-type bonus applied to the most relevant effective stat
+  // derive team performance from equipped parts
+  const ts = getTeamStats(team);
+  let s = ts.carPace*0.55 + ep*0.45;
+  // Circuit type bonus (uses effective stats)
   if (track.type==="high-speed"||track.type==="low-downforce") s+=ep*0.06;
   else if (track.type==="technical") {
     s+=ec*0.06;
-    if(d.style==="technical") s+=4;
+    if(d.style==="technical") s+=4; // technical specialist bonus
   }
   else if (track.type==="street") {
     s+=ex*0.03+edf*0.02;
-    if(d.style==="defender") s+=2;
+    if(d.style==="defender") s+=2; // street defender bonus
   }
-  // Downforce delta: reward cars closer to the circuit's preferred level
+  // Downforce matching
   const dfDiff=Math.abs((track.downforce||6)-6);
-  s+=team.carPace*0.01*dfDiff*(track.downforce>6?0.5:-0.3);
+  s+=ts.carPace*0.01*dfDiff*(track.downforce>6?0.5:-0.3);
+  // parts circuit bonus
+  if(ts.aeroCircuitBonus&&track.type&&ts.aeroCircuitBonus[track.type]) s+=ts.aeroCircuitBonus[track.type]*0.5;
+  // High altitude
   if((track.alt||0)>500) s-=((track.alt-500)/2000)*((100-ex)*0.04);
+  // Night races
   if(track.night) s+=ex*0.025;
+  // Street circuits
   if(track.street) s+=ex*0.02+edf*0.015;
-  // High abrasion punishes low-consistency drivers disproportionately
+  // High abrasion (smooth style helps here)
   if((track.abrasive||3)>5) s-=((track.abrasive-5)*0.3)*((100-ec)/40);
+  // DRS zones
   if((track.drs||2)>=3) s+=eo*0.015;
+  // Good/bad track bonuses
   if((d.goodTracks||[]).includes(track.id)) s+=5;
   if((d.badTracks||[]).includes(track.id)) s-=5;
+  // Mental
   s+=((d.mental||7)-5)*0.45;
   return s;
 }
@@ -528,29 +768,22 @@ function runQ1Q2Q3(drivers, teams, track) {
 }
 
 // Free practice session: all 20 drivers, no elimination, high variance.
-// Simulates the exploratory nature of FP — mixed fuel loads, setup runs, track evolution.
 function runFP(sessionNum, drivers, teams, track) {
-  // FP1 has the highest chaos (first session on track); FP2 is slightly more representative
   const formSpread = sessionNum===1 ? 9 : 7;
   const lapSpread  = sessionNum===1 ? 6 : 5;
-  const tyreGain   = sessionNum===1 ? 0 : 0.8; // FP2 teams do short-run pace runs
-
-  // Per-session form factor: driver-specific session performance
+  const tyreGain   = sessionNum===1 ? 0 : 0.8;
   const sessionForm = {};
   drivers.forEach(d => { sessionForm[d.id] = (Math.random()-0.5)*2*formSpread; });
-
   const positions = drivers.map(d => {
     const team = teams.find(t=>t.id===d.teamId)||teams[teams.length-1];
     const base  = calcQualBase(d, team, track);
     const form  = sessionForm[d.id];
     const tyre  = tyreGain * (0.7 + Math.random()*0.6);
     const lap   = (Math.random()-0.5)*2*lapSpread;
-    // FP times are slower than quali (fuel load penalty + no push laps)
     const fuelPenalty = sessionNum===1 ? -(Math.random()*3+1) : -(Math.random()*2+0.5);
     const score = base + form + tyre + lap + fuelPenalty;
     return {driver:d, team, score};
   }).sort((a,b)=>b.score-a.score).map((e,i)=>({...e, pos:i+1}));
-
   return {positions, sessionNum};
 }
 
@@ -564,35 +797,30 @@ function buildFPCaption(fpData, track) {
   const topTeam = fastest.team;
   const surprise = positions.find((e,i)=>i<5 && (e.driver.goodTracks||[]).includes(track.id));
   const streetCtx = track.street ? "the barriers demand respect — no flying lap is risk-free in FP" : "the engineers will be studying tyre life carefully on this surface";
-
   return [
     _pick([
-      `${label} — ${track.circuit.toUpperCase()}\n\n${fastest.driver.name} sets the pace in ${label} for ${topTeam.name}. ${gap}s covers the top two — but read nothing into it. Fuel loads, tyre compounds and aero configurations vary wildly between teams in practice. The data engineers are collecting far more than lap times right now.`,
+      `${label} — ${track.circuit.toUpperCase()}\n\n${fastest.driver.name} sets the pace in ${label} for ${topTeam.name}. ${gap}s covers the top two — but read nothing into it. Fuel loads, tyre compounds and aero configurations vary wildly between teams in practice.`,
       `FREE PRACTICE ${sessionNum} · ${track.name.toUpperCase()}\n\n${fastest.driver.name} (${topTeam.name}) topped the ${label} timesheet at ${track.circuit}. Practice times are notoriously misleading — teams run different fuel quantities and programmes — but the ${topTeam.name} looked genuinely quick on every compound.`,
-      `${label} REPORT — ${track.flag} ${track.circuit}\n\n${fastest.driver.name} leads the way with ${topTeam.name} after ${label}. The ${sessionNum===1?"first":"second"} free practice session at ${track.circuit} has given engineers a wealth of data, but comparisons between teams are difficult when programmes differ so significantly.`,
     ]),
     _pick([
       `${second?.driver.name||"P2"} was ${gap}s back in second, though ${streetCtx}. The top ten is tightly packed — a tenth or two separates several cars through the midfield.`,
-      `The ${sessionNum===1?"track is still green — grip will improve significantly as rubber goes down over the weekend. The final practice session will tell a different story":"race simulation runs completed this afternoon give teams their first real picture of tyre degradation at race pace. Strategists will be poring over every data point tonight"}.`,
-      `${fastest.driver.name}'s effort looked clean and representative — ${second?.driver.name||"the chasing pack"} will be working to close that gap before qualifying.`,
+      `The ${sessionNum===1?"track is still green — grip will improve significantly as rubber goes down over the weekend":"race simulation runs completed this afternoon give teams their first real picture of tyre degradation at race pace. Strategists will be poring over every data point tonight"}.`,
     ]),
     surprise ? `${surprise.driver.name} looked particularly at home here — this is a circuit that suits their driving style, and the ${label} data will encourage the ${surprise.team.name} garage going into the rest of the weekend.` :
     _pick([
-      `${sessionNum===1?"Teams will now assess the data and decide tyre allocations for the rest of the weekend. The real picture will only emerge in qualifying.":"With practice complete, attention turns to qualifying. The short-run pace was clearer in FP2 — expect the competitive order to resemble this more closely come Q1."}`,
+      `${sessionNum===1?"Teams will now assess the data and decide tyre allocations for the rest of the weekend.":"With practice complete, attention turns to qualifying. The short-run pace was clearer in FP2 — expect the competitive order to resemble this more closely come Q1."}`,
       `${positions[4]?.driver.name||"The midfield"} impressed in ${label} — an unexpected name in the top five that will have the data analysts at the other teams raising eyebrows.`,
     ]),
   ];
 }
 
 // Sprint qualifying: SQ1/SQ2/SQ3 — shorter sessions, same knockout structure as Q1/Q2/Q3.
-// SQ1: 12 min, all 20, bottom 5 out. SQ2: 10 min, top 15, bottom 5 out. SQ3: 8 min, top 10.
 function runSprintQual(drivers, teams, track) {
   const makeSessionForm = (spread) => {
     const m = {};
     drivers.forEach(d => { m[d.id] = (Math.random()-0.5)*2*spread; });
     return m;
   };
-
   const sessionScore = (d, team, lapSpread, tyreGain=0, sessionForm={}) => {
     const base = calcQualBase(d, team, track);
     const form = sessionForm[d.id] || 0;
@@ -600,8 +828,6 @@ function runSprintQual(drivers, teams, track) {
     const lap  = (Math.random()-0.5)*2*lapSpread;
     return base + form + tyre + lap;
   };
-
-  // SQ1: All 20, similar chaos level to Q1 but slightly tighter (shorter session)
   const sq1Form = makeSessionForm(6);
   const sq1 = drivers.map(d => {
     const team = teams.find(t=>t.id===d.teamId)||teams[teams.length-1];
@@ -609,33 +835,26 @@ function runSprintQual(drivers, teams, track) {
     return {driver:d, team, score:s, sq1Score:s};
   }).sort((a,b)=>b.score-a.score).map((e,i)=>({...e, sq1Pos:i+1, sqElim1:i>=15}));
   const sq1Events = genQEvents("Q1", sq1, track, 15);
-
-  // SQ2: Top 15 only. Fresh form draw — compact session with less tyre prep time.
   const sq2Form = makeSessionForm(5);
   const sq2base = sq1.filter(e=>!e.sqElim1).map(e => {
     const s = sessionScore(e.driver, e.team, 3, 1.0, sq2Form);
     return {...e, score:s, sq2Score:s};
   }).sort((a,b)=>b.score-a.score).map((e,i)=>({...e, sq2Pos:i+1, sqElim2:i>=10}));
   const sq2Events = genQEvents("Q2", sq2base, track, 10);
-
-  // SQ3: Top 10, freshest softs — pure sprint shootout
   const sq3Form = makeSessionForm(4);
   const sq3base = sq2base.filter(e=>!e.sqElim2).map(e => {
     const s = sessionScore(e.driver, e.team, 2.5, 2.0, sq3Form);
     return {...e, score:s, sq3Score:s};
   }).sort((a,b)=>b.score-a.score).map((e,i)=>({...e, sq3Pos:i+1}));
   const sq3Events = genQEvents("Q3", sq3base, track, null);
-
   const sprintGrid = [...sq3base, ...sq2base.filter(e=>e.sqElim2), ...sq1.filter(e=>e.sqElim1)];
   return {sq1, sq2:sq2base, sq3:sq3base, sprintGrid, sq1Events, sq2Events, sq3Events};
 }
 
 function aggSprintQual(n, drivers, teams, track) {
   if(n<=1) return runSprintQual(drivers,teams,track);
-
   const sq1Acc={}, sq2Acc={}, sq3Acc={};
   drivers.forEach(d=>{ sq1Acc[d.id]=[]; sq2Acc[d.id]=[]; sq3Acc[d.id]=[]; });
-
   let displayRun=null;
   for(let i=0;i<n;i++){
     const q=runSprintQual(drivers,teams,track);
@@ -644,45 +863,25 @@ function aggSprintQual(n, drivers, teams, track) {
     q.sq2.forEach(e=>sq2Acc[e.driver.id].push(e.score));
     q.sq3.forEach(e=>sq3Acc[e.driver.id].push(e.score));
   }
-
   const avg=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:null;
   const driverMap=drivers.map(d=>{
     const team=teams.find(t=>t.id===d.teamId)||teams[teams.length-1];
     return {driver:d, team, sq1Score:avg(sq1Acc[d.id])||0, sq2Score:avg(sq2Acc[d.id]), sq3Score:avg(sq3Acc[d.id])};
   });
-
-  const sq1Avg=[...driverMap].sort((a,b)=>b.sq1Score-a.sq1Score)
-    .map((e,i)=>({...e, score:e.sq1Score, sq1Pos:i+1, sqElim1:i>=15}));
-
-  const sq2All=[...driverMap].map(e=>({...e, score:e.sq2Score!==null?e.sq2Score:e.sq1Score-3}))
-    .sort((a,b)=>b.score-a.score);
-  const sq2Avg=[
-    ...sq2All.slice(0,15).map((e,i)=>({...e, sq2Pos:i+1, sqElim2:i>=10})),
-    ...sq2All.slice(15).map((e,i)=>({...e, sq2Pos:16+i, sqElim2:true})),
-  ];
-
-  const sq3All=[...driverMap].map(e=>({...e, score:e.sq3Score!==null?e.sq3Score:(e.sq2Score!==null?e.sq2Score-2:e.sq1Score-5)}))
-    .sort((a,b)=>b.score-a.score);
+  const sq1Avg=[...driverMap].sort((a,b)=>b.sq1Score-a.sq1Score).map((e,i)=>({...e, score:e.sq1Score, sq1Pos:i+1, sqElim1:i>=15}));
+  const sq2All=[...driverMap].map(e=>({...e, score:e.sq2Score!==null?e.sq2Score:e.sq1Score-3})).sort((a,b)=>b.score-a.score);
+  const sq2Avg=[...sq2All.slice(0,15).map((e,i)=>({...e, sq2Pos:i+1, sqElim2:i>=10})),...sq2All.slice(15).map((e,i)=>({...e, sq2Pos:16+i, sqElim2:true}))];
+  const sq3All=[...driverMap].map(e=>({...e, score:e.sq3Score!==null?e.sq3Score:(e.sq2Score!==null?e.sq2Score-2:e.sq1Score-5)})).sort((a,b)=>b.score-a.score);
   const sq3Avg=sq3All.slice(0,10).map((e,i)=>({...e, sq3Pos:i+1}));
-
   const sq2Elim=sq2Avg.filter(e=>e.sqElim2).sort((a,b)=>a.sq2Pos-b.sq2Pos);
   const sq1Elim=sq1Avg.filter(e=>e.sqElim1).sort((a,b)=>a.sq1Pos-b.sq1Pos);
   const sprintGrid=[...sq3Avg,...sq2Elim,...sq1Elim];
-
   const avgElim1=new Set(sq1Elim.map(e=>e.driver.id));
   const avgElim2=new Set(sq2Elim.map(e=>e.driver.id));
   const sq1Display=displayRun?displayRun.sq1.map(e=>({...e, sqElim1:avgElim1.has(e.driver.id)})):sq1Avg;
   const sq2Display=displayRun?displayRun.sq2.map(e=>({...e, sqElim2:avgElim2.has(e.driver.id)})):sq2Avg;
   const sq3Display=displayRun?displayRun.sq3:sq3Avg;
-
-  return {
-    sq1:sq1Display, sq2:sq2Display, sq3:sq3Display,
-    sprintGrid:sprintGrid.map(e=>({...e,score:e.sq3Score||e.sq2Score||e.sq1Score})),
-    runsUsed:n,
-    sq1Events:genQEvents("Q1",sq1Display,track,15),
-    sq2Events:genQEvents("Q2",sq2Display,track,10),
-    sq3Events:genQEvents("Q3",sq3Display,track,null),
-  };
+  return {sq1:sq1Display, sq2:sq2Display, sq3:sq3Display, sprintGrid:sprintGrid.map(e=>({...e,score:e.sq3Score||e.sq2Score||e.sq1Score})), runsUsed:n, sq1Events:genQEvents("Q1",sq1Display,track,15), sq2Events:genQEvents("Q2",sq2Display,track,10), sq3Events:genQEvents("Q3",sq3Display,track,null)};
 }
 
 function buildSQCaption(session, entries, track) {
@@ -690,8 +889,7 @@ function buildSQCaption(session, entries, track) {
   const sorted=[...entries].sort((a,b)=>b.score-a.score);
   const fastest=sorted[0], second=sorted[1];
   const gap=second?((fastest.score-second.score)*0.011).toFixed(3):"0.000";
-  const elim = session==="SQ1"?5:session==="SQ2"?5:null;
-  const dropped = elim ? sorted.slice(sorted.length-elim) : [];
+  const dropped = session==="SQ1"?sorted.slice(sorted.length-5):session==="SQ2"?sorted.slice(sorted.length-5):[];
   const sessionDesc = session==="SQ1"?"12-minute sprint qualifying opener":session==="SQ2"?"10-minute battle for the SQ3 places":"8-minute sprint pole shootout";
   return [
     _pick([
@@ -700,12 +898,12 @@ function buildSQCaption(session, entries, track) {
     ]),
     session==="SQ3"
       ? _pick([
-          `${fastest.driver.name} takes sprint pole. The ${fastest.team.name} driver nails the ${sessionDesc} — a vital advantage for tomorrow's sprint. ${gap}s is the margin, and from the front ${fastest.driver.name} controls the race.`,
-          `Sprint pole belongs to ${fastest.driver.name}. The ${fastest.team.name} driver delivered a clean lap in SQ3 to head the sprint grid. ${second?.driver.name||"P2"} lines up alongside — expect a battle to the first braking zone.`,
+          `${fastest.driver.name} takes sprint pole. From the front ${fastest.driver.name} controls the sprint race — ${second?.driver.name||"P2"} lines up alongside and will be watching for the opening.`,
+          `Sprint pole belongs to ${fastest.driver.name}. The ${fastest.team.name} driver delivered a clean lap in SQ3. ${second?.driver.name||"P2"} starts alongside — expect a battle to the first braking zone.`,
         ])
       : dropped.length
-        ? `${session} eliminations: ${dropped.map(e=>e.driver.name).join(", ")} — knocked out with sprint qualifying complete for them. ${dropped[0].driver.name} will be particularly disappointed having looked quick earlier in the session.`
-        : `All drivers progress from ${session} — no major shocks at this stage.`,
+        ? `${session} eliminations: ${dropped.map(e=>e.driver.name).join(", ")} — knocked out with sprint qualifying complete for them.`
+        : `All drivers progress from ${session}.`,
   ];
 }
 
@@ -742,7 +940,8 @@ function runRace(grid, teams, track) {
   let entries=grid.map((q,i)=>{
     const {driver:d,team}=q;
     const strat=getTeamStrategy(team);
-    let pace=isWet?team.carPace*0.35+d.pace*0.15+d.wet*0.5:team.carPace*0.5+d.pace*0.3+d.consistency*0.2;
+    const _ts=getTeamStats(team);
+    let pace=isWet?_ts.carPace*0.35+d.pace*0.15+d.wet*0.5+(_ts.wetBonus||0)*0.3:_ts.carPace*0.5+d.pace*0.3+d.consistency*0.2;
     pace*=(strat.mods?.overallPace||1.0);
     if(track.type==="street") pace+=(d.experience+d.defense)*0.05;
     if(track.type==="high-speed") pace+=d.pace*0.06;
@@ -753,7 +952,7 @@ function runRace(grid, teams, track) {
     pace+=((d.mental||7)-5)*0.35;
     pace-=i*0.18*(track.od/100)*(hasSC?0.55:1);
     pace+=(Math.random()-0.5)*9;
-    const dnfR=Math.max(0.02,(100-team.reliability)/100*0.28+Math.max(0,(5-(d.mental||7))*0.02)+(strat.mods?.dnfRisk||0));
+    const dnfR=Math.max(0.02,(100-_ts.reliability)/100*0.28+Math.max(0,(5-(d.mental||7))*0.02)+(strat.mods?.dnfRisk||0));
     const dnf=Math.random()<dnfR;
     const dnfL=dnf?Math.max(2,Lf(TL,0.05)+Math.floor(Math.random()*Lf(TL,0.85))):null;
     const fl1=i>4&&Math.random()<0.032;
@@ -1070,18 +1269,21 @@ function RoundDetail({r, onBack}) {
   const [qDt, setQDt] = useState("q3");
   const snap = r.snapshot;
   if (!snap) return null;
-  const sq=snap.qual?.sprintQual;
-  const qTabs = [
-    snap.qual?.fp1 ? {k:"fp1",l:"FP1",src:snap.qual.fp1,elimLine:null,isFP:true,isSQ:false} : null,
-    snap.qual?.fp2 ? {k:"fp2",l:"FP2",src:snap.qual.fp2,elimLine:null,isFP:true,isSQ:false} : null,
-    sq?.sq1 ? {k:"sq1",l:"SQ1",src:sq.sq1,elimLine:15,isFP:false,isSQ:true,color:"#BB66FF"} : null,
-    sq?.sq2 ? {k:"sq2",l:"SQ2",src:sq.sq2,elimLine:10,isFP:false,isSQ:true,color:"#CC88FF"} : null,
-    sq?.sq3 ? {k:"sq3",l:"SQ3",src:sq.sq3,elimLine:null,isFP:false,isSQ:true,color:"#FFC906"} : null,
-    {k:"q1",l:"Q1",src:snap.qual?.q1,elimLine:15,isFP:false,isSQ:false},
-    {k:"q2",l:"Q2",src:snap.qual?.q2,elimLine:10,isFP:false,isSQ:false},
-    {k:"q3",l:"Q3",src:snap.qual?.q3,elimLine:null,isFP:false,isSQ:false},
-  ].filter(Boolean);
-  const curQ = qTabs.find(t=>t.k===qDt)||qTabs[0];
+  // Build weekend session sub-tabs
+  const wkndTabs = [];
+  if(snap.fp1) wkndTabs.push({k:"fp1",l:"FP1",kind:"fp",data:snap.fp1,color:"#4488FF"});
+  if(snap.fp2) wkndTabs.push({k:"fp2",l:"FP2",kind:"fp",data:snap.fp2,color:"#44AAFF"});
+  if(snap.sprintQual){
+    wkndTabs.push({k:"sq1",l:"SQ1",kind:"sq",src:snap.sprintQual.sq1,elimLine:12,color:"#BB66FF"});
+    wkndTabs.push({k:"sq2",l:"SQ2",kind:"sq",src:snap.sprintQual.sq2,elimLine:8,color:"#DD88FF"});
+    wkndTabs.push({k:"sq3",l:"SQ3",kind:"sq",src:snap.sprintQual.sq3,elimLine:null,color:"#FF66FF"});
+  }
+  if(snap.qual){
+    wkndTabs.push({k:"q1",l:"Q1",kind:"q",src:snap.qual.q1,elimLine:15,color:"#FF8844"});
+    wkndTabs.push({k:"q2",l:"Q2",kind:"q",src:snap.qual.q2,elimLine:10,color:"#FFC906"});
+    wkndTabs.push({k:"q3",l:"Q3",kind:"q",src:snap.qual.q3,elimLine:null,color:"#E8002D"});
+  }
+  const curW = wkndTabs.find(t=>t.k===qDt) || wkndTabs.find(t=>t.k==="q3") || wkndTabs[wkndTabs.length-1];
   return(
     <div style={{animation:"fadeIn 0.2s ease"}}>
       {/* Back + header */}
@@ -1094,7 +1296,7 @@ function RoundDetail({r, onBack}) {
       </div>
       {/* Sub-tabs */}
       <div style={{display:"flex",gap:3,marginBottom:14,background:"#0D0D10",padding:4,borderRadius:4,border:"1px solid #1E1E22"}}>
-        {[["race","🏁 RACE"],snap.qual?["qual","📋 WEEKEND"]:null,snap.sprint?["sprint","⚡ SPRINT"]:null].filter(Boolean).map(([k,l])=>(
+        {[["race","🏁 RACE"],wkndTabs.length>0?["qual","📋 WEEKEND"]:null,snap.sprint?["sprint","⚡ SPRINT"]:null].filter(Boolean).map(([k,l])=>(
           <button key={k} onClick={()=>setDetailTab(k)}
             style={{flex:1,background:detailTab===k?"#2A2A30":"transparent",color:detailTab===k?"#F0F0F0":"#778",border:"none",padding:"7px 0",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1,borderRadius:3}}>
             {l}
@@ -1142,36 +1344,76 @@ function RoundDetail({r, onBack}) {
           )}
         </div>
       )}
-      {/* WEEKEND (FP1/FP2 + SQ1/SQ2/SQ3 + Q1/Q2/Q3) */}
-      {detailTab==="qual"&&snap.qual&&(
+      {/* WEEKEND (FP + SQ + Qual) */}
+      {detailTab==="qual"&&wkndTabs.length>0&&(
         <>
-          <div style={{display:"flex",gap:2,marginBottom:12,background:"#0D0D10",padding:4,borderRadius:4,border:"1px solid #1E1E22",flexWrap:"wrap"}}>
-            {qTabs.map(t=>(
+          <div style={{display:"flex",gap:3,marginBottom:12,background:"#0D0D10",padding:4,borderRadius:4,border:"1px solid #1E1E22",flexWrap:"wrap"}}>
+            {wkndTabs.map(t=>(
               <button key={t.k} onClick={()=>setQDt(t.k)}
-                style={{flex:"1 1 auto",minWidth:36,background:qDt===t.k?"#2A2A30":"transparent",color:qDt===t.k?(t.isFP?"#44AACC":t.isSQ?(t.color||"#BB66FF"):"#F0F0F0"):"#778",border:"none",padding:"6px 4px",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:700,borderRadius:3}}>
+                style={{flex:1,minWidth:42,background:qDt===t.k?`${t.color}22`:"transparent",color:qDt===t.k?t.color:"#556",border:`1px solid ${qDt===t.k?t.color+"55":"transparent"}`,padding:"6px 0",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:700,borderRadius:3}}>
                 {t.l}
               </button>
             ))}
           </div>
-          {snap.qual.runsUsed>1&&!curQ?.isFP&&!curQ?.isSQ&&<div style={{fontSize:12,color:"#E8002D",marginBottom:8}}>⟳ Averaged over ×{snap.qual.runsUsed} runs</div>}
-          {curQ&&curQ.src&&(
+          {snap.qual?.runsUsed>1&&<div style={{fontSize:12,color:"#E8002D",marginBottom:8}}>⟳ Averaged over ×{snap.qual.runsUsed} runs</div>}
+          {/* FP tab */}
+          {curW&&curW.kind==="fp"&&(
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:5}}>
-              {[...curQ.src].sort((a,b)=>b.score-a.score).map((e,i)=>{
-                const sorted=[...curQ.src].sort((a2,b2)=>b2.score-a2.score);
-                const isElimRow = !curQ.isFP && curQ.elimLine!=null && i>=curQ.elimLine;
+              {curW.data.map((e,i)=>(
+                <div key={e.driverAbbr||i} style={{display:"flex",alignItems:"center",gap:9,padding:"8px 11px",background:"#161618",border:"1px solid #1E1E22",borderLeft:`3px solid ${e.teamColor}`,borderRadius:3}}>
+                  <div style={{width:26,textAlign:"center",fontSize:12,fontWeight:700,color:i<3?"#FFC906":"#556"}}>{i+1}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{e.driverFlag} {e.driverName}</div>
+                    <div style={{fontSize:11,color:e.teamColor}}>{e.teamName}</div>
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:12,fontFamily:"monospace",color:i===0?"#FFC906":"#aaa"}}>{i===0?"BEST":`+${e.gap}s`}</div>
+                    <div style={{fontSize:10,color:"#445"}}>{e.laps} laps</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {/* SQ tab */}
+          {curW&&curW.kind==="sq"&&curW.src&&(
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:5}}>
+              {[...curW.src].sort((a,b)=>b.score-a.score).map((e,i)=>{
+                const sorted=[...curW.src].sort((a2,b2)=>b2.score-a2.score);
+                const elim=curW.elimLine!=null&&i>=curW.elimLine;
                 const gap=i===0?null:(sorted[0].score-e.score)*0.011;
-                const p1Color = curQ.isFP?"#44AACC":curQ.isSQ?(curQ.color||"#BB66FF"):"#FFC906";
-                const p1Label = curQ.isFP?"FASTEST":curQ.isSQ&&curQ.k==="sq3"?"SP POLE":curQ.isSQ?"FASTEST":"POLE";
                 return(
-                  <div key={e.driver.id||i} style={{display:"flex",alignItems:"center",gap:9,padding:"8px 11px",background:isElimRow?"#1A1010":i<3?"#181810":"#161618",border:`1px solid ${isElimRow?"#FF444433":i<3?p1Color+"18":"#1E1E22"}`,borderLeft:`3px solid ${isElimRow?"#FF4444":e.team.color}`,borderRadius:3,opacity:isElimRow?0.55:1}}>
-                    <div style={{width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?p1Color:i===1?"#aaa":i===2?"#CD7F32":"transparent",color:i<3?"#000":"#bbb",fontSize:11,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #2A2A30":"none",flexShrink:0}}>{i+1}</div>
+                  <div key={e.driver.id||i} style={{display:"flex",alignItems:"center",gap:9,padding:"8px 11px",background:elim?"#1A1010":i<3?"#181810":"#161618",border:`1px solid ${elim?"#FF444433":i<3?"#FFC90618":"#1E1E22"}`,borderLeft:`3px solid ${elim?"#FF4444":e.team.color}`,borderRadius:3,opacity:elim?0.55:1}}>
+                    <div style={{width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?"#FFC906":i===1?"#aaa":i===2?"#CD7F32":"transparent",color:i<3?"#000":"#bbb",fontSize:11,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #2A2A30":"none",flexShrink:0}}>{i+1}</div>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:13,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{e.driver.flag} {e.driver.name}</div>
                       <div style={{fontSize:11,color:e.team.color}}>{e.team.name}</div>
                     </div>
                     <div style={{textAlign:"right",flexShrink:0}}>
-                      <div style={{fontSize:12,fontFamily:"monospace",color:i===0?p1Color:"#aaa"}}>{i===0?p1Label:gap?"+"+gap.toFixed(3)+"s":""}</div>
-                      {isElimRow&&<div style={{fontSize:10,color:"#FF4444",fontWeight:700}}>ELIM</div>}
+                      <div style={{fontSize:12,fontFamily:"monospace",color:i===0?curW.color:"#aaa"}}>{i===0?"P1":gap?"+"+gap.toFixed(3)+"s":""}</div>
+                      {elim&&<div style={{fontSize:10,color:"#FF4444",fontWeight:700}}>ELIM</div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {/* Q tab */}
+          {curW&&curW.kind==="q"&&curW.src&&(
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:5}}>
+              {[...curW.src].sort((a,b)=>b.score-a.score).map((e,i)=>{
+                const sorted=[...curW.src].sort((a2,b2)=>b2.score-a2.score);
+                const elim=curW.elimLine!=null&&i>=curW.elimLine;
+                const gap=i===0?null:(sorted[0].score-e.score)*0.011;
+                return(
+                  <div key={e.driver.id||i} style={{display:"flex",alignItems:"center",gap:9,padding:"8px 11px",background:elim?"#1A1010":i<3?"#181810":"#161618",border:`1px solid ${elim?"#FF444433":i<3?"#FFC90618":"#1E1E22"}`,borderLeft:`3px solid ${elim?"#FF4444":e.team.color}`,borderRadius:3,opacity:elim?0.55:1}}>
+                    <div style={{width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?"#FFC906":i===1?"#aaa":i===2?"#CD7F32":"transparent",color:i<3?"#000":"#bbb",fontSize:11,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #2A2A30":"none",flexShrink:0}}>{i+1}</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{e.driver.flag} {e.driver.name}</div>
+                      <div style={{fontSize:11,color:e.team.color}}>{e.team.name}</div>
+                    </div>
+                    <div style={{textAlign:"right",flexShrink:0}}>
+                      <div style={{fontSize:12,fontFamily:"monospace",color:i===0?"#FFC906":"#aaa"}}>{i===0?"POLE":gap?"+"+gap.toFixed(3)+"s":""}</div>
+                      {elim&&<div style={{fontSize:10,color:"#FF4444",fontWeight:700}}>ELIM</div>}
                     </div>
                   </div>
                 );
@@ -1208,7 +1450,7 @@ function RoundDetail({r, onBack}) {
 function EditModal({type,data,teams,drivers,onSave,onClose}){
   const [f,setF]=useState({...data,goodTracks:data.goodTracks||[],badTracks:data.badTracks||[],mental:data.mental||7,rivals:data.rivals||[]});
   const isD=type==="driver";
-  const sf=isD?[["pace","Raw Pace"],["consistency","Consistency"],["wet","Wet Weather"],["overtaking","Overtaking"],["defense","Defense"],["experience","Experience"]]:[["carPace","Car Pace"],["reliability","Reliability"],["pitSpeed","Pit Speed"]];
+  const sf=isD?[["pace","Raw Pace"],["consistency","Consistency"],["wet","Wet Weather"],["overtaking","Overtaking"],["defense","Defense"],["experience","Experience"]]:[]/*PARTS_UI*/;
   const inp={background:"#1E1E22",border:"1px solid #333",color:"#F0F0F0",padding:"9px 12px",width:"100%",fontFamily:"inherit",fontSize:16,borderRadius:3};
   return(
     <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.9)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -1315,15 +1557,81 @@ function EditModal({type,data,teams,drivers,onSave,onClose}){
             ):null;})()}
           </div>
         )}
-        {sf.map(([k,label])=>(
-          <div key={k} style={{marginBottom:12}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
-              <span style={{fontSize:14,color:"#aaa",letterSpacing:1.5}}>{label.toUpperCase()}</span>
-              <span style={{fontSize:16,fontWeight:700,color:"#F0F0F0",fontFamily:"monospace"}}>{f[k]}</span>
+        {sf.map(([k,label])=>(<div key={k} style={{marginBottom:12}}></div>))}
+        {/* Parts editor for teams */}
+        {!isD&&(()=>{
+          const SLOT_LABELS = [
+            ["powerUnit","⚡ POWER UNIT",    "powerUnit"],
+            ["aero",     "🏎 AERODYNAMICS",   "aero"],
+            ["suspension","🔧 SUSPENSION",    "suspension"],
+            ["gearbox",  "⚙️ GEARBOX",        "gearbox"],
+            ["frontWing","🪂 FRONT WING",     "frontWing"],
+          ];
+          const currentParts = f.parts||{};
+          const previewStats = getTeamStats({...f, parts:currentParts});
+          return(
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:11,color:"#4488FF",fontWeight:700,letterSpacing:1.5,marginBottom:10}}>🔩 CAR PARTS</div>
+
+              {/* Derived stats preview */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:14,padding:"10px 12px",background:"#0D0D14",borderRadius:5,border:"1px solid #2A2A30"}}>
+                {[
+                  ["CAR PACE",    previewStats.carPace,   "#E8002D"],
+                  ["RELIABILITY", previewStats.reliability,"#44CC88"],
+                  ["TYRE LIFE",   previewStats.tyreLife,   "#FFC906"],
+                  ["WET BONUS",   previewStats.wetBonus>0?"+"+previewStats.wetBonus:previewStats.wetBonus,"#4488FF"],
+                  ["CORNERS",     Math.round(previewStats.cornerBonus/2), "#BB66FF"],
+                  ["STRAIGHTS",   Math.round(previewStats.straightBonus/2),"#FF8844"],
+                ].map(([l,v,c])=>(
+                  <div key={l} style={{textAlign:"center"}}>
+                    <div style={{fontSize:16,fontWeight:900,color:c,lineHeight:1}}>{v}</div>
+                    <div style={{fontSize:9,color:"#556",letterSpacing:1,marginTop:2}}>{l}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Part slot selectors */}
+              {SLOT_LABELS.map(([slotKey, slotLabel, partsKey])=>{
+                const partsList = PARTS[partsKey];
+                const currentId = currentParts[slotKey];
+                const current   = partsList.find(p=>p.id===currentId)||partsList[0];
+                return(
+                  <div key={slotKey} style={{marginBottom:12,background:"#111115",borderRadius:5,border:"1px solid #1E1E22",overflow:"hidden"}}>
+                    <div style={{fontSize:10,color:"#4488FF",fontWeight:700,letterSpacing:1.5,padding:"8px 12px",background:"#0D0D18",borderBottom:"1px solid #1E1E22"}}>
+                      {slotLabel}
+                      <span style={{marginLeft:8,fontSize:10,color:"#aaa",fontWeight:400}}>{current.name}</span>
+                    </div>
+                    <div style={{padding:"8px 10px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:5,maxHeight:220,overflowY:"auto"}}>
+                      {partsList.map(part=>{
+                        const sel = currentId===part.id||((!currentId)&&part===partsList[0]);
+                        return(
+                          <button key={part.id} type="button"
+                            onClick={()=>setF(prev=>({...prev,parts:{...prev.parts||{},[slotKey]:part.id}}))}
+                            style={{background:sel?"#4488FF18":"#161618",border:`1px solid ${sel?"#4488FF66":"#2A2A30"}`,borderRadius:4,padding:"7px 9px",cursor:"pointer",textAlign:"left",transition:"all 0.12s"}}>
+                            <div style={{fontSize:11,fontWeight:700,color:sel?"#4488FF":"#ccc",marginBottom:3,lineHeight:1.3}}>{part.name}</div>
+                            {part.spec&&<div style={{fontSize:9,color:"#445",marginBottom:4,letterSpacing:0.5}}>{part.spec}</div>}
+                            <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                              {Object.entries(part).filter(([k])=>["pace","reliability","cornerSpeed","straightSpeed","tyreWear","wetPerformance","fuel","cornerExit","balance"].includes(k)&&part[k]!==undefined&&part[k]!==0).slice(0,4).map(([k,v])=>(
+                                <span key={k} style={{fontSize:8,padding:"1px 5px",borderRadius:2,background:v>0?"#44CC8818":"#E8002D18",color:v>0?"#44CC88":"#E8002D",fontWeight:700}}>
+                                  {k.replace("Speed","Spd").replace("Performance","Perf").replace("cornerexit","Exit")}: {v>0?"+":""}{v}
+                                </span>
+                              ))}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {current.description&&(
+                      <div style={{padding:"6px 12px 8px",fontSize:11,color:"#556",lineHeight:1.5,borderTop:"1px solid #1A1A22",fontStyle:"italic"}}>
+                        {current.description}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-            <input type="range" min={40} max={100} step={1} value={f[k]} onChange={e=>setF(p=>({...p,[k]:parseInt(e.target.value)}))} style={{width:"100%",accentColor:"#E8002D"}}/>
-          </div>
-        ))}
+          );
+        })()}
         <div style={{display:"flex",gap:10,marginTop:18}}>
           <button onClick={()=>onSave(f)} style={{flex:1,background:"#E8002D",color:"#fff",border:"none",padding:11,cursor:"pointer",fontFamily:"inherit",fontSize:16,fontWeight:700,letterSpacing:2.5,borderRadius:3}}>SAVE</button>
           <button onClick={onClose} style={{background:"transparent",color:"#aaa",border:"1px solid #333",padding:"11px 18px",cursor:"pointer",fontFamily:"inherit",fontSize:15,borderRadius:3}}>CANCEL</button>
@@ -1357,16 +1665,20 @@ function QGrid({entries,gapFrom,posLabel,elimLine,elimColor="#FF4444"}){
   );
 }
 
+// Aggregated qualifying: run N times, average grid positions → canonical grid
+
+// ║  When ACCURACY selector is set to ×5/×10/×20, these functions run the  ║
+// ║  random variance. The canonical result is the most probable outcome.    ║
+// ║  aggQual()   — Average qualifying grid from N runs                      ║
+// ║  aggSprint() — Average sprint positions from N runs                     ║
 // Aggregated qualifying: run N times, average scores → canonical grid.
 // Session display (q1/q2/q3 tabs) uses a representative single run so each
 // session shows its own varied order rather than the same averaged ranking.
 function aggQual(n, drivers, teams, track) {
   if(n<=1) return runQ1Q2Q3(drivers,teams,track);
-
   const q1ScoreAcc={}, q2ScoreAcc={}, q3ScoreAcc={};
   drivers.forEach(d=>{ q1ScoreAcc[d.id]=[]; q2ScoreAcc[d.id]=[]; q3ScoreAcc[d.id]=[]; });
-
-  let displayRun=null; // representative run used for session-tab display
+  let displayRun=null;
   for(let i=0;i<n;i++){
     const q=runQ1Q2Q3(drivers,teams,track);
     if(i===Math.floor(n/2)) displayRun=q;
@@ -1374,59 +1686,25 @@ function aggQual(n, drivers, teams, track) {
     q.q2.forEach(e=>q2ScoreAcc[e.driver.id].push(e.score));
     q.q3.forEach(e=>q3ScoreAcc[e.driver.id].push(e.score));
   }
-
   const avg=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:null;
-
   const driverMap=drivers.map(d=>{
     const team=teams.find(t=>t.id===d.teamId)||teams[teams.length-1];
-    return {
-      driver:d, team,
-      q1Score: avg(q1ScoreAcc[d.id])||0,
-      q2Score: avg(q2ScoreAcc[d.id]),
-      q3Score: avg(q3ScoreAcc[d.id]),
-    };
+    return {driver:d, team, q1Score:avg(q1ScoreAcc[d.id])||0, q2Score:avg(q2ScoreAcc[d.id]), q3Score:avg(q3ScoreAcc[d.id])};
   });
-
-  // Averaged grid — used for race/sprint starting positions
-  const q1Avg=[...driverMap]
-    .sort((a,b)=>b.q1Score-a.q1Score)
-    .map((e,i)=>({...e, score:e.q1Score, q1Pos:i+1, elim1:i>=15}));
-
-  const q2All=[...driverMap]
-    .map(e=>({...e, score:e.q2Score!==null ? e.q2Score : e.q1Score-3}))
-    .sort((a,b)=>b.score-a.score);
-  const q2Avg=[
-    ...q2All.slice(0,15).map((e,i)=>({...e, q2Pos:i+1, elim2:i>=10})),
-    ...q2All.slice(15).map((e,i)=>({...e, q2Pos:16+i, elim2:true})),
-  ];
-
-  const q3All=[...driverMap]
-    .map(e=>({...e, score:e.q3Score!==null ? e.q3Score : (e.q2Score!==null ? e.q2Score-2 : e.q1Score-5)}))
-    .sort((a,b)=>b.score-a.score);
+  const q1Avg=[...driverMap].sort((a,b)=>b.q1Score-a.q1Score).map((e,i)=>({...e, score:e.q1Score, q1Pos:i+1, elim1:i>=15}));
+  const q2All=[...driverMap].map(e=>({...e, score:e.q2Score!==null?e.q2Score:e.q1Score-3})).sort((a,b)=>b.score-a.score);
+  const q2Avg=[...q2All.slice(0,15).map((e,i)=>({...e, q2Pos:i+1, elim2:i>=10})),...q2All.slice(15).map((e,i)=>({...e, q2Pos:16+i, elim2:true}))];
+  const q3All=[...driverMap].map(e=>({...e, score:e.q3Score!==null?e.q3Score:(e.q2Score!==null?e.q2Score-2:e.q1Score-5)})).sort((a,b)=>b.score-a.score);
   const q3Avg=q3All.slice(0,10).map((e,i)=>({...e, q3Pos:i+1}));
-
   const q2Elim=q2Avg.filter(e=>e.elim2).sort((a,b)=>a.q2Pos-b.q2Pos);
   const q1Elim=q1Avg.filter(e=>e.elim1).sort((a,b)=>a.q1Pos-b.q1Pos);
   const grid=[...q3Avg,...q2Elim,...q1Elim];
-
-  // Use the representative run for display so each session tab shows its own order.
-  // Patch elim flags to match averaged decisions so highlighted eliminations are consistent.
-  const avgElim1 = new Set(q1Elim.map(e=>e.driver.id));
-  const avgElim2 = new Set(q2Elim.map(e=>e.driver.id));
-  const q1Display  = displayRun ? displayRun.q1.map(e=>({...e, elim1:avgElim1.has(e.driver.id)}))  : q1Avg;
-  const q2Display  = displayRun ? displayRun.q2.map(e=>({...e, elim2:avgElim2.has(e.driver.id)}))  : q2Avg;
-  const q3Display  = displayRun ? displayRun.q3 : q3Avg;
-
-  return {
-    q1: q1Display,
-    q2: q2Display,
-    q3: q3Display,
-    grid: grid.map(e=>({...e,score:e.q3Score||e.q2Score||e.q1Score})),
-    runsUsed: n,
-    q1Events: genQEvents("Q1", q1Display, track, 15),
-    q2Events: genQEvents("Q2", q2Display, track, 10),
-    q3Events: genQEvents("Q3", q3Display, track, null),
-  };
+  const avgElim1=new Set(q1Elim.map(e=>e.driver.id));
+  const avgElim2=new Set(q2Elim.map(e=>e.driver.id));
+  const q1Display=displayRun?displayRun.q1.map(e=>({...e, elim1:avgElim1.has(e.driver.id)})):q1Avg;
+  const q2Display=displayRun?displayRun.q2.map(e=>({...e, elim2:avgElim2.has(e.driver.id)})):q2Avg;
+  const q3Display=displayRun?displayRun.q3:q3Avg;
+  return {q1:q1Display, q2:q2Display, q3:q3Display, grid:grid.map(e=>({...e,score:e.q3Score||e.q2Score||e.q1Score})), runsUsed:n, q1Events:genQEvents("Q1",q1Display,track,15), q2Events:genQEvents("Q2",q2Display,track,10), q3Events:genQEvents("Q3",q3Display,track,null)};
 }
 
 // Aggregated race: run N times, average finish positions → canonical race
@@ -1497,7 +1775,8 @@ function aggSprint(n, grid, teams, track) {
 }
 
 
-// Runs the full weekend pipeline N times, averaging positions and points. Powers the MULTI-SIM tab.
+// ║  Runs the full weekend pipeline (qual + optional sprint + race) N times ║
+// ║  average position, total points. Powers the 📊 MULTI-SIM tab.          ║
 function runMultiSim(n, drivers, teams, track) {
   const acc = {};
   drivers.forEach(d => {
@@ -1565,7 +1844,8 @@ const TESTING_SESSIONS = [
 ];
 
 
-// Generates pre-season test data: qualifying sim laps and long-run stints per day, with weather conditions.
+// ║  Generates per-day test data: qualifying simulation laps, long-run      ║
+// ║  character (installation / setup / quali sims) with conditions.         ║
 function runPreseasonTest(days, drivers, teams, trackId) {
   const track = TRACKS.find(t=>t.id===trackId)||TRACKS[0];
   const ISSUE_TYPES = ["Hydraulics issue","Power unit concern","Gearbox problem","Brake failure","Cooling issue","Suspension damage","Oil leak","Electrical fault","DRS fault","Floor damage"];
@@ -1585,7 +1865,8 @@ function runPreseasonTest(days, drivers, teams, trackId) {
   // Build per-driver overall data once, then vary by day
   const driverBases = drivers.map(d=>{
     const team=teams.find(t=>t.id===d.teamId)||teams[teams.length-1];
-    const base=87+(100-team.carPace)*0.28+(100-d.pace)*0.14;
+    const _tts=getTeamStats(team);
+    const base=87+(100-_tts.carPace)*0.28+(100-d.pace)*0.14;
     const altPenalty=((track.alt||0)>500?(track.alt-500)/8000:0);
     return {driver:d,team,base,altPenalty};
   });
@@ -1619,7 +1900,7 @@ function runPreseasonTest(days, drivers, teams, trackId) {
       lapTotal[d.id]=lapsDone;
 
       // Per-day issues — more common on day 1
-      const issueChance=(100-team.reliability)/260*(di===0?1.6:di===1?1.0:0.7);
+      const issueChance=(100-_tts.reliability)/260*(di===0?1.6:di===1?1.0:0.7);
       const issue=Math.random()<issueChance?{
         type:ISSUE_TYPES[Math.floor(Math.random()*ISSUE_TYPES.length)],
         session:_pick(["Morning","Afternoon"]),
@@ -1660,6 +1941,11 @@ function fmtLap(s){const m=Math.floor(s/60);return `${m}:${(s%60).toFixed(3).pad
 // ===================== SESSION CAPTIONS =====================
 
 
+// ║  Sky Sports-style written reports for each session. All randomised      ║
+// ║                                                                          ║
+// ║  buildSprintCaption()     — Sprint race report with rivalries            ║
+// ║  buildDayCaption()        — Per-day test report                          ║
+// ║  buildQ2Caption()         — Q2 session narrative with tyre strategy      ║
 function buildQualifyingCaption(q1,q2,q3,grid,track){
   const pole=grid[0], p2=grid[1], p3=grid[2], p4=grid[3]||grid[2];
   const q2elim=q1.filter(e=>e.elim1);
@@ -2124,7 +2410,8 @@ function buildQ3Caption(q3, track){
 }
 
 
-// Seven commentary stages rendered by the race view, from lights out to podium.
+// ║  Reusable React components: Bar, MentalBar, TrackPicker, RivalPicker,  ║
+// ║  STAGE_DEFS: the 7 Croft & Brundle commentary stages (lights out →     ║
 const STAGE_DEFS=[
   {key:"start",   title:"LIGHTS OUT",      emoji:"🚦",color:"#E8002D",lapHint:"Laps 1–5"},
   {key:"early",   title:"EARLY RUNNING",   emoji:"⚡",color:"#FF8844",lapHint:"Laps 6–20"},
@@ -2136,6 +2423,20 @@ const STAGE_DEFS=[
 ];
 
 // ===================== MAIN APP =====================
+
+
+// ║  F1Sim is the root React component. All state lives here.               ║
+// ║  State:   drivers, teams, track, view, qual, sprint, race, stages,      ║
+// ║                                                                          ║
+// ║           → testing → multisim → championship                           ║
+// ║  Persistence: localStorage keys:                                         ║
+// ║    f1sim_teams   — serialised team array                                ║
+
+// ║  Shows on first load. F1 2027 is the only active series; F2/F3/F4/     ║
+// ║  ready to be activated in future versions.                               ║
+
+// ║  Anonymised race simulation data is sent to a Supabase backend.         ║
+// ║  local model via Bayesian blending. All data is opt-in and anonymous.   ║
 
 
 // Replace these with your own Supabase project URL and anon key.
@@ -2547,7 +2848,6 @@ export default function F1Sim(){
 
   const doQual=()=>{
     setFp1(runFP(1,drivers,teams,track));
-    // Sprint weekends have no FP2; non-sprint weekends get FP2
     if(track.hasSprint){
       setFp2(null);
       setSprintQual(aggSprintQual(runAccuracy,drivers,teams,track));
@@ -2561,7 +2861,6 @@ export default function F1Sim(){
   };
   const doSprint=()=>{
     if(!qual) return;
-    // Use sprint qual grid if available, otherwise fall back to main qual grid
     const sprintGrid = sprintQual ? sprintQual.sprintGrid : qual.grid;
     setSprint(aggSprint(runAccuracy,sprintGrid,teams,track));
     setView("sprint");
@@ -2595,17 +2894,17 @@ export default function F1Sim(){
             driverName:e.driver.name, driverFlag:e.driver.flag, driverAbbr:e.driver.abbr,
             teamName:e.team.name, teamColor:e.team.color, driverId:e.driver.id,
           })),
-          fp1: fp1 ? fp1.positions.map(e=>({pos:e.pos, driver:{name:e.driver.name,flag:e.driver.flag,abbr:e.driver.abbr,id:e.driver.id}, team:{name:e.team.name,color:e.team.color}, score:e.score})) : null,
-          fp2: fp2 ? fp2.positions.map(e=>({pos:e.pos, driver:{name:e.driver.name,flag:e.driver.flag,abbr:e.driver.abbr,id:e.driver.id}, team:{name:e.team.name,color:e.team.color}, score:e.score})) : null,
-          sprintQual: sprintQual ? {
-            sq1: sprintQual.sq1.map(e=>({...e, driver:{name:e.driver.name,flag:e.driver.flag,abbr:e.driver.abbr,id:e.driver.id}, team:{name:e.team.name,color:e.team.color}})),
-            sq2: sprintQual.sq2.map(e=>({...e, driver:{name:e.driver.name,flag:e.driver.flag,abbr:e.driver.abbr,id:e.driver.id}, team:{name:e.team.name,color:e.team.color}})),
-            sq3: sprintQual.sq3.map(e=>({...e, driver:{name:e.driver.name,flag:e.driver.flag,abbr:e.driver.abbr,id:e.driver.id}, team:{name:e.team.name,color:e.team.color}})),
-          } : null,
           q1: qual.q1.map(e=>({...e, driver:{name:e.driver.name,flag:e.driver.flag,abbr:e.driver.abbr,id:e.driver.id}, team:{name:e.team.name,color:e.team.color}})),
           q2: qual.q2.map(e=>({...e, driver:{name:e.driver.name,flag:e.driver.flag,abbr:e.driver.abbr,id:e.driver.id}, team:{name:e.team.name,color:e.team.color}})),
           q3: qual.q3.map(e=>({...e, driver:{name:e.driver.name,flag:e.driver.flag,abbr:e.driver.abbr,id:e.driver.id}, team:{name:e.team.name,color:e.team.color}})),
           runsUsed: qual.runsUsed||1,
+        } : null,
+        fp1: fp1 ? fp1.results.map(e=>({driverName:e.driver.name,driverFlag:e.driver.flag,driverAbbr:e.driver.abbr,teamName:e.team.name,teamColor:e.team.color,gap:e.gap,laps:e.laps})) : null,
+        fp2: fp2 ? fp2.results.map(e=>({driverName:e.driver.name,driverFlag:e.driver.flag,driverAbbr:e.driver.abbr,teamName:e.team.name,teamColor:e.team.color,gap:e.gap,laps:e.laps})) : null,
+        sprintQual: sprintQual ? {
+          sq1: sprintQual.sq1.map(e=>({...e,driver:{name:e.driver.name,flag:e.driver.flag,abbr:e.driver.abbr,id:e.driver.id},team:{name:e.team.name,color:e.team.color}})),
+          sq2: sprintQual.sq2.map(e=>({...e,driver:{name:e.driver.name,flag:e.driver.flag,abbr:e.driver.abbr,id:e.driver.id},team:{name:e.team.name,color:e.team.color}})),
+          sq3: sprintQual.sq3.map(e=>({...e,driver:{name:e.driver.name,flag:e.driver.flag,abbr:e.driver.abbr,id:e.driver.id},team:{name:e.team.name,color:e.team.color}})),
         } : null,
         sprint: sprint ? {
           positions: sprint.positions.map((e,i)=>({
@@ -3026,7 +3325,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
           podium_pct:r.podiumPct||0, avg_pos:r.avgPos||11,
         })),
         driver_stats: enrichedStats,
-        team_paces: teams.map(t=>({id:t.id,pace:t.carPace})),
+        team_paces: teams.map(t=>{const s=getTeamStats(t);return{id:t.id,pace:s.carPace};}),
         actual_winner_id: null,
         prediction_correct: null,
         openf1_session_key: sk,
@@ -3132,7 +3431,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                   <button key={t} onClick={()=>setGTab(t)} style={{background:gTab===t?"#2A2A30":"transparent",color:gTab===t?"#F0F0F0":"#899",border:"1px solid #2A2A30",padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>{l}</button>
                 ))}
                 <button onClick={()=>setModal({type:"driver",data:{name:"",abbr:"",num:99,teamId:teams[0]?.id||"",pace:78,consistency:78,wet:75,overtaking:75,defense:75,experience:65,mental:7,flag:"🏁",goodTracks:[],badTracks:[]}})} style={{background:"#E8002D",color:"#fff",border:"none",padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>+ DRIVER</button>
-                <button onClick={()=>setModal({type:"team",data:{name:"",abbr:"",color:"#aaa",tc:"#fff",carPace:70,reliability:75,pitSpeed:78,engine:"Customer"}})} style={{background:"#2A2A30",color:"#ccc",border:"none",padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>+ TEAM</button>
+                <button onClick={()=>setModal({type:"team",data:{name:"",abbr:"",color:"#aaa",tc:"#fff",basePitSpeed:78,engine:"Customer",strategy:"one_stop",parts:{...TEAM_DEFAULT_PARTS.cadillac}}})} style={{background:"#2A2A30",color:"#ccc",border:"none",padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>+ TEAM</button>
               </div>
             </div>
 
@@ -3185,9 +3484,9 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                       <div><div style={{fontSize:20,fontWeight:700}}>{t.name}</div><div style={{fontSize:14,color:"#778",letterSpacing:1.5,marginTop:2}}>⚙️ {t.engine}</div></div>
                       <div style={{background:t.color,color:t.tc||"#fff",fontSize:14,fontWeight:700,padding:"3px 8px",letterSpacing:2.5,borderRadius:2}}>{t.abbr}</div>
                     </div>
-                    {[["CAR PACE",t.carPace],["RELIABILITY",t.reliability],["PIT SPEED",t.pitSpeed]].map(([l,v])=>(
+                    {(()=>{const _s=getTeamStats(t);return[["CAR PACE",_s.carPace],["RELIABILITY",_s.reliability],["PIT SPEED",_s.pitSpeed]].map(([l,v])=>(
                       <div key={l} style={{marginBottom:9}}><div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"#778",letterSpacing:1.5,marginBottom:2}}><span>{l}</span><span style={{color:"#bbb"}}>{v}</span></div><Bar val={v} color={t.color}/></div>
-                    ))}
+                    ));})()} 
                     {(()=>{const st=TEAM_STRATEGIES.find(s=>s.id===t.strategy);return st?(
                       <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8,marginBottom:2}}>
                         <span style={{fontSize:12}}>{st.icon}</span>
@@ -3250,72 +3549,66 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
 
         
         {view==="qualifying"&&qual&&(()=>{
-          const isFP  = qTab==="fp1"||qTab==="fp2";
-          const isSQ  = qTab==="sq1"||qTab==="sq2"||qTab==="sq3";
-          const fpData = qTab==="fp1"?fp1:qTab==="fp2"?fp2:null;
-          const tabs=[
-            {k:"fp1",l:"FP1",sub:"ALL DRIVERS",dur:"60 MIN",elim:null,src:fp1?.positions,events:[],capFn:()=>buildFPCaption(fp1,track),color:"#44AACC",isFP:true,isSQ:false},
-            // FP2 only on non-sprint weekends
-            fp2?{k:"fp2",l:"FP2",sub:"ALL DRIVERS",dur:"60 MIN",elim:null,src:fp2?.positions,events:[],capFn:()=>buildFPCaption(fp2,track),color:"#44AACC",isFP:true,isSQ:false}:null,
-            // Sprint qualifying tabs — sprint tracks only
-            sprintQual?{k:"sq1",l:"SQ1",sub:"ALL DRIVERS",dur:"12 MIN",elim:15,src:sprintQual.sq1,events:sprintQual.sq1Events,capFn:()=>buildSQCaption("SQ1",sprintQual.sq1,track),color:"#BB66FF",isFP:false,isSQ:true}:null,
-            sprintQual?{k:"sq2",l:"SQ2",sub:"TOP 15",     dur:"10 MIN",elim:10,src:sprintQual.sq2,events:sprintQual.sq2Events,capFn:()=>buildSQCaption("SQ2",sprintQual.sq2,track),color:"#CC88FF",isFP:false,isSQ:true}:null,
-            sprintQual?{k:"sq3",l:"SQ3",sub:"SPRINT POLE",dur:"8 MIN", elim:null,src:sprintQual.sq3,events:sprintQual.sq3Events,capFn:()=>buildSQCaption("SQ3",sprintQual.sq3,track),color:"#FFC906",isFP:false,isSQ:true}:null,
-            // Main qualifying
-            {k:"q1",l:"Q1",sub:"ALL DRIVERS",dur:"18 MIN",elim:15,src:qual.q1,events:qual.q1Events,capFn:()=>buildQ1Caption(qual.q1,track),color:"#FF8844",isFP:false,isSQ:false},
-            {k:"q2",l:"Q2",sub:"TOP 15",     dur:"15 MIN",elim:10,src:qual.q2,events:qual.q2Events,capFn:()=>buildQ2Caption(qual.q2,track),color:"#FFC906",isFP:false,isSQ:false},
-            {k:"q3",l:"Q3",sub:"POLE SHOOT", dur:"12 MIN",elim:null,src:qual.q3,events:qual.q3Events,capFn:()=>buildQ3Caption(qual.q3,track),color:"#E8002D",isFP:false,isSQ:false},
-          ].filter(Boolean);
-          const cur=tabs.find(t=>t.k===qTab);
+          // Build tab list: FP1 → (FP2 or SQ1/SQ2/SQ3) → Q1 → Q2 → Q3
+          const tabs=[];
+          if(fp1) tabs.push({k:"fp1",l:"FP1",sub:"FREE PRACTICE",dur:"60 MIN",color:"#4488FF",kind:"fp",data:fp1});
+          if(fp2&&!track.hasSprint) tabs.push({k:"fp2",l:"FP2",sub:"FREE PRACTICE",dur:"60 MIN",color:"#44AAFF",kind:"fp",data:fp2});
+          if(sprintQual&&track.hasSprint){
+            tabs.push({k:"sq1",l:"SQ1",sub:"ALL DRIVERS",dur:"12 MIN",color:"#BB66FF",kind:"sq",src:sprintQual.sq1,events:sprintQual.sq1Events,elim:12});
+            tabs.push({k:"sq2",l:"SQ2",sub:"TOP 12",     dur:"10 MIN",color:"#DD88FF",kind:"sq",src:sprintQual.sq2,events:sprintQual.sq2Events,elim:8});
+            tabs.push({k:"sq3",l:"SQ3",sub:"SPRINT GRID",dur:"8 MIN", color:"#FF66FF",kind:"sq",src:sprintQual.sq3,events:sprintQual.sq3Events,elim:null});
+          }
+          tabs.push({k:"q1",l:"Q1",sub:"ALL DRIVERS",dur:"18 MIN",elim:15,src:qual.q1,events:qual.q1Events,capFn:()=>buildQ1Caption(qual.q1,track),color:"#FF8844",kind:"q"});
+          tabs.push({k:"q2",l:"Q2",sub:"TOP 15",     dur:"15 MIN",elim:10,src:qual.q2,events:qual.q2Events,capFn:()=>buildQ2Caption(qual.q2,track),color:"#FFC906",kind:"q"});
+          tabs.push({k:"q3",l:"Q3",sub:"POLE SHOOT", dur:"12 MIN",elim:null,src:qual.q3,events:qual.q3Events,capFn:()=>buildQ3Caption(qual.q3,track),color:"#E8002D",kind:"q"});
+          const cur=tabs.find(t=>t.k===qTab)||tabs[tabs.length-1];
           return(
             <div style={{animation:"fadeIn 0.2s ease"}}>
               <div style={{marginBottom:14}}>
                 <div style={{fontSize:26,fontWeight:700,letterSpacing:3}}>RACE WEEKEND — {track.name.toUpperCase()}</div>
                 <div style={{display:"flex",gap:8,alignItems:"center",marginTop:4,flexWrap:"wrap"}}>
                   <div style={{fontSize:14,color:"#778",letterSpacing:1.5}}>{track.flag} {track.circuit}</div>
+                  {track.hasSprint&&<span style={{background:"#FFC90620",color:"#FFC906",fontSize:12,fontWeight:700,padding:"2px 8px",borderRadius:2,letterSpacing:1}}>⚡ SPRINT WEEKEND</span>}
                   {qual.runsUsed>1&&<span style={{background:"#E8002D18",color:"#E8002D",fontSize:12,fontWeight:700,padding:"2px 8px",borderRadius:2,letterSpacing:1}}>⟳ ×{qual.runsUsed} RUNS AVERAGED</span>}
                 </div>
               </div>
 
-              {/* Session tabs — FP1, FP2, Q1, Q2, Q3 */}
-              <div style={{display:"flex",gap:4,marginBottom:16,background:"#0D0D10",padding:5,borderRadius:5,border:"1px solid #1E1E22"}}>
+              {/* Session tabs */}
+              <div style={{display:"flex",gap:3,marginBottom:16,background:"#0D0D10",padding:4,borderRadius:5,border:"1px solid #1E1E22",flexWrap:"wrap"}}>
                 {tabs.map(t=>(
                   <button key={t.k} onClick={()=>setQTab(t.k)}
-                    style={{flex:1,background:qTab===t.k?`${t.color}18`:"transparent",color:qTab===t.k?t.color:"#899",border:`1px solid ${qTab===t.k?t.color+"55":"transparent"}`,padding:"8px 2px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1,borderRadius:3,transition:"all 0.15s"}}>
+                    style={{flex:1,minWidth:52,background:qTab===t.k?`${t.color}22`:"transparent",color:qTab===t.k?t.color:"#677",border:`1px solid ${qTab===t.k?t.color+"55":"transparent"}`,padding:"7px 4px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1,borderRadius:3,transition:"all 0.15s"}}>
                     <div>{t.l}</div>
-                    <div style={{fontSize:9,color:qTab===t.k?t.color:"#555",marginTop:2}}>{t.sub}</div>
+                    <div style={{fontSize:9,color:qTab===t.k?t.color:"#445",marginTop:2,letterSpacing:0.5}}>{t.sub}</div>
                   </button>
                 ))}
               </div>
 
-              {/* FP session display */}
-              {/* FP session display */}
-              {isFP&&fpData&&cur?.src&&(
+              {/* FP tab content */}
+              {cur&&cur.kind==="fp"&&cur.data&&(
                 <div style={{display:"grid",gridTemplateColumns:"1fr 340px",gap:16,alignItems:"start"}}>
                   <div>
-                    <div style={{fontSize:11,color:"#44AACC",letterSpacing:2,marginBottom:8,fontWeight:700}}>FREE PRACTICE {fpData.sessionNum} — TIMESHEET · ALL 20 DRIVERS</div>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-                      {cur.src.map((e,i)=>{
-                        const gap = i===0 ? null : ((cur.src[0].score-e.score)*0.011);
-                        return(
-                          <div key={e.driver.id} style={{background:i<3?"#181810":"#161618",border:`1px solid ${i<3?"#44AACC22":"#1E1E22"}`,borderLeft:`3px solid ${e.team.color}`,borderRadius:3,padding:"10px 13px",display:"flex",alignItems:"center",gap:9}}>
-                            <div style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?"#44AACC":i===1?"#2A7A9A":i===2?"#1A5A7A":"transparent",color:i<3?"#fff":"#bbb",fontSize:12,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #2A2A30":"none",flexShrink:0}}>{i+1}</div>
-                            <div style={{flex:1,minWidth:0}}>
-                              <div style={{fontSize:14,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{e.driver.name}</div>
-                              <div style={{fontSize:12,color:e.team.color,letterSpacing:1.5}}>{e.team.name}</div>
-                            </div>
-                            <div style={{textAlign:"right",flexShrink:0}}>
-                              <div style={{fontSize:13,fontFamily:"monospace",color:i===0?"#44AACC":"#aaa"}}>{i===0?"FASTEST":gap?"+"+gap.toFixed(3)+"s":""}</div>
-                            </div>
+                    <div style={{display:"grid",gap:5}}>
+                      {cur.data.results.map((e,i)=>(
+                        <div key={e.driver.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",background:"#161618",border:"1px solid #1E1E22",borderLeft:`3px solid ${e.team.color}`,borderRadius:3}}>
+                          <div style={{width:28,textAlign:"center",fontSize:13,fontWeight:700,color:i<3?"#FFC906":"#666"}}>{i+1}</div>
+                          <div style={{width:44,fontFamily:"monospace",fontSize:11,fontWeight:700,color:e.team.color,letterSpacing:1}}>{e.driver.abbr}</div>
+                          <div style={{flex:1}}>
+                            <div style={{fontSize:14,fontWeight:700}}>{e.driver.name}</div>
+                            <div style={{fontSize:11,color:e.team.color,letterSpacing:1}}>{e.team.name}</div>
                           </div>
-                        );
-                      })}
+                          <div style={{textAlign:"right"}}>
+                            <div style={{fontSize:13,fontFamily:"monospace",color:i===0?"#FFC906":"#ccc"}}>{i===0?"BEST":`+${e.gap}s`}</div>
+                            <div style={{fontSize:11,color:"#556"}}>{e.laps} laps</div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                   <div>
-                    <div style={{background:"#0F0F12",border:"1px solid #44AACC22",borderLeft:"4px solid #44AACC",borderRadius:"0 6px 6px 0",padding:"14px 16px"}}>
-                      <div style={{fontSize:11,color:"#44AACC",fontWeight:700,letterSpacing:2,marginBottom:10}}>FP{fpData.sessionNum} REPORT</div>
-                      {buildFPCaption(fpData,track).map((c,i)=>(
+                    <div style={{background:"#0F0F12",border:`1px solid ${cur.color}22`,borderLeft:`4px solid ${cur.color}`,borderRadius:"0 6px 6px 0",padding:"14px 16px"}}>
+                      <div style={{fontSize:11,color:cur.color,fontWeight:700,letterSpacing:2,marginBottom:10}}>{cur.l} REPORT</div>
+                      {buildFPCaption(cur.data,track).map((c,i)=>(
                         <p key={i} style={{fontSize:13,color:i===0?"#F0F0F0":"#aaa",lineHeight:1.8,marginBottom:8,whiteSpace:"pre-line"}}>{c}</p>
                       ))}
                     </div>
@@ -3323,21 +3616,16 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                 </div>
               )}
 
-              {/* Sprint qualifying display (SQ1/SQ2/SQ3) */}
-              {isSQ&&cur&&cur.src&&(
+              {/* SQ tab content */}
+              {cur&&cur.kind==="sq"&&cur.src&&(
                 <div style={{display:"grid",gridTemplateColumns:"1fr 340px",gap:16,alignItems:"start"}}>
                   <div>
-                    <div style={{fontSize:11,color:cur.color,letterSpacing:2,marginBottom:8,fontWeight:700}}>
-                      ⚡ SPRINT QUALIFYING — {cur.l} · {cur.sub} · {cur.dur}
-                      {qTab==="sq3"&&sprintQual&&<span style={{marginLeft:8,background:"#FFC90622",color:"#FFC906",padding:"2px 6px",borderRadius:2}}>SETS SPRINT GRID</span>}
-                    </div>
-                    <QGrid entries={cur.src} gapFrom={cur.src} elimLine={cur.elim} elimColor={cur.color}
-                           posLabel={qTab==="sq3"?"SPRINT POLE":undefined}/>
+                    <QGrid entries={cur.src} gapFrom={cur.src} elimLine={cur.elim} elimColor={cur.color}/>
                   </div>
                   <div>
                     {cur.events&&cur.events.length>0&&(
                       <div style={{marginBottom:12}}>
-                        <div style={{fontSize:11,color:cur.color,fontWeight:700,letterSpacing:2,marginBottom:8}}>⚡ {cur.l} SESSION EVENTS</div>
+                        <div style={{fontSize:11,color:cur.color,fontWeight:700,letterSpacing:2,marginBottom:8}}>{cur.l} SESSION EVENTS</div>
                         {cur.events.map((ev,i)=>(
                           <div key={i} style={{borderLeft:`3px solid ${ev.type==="yellow"?"#FFC906":ev.type==="battle"?"#FF8844":ev.type==="strategy"?"#BB66FF":ev.type==="surprise"?"#44CC88":"#4488FF"}`,padding:"9px 12px",marginBottom:6,background:"#161618",borderRadius:"0 4px 4px 0"}}>
                             <div style={{fontSize:13,lineHeight:1.6}}>{ev.icon} {ev.text}</div>
@@ -3346,8 +3634,8 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                       </div>
                     )}
                     <div style={{background:"#0F0F12",border:`1px solid ${cur.color}22`,borderLeft:`4px solid ${cur.color}`,borderRadius:"0 6px 6px 0",padding:"14px 16px"}}>
-                      <div style={{fontSize:11,color:cur.color,fontWeight:700,letterSpacing:2,marginBottom:10}}>⚡ {cur.l} REPORT</div>
-                      {cur.capFn().map((c,i)=>(
+                      <div style={{fontSize:11,color:cur.color,fontWeight:700,letterSpacing:2,marginBottom:10}}>{cur.l} REPORT</div>
+                      {buildSQCaption(cur.k.toUpperCase(),cur.src,track).map((c,i)=>(
                         <p key={i} style={{fontSize:13,color:i===0?"#F0F0F0":"#aaa",lineHeight:1.8,marginBottom:8,whiteSpace:"pre-line"}}>{c}</p>
                       ))}
                     </div>
@@ -3355,8 +3643,8 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                 </div>
               )}
 
-              {/* Main qualifying session display */}
-              {!isFP&&!isSQ&&cur&&(
+              {/* Q tab content */}
+              {cur&&cur.kind==="q"&&cur.src&&(
                 <div style={{display:"grid",gridTemplateColumns:"1fr 340px",gap:16,alignItems:"start"}}>
                   <div>
                     <QGrid entries={cur.src} gapFrom={cur.src} elimLine={cur.elim} elimColor={cur.color}/>
@@ -3375,14 +3663,14 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                     <div style={{background:"#0F0F12",border:`1px solid ${cur.color}22`,borderLeft:`4px solid ${cur.color}`,borderRadius:"0 6px 6px 0",padding:"14px 16px"}}>
                       <div style={{fontSize:11,color:cur.color,fontWeight:700,letterSpacing:2,marginBottom:10}}>{cur.l} REPORT</div>
                       {cur.capFn().map((c,i)=>(
-                        <p key={i} style={{fontSize:13,color:i===0?"#F0F0F0":"#aaa",lineHeight:1.8,marginBottom:i<cur.capFn().length-1?10:0,whiteSpace:"pre-line"}}>{c}</p>
+                        <p key={i} style={{fontSize:13,color:i===0?"#F0F0F0":"#aaa",lineHeight:1.8,marginBottom:8,whiteSpace:"pre-line"}}>{c}</p>
                       ))}
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* Overall qualifying story */}
+              {/* Full qualifying report — shown on Q3 tab */}
               {qTab==="q3"&&(
                 <div style={{marginTop:16,background:"#0F0F12",border:"1px solid #FFC90622",borderLeft:"4px solid #FFC906",borderRadius:"0 6px 6px 0",padding:"16px 20px"}}>
                   <div style={{fontSize:12,color:"#FFC906",fontWeight:700,letterSpacing:2,marginBottom:10}}>🎙 FULL QUALIFYING REPORT</div>
@@ -3392,20 +3680,9 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                 </div>
               )}
 
-              {/* Sprint pole summary when on SQ3 tab */}
-              {qTab==="sq3"&&sprintQual&&sprintQual.sq3&&sprintQual.sq3.length>0&&(
-                <div style={{marginTop:16,background:"#0F0F12",border:"1px solid #BB66FF22",borderLeft:"4px solid #BB66FF",borderRadius:"0 6px 6px 0",padding:"16px 20px"}}>
-                  <div style={{fontSize:12,color:"#BB66FF",fontWeight:700,letterSpacing:2,marginBottom:10}}>⚡ SPRINT GRID SET — {sprintQual.sq3[0].driver.name} ON SPRINT POLE</div>
-                  <p style={{fontSize:13,color:"#aaa",lineHeight:1.8,margin:0}}>
-                    {sprintQual.sq3[0].driver.name} leads the sprint grid for {sprintQual.sq3[0].team.name}.
-                    {sprintQual.sq3[1]?" "+sprintQual.sq3[1].driver.name+" ("+sprintQual.sq3[1].team.name+") starts from P2.":""} The sprint race order is now locked in — main qualifying for the grand prix grid follows separately.
-                  </p>
-                </div>
-              )}
-
               <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:16,flexWrap:"wrap"}}>
                 <button onClick={doQual} style={{background:"#2A2A30",color:"#ccc",border:"none",padding:"10px 20px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:2.5,borderRadius:3}}>↺ RE-SIMULATE</button>
-                {track.hasSprint&&<button onClick={doSprint} style={{background:"#BB66FF",color:"#fff",border:"none",padding:"10px 22px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:2.5,borderRadius:3}}>⚡ RUN SPRINT →</button>}
+                {track.hasSprint&&<button onClick={doSprint} style={{background:"#FFC906",color:"#000",border:"none",padding:"10px 22px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:2.5,borderRadius:3}}>⚡ RUN SPRINT →</button>}
                 <button onClick={doRace} style={{background:"#E8002D",color:"#fff",border:"none",padding:"10px 24px",cursor:"pointer",fontFamily:"inherit",fontSize:16,fontWeight:700,letterSpacing:3,borderRadius:3}}>START RACE →</button>
               </div>
             </div>
@@ -3623,7 +3900,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
 
                   <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:12}}>
                     <button onClick={doCommentary} style={{background:"#2A2A30",color:"#ccc",border:"none",padding:"9px 18px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>↺ REGENERATE</button>
-                    <button onClick={()=>{setView("tracks");setQual(null);setSprintQual(null);setFp1(null);setFp2(null);setSprint(null);setRace(null);setStages(null);}} style={{background:"#E8002D",color:"#fff",border:"none",padding:"9px 22px",cursor:"pointer",fontFamily:"inherit",fontSize:15,fontWeight:700,letterSpacing:2.5,borderRadius:3}}>NEW RACE →</button>
+                    <button onClick={()=>{setView("tracks");setQual(null);setSprint(null);setRace(null);setStages(null);setFp1(null);setFp2(null);setSprintQual(null);setRaceSaved(false);setDbSaving(false);}} style={{background:"#E8002D",color:"#fff",border:"none",padding:"9px 22px",cursor:"pointer",fontFamily:"inherit",fontSize:15,fontWeight:700,letterSpacing:2.5,borderRadius:3}}>NEW RACE →</button>
                   </div>
                 </>
               );
