@@ -17,138 +17,138 @@ import { useState, useRef } from "react";
 const PARTS = {
 
   powerUnit: [
-    {id:"pu_mercedes_a",  name:"Mercedes PU — Spec A", mfr:"Mercedes", spec:3,
+    {id:"pu_mercedes_a",  name:"Mercedes PU — Spec A", mfr:"Mercedes", spec:3, cost:0,
      pace:8, reliability:7, fuel:-1, straightSpeed:9, description:"Dominant hybrid unit. Best peak power in the field but demands careful fuel management over race distance."},
-    {id:"pu_ferrari_a",   name:"Ferrari PU — Spec A", mfr:"Ferrari", spec:3,
+    {id:"pu_ferrari_a",   name:"Ferrari PU — Spec A", mfr:"Ferrari", spec:3, cost:0,
      pace:9, reliability:6, fuel:-2, straightSpeed:10, description:"Highest peak power. Phenomenal qualifying engine but harder on fuel — forces conservative mapping in long stints."},
-    {id:"pu_honda_rbpt",  name:"Honda RBPT — Spec B", mfr:"Honda", spec:3,
+    {id:"pu_honda_rbpt",  name:"Honda RBPT — Spec B", mfr:"Honda", spec:3, cost:0,
      pace:7, reliability:9, fuel:0, straightSpeed:7, description:"Bulletproof reliability. Lower peak power but exceptional harvest efficiency — suits high-downforce circuits."},
-    {id:"pu_audi_a",      name:"Audi PU — Spec A", mfr:"Audi", spec:2,
+    {id:"pu_audi_a",      name:"Audi PU — Spec A", mfr:"Audi", spec:2, cost:0,
      pace:5, reliability:8, fuel:1, straightSpeed:6, description:"New manufacturer finding its feet. Thermally efficient and fuel-friendly but not yet at the top teams' level."},
-    {id:"pu_ford_rbpt",   name:"Ford/RBPT — Spec A", mfr:"Ford", spec:2,
+    {id:"pu_ford_rbpt",   name:"Ford/RBPT — Spec A", mfr:"Ford", spec:2, cost:0,
      pace:6, reliability:7, fuel:0, straightSpeed:7, description:"Ford-badged RBPT unit for customer teams. Solid mid-tier performance, good straight-line speed relative to reliability."},
-    {id:"pu_alpine_a",    name:"Alpine PU — Spec B", mfr:"Alpine", spec:2,
+    {id:"pu_alpine_a",    name:"Alpine PU — Spec B", mfr:"Alpine", spec:2, cost:0,
      pace:4, reliability:7, fuel:1, straightSpeed:5, description:"Improved from last year's troubled unit. Better reliability but still a meaningful deficit to the leading manufacturers."},
-    {id:"pu_customer_a",  name:"Customer Spec — Gen 3", mfr:"Generic", spec:1,
+    {id:"pu_customer_a",  name:"Customer Spec — Gen 3", mfr:"Generic", spec:1, cost:0,
      pace:2, reliability:8, fuel:0, straightSpeed:3, description:"Standard customer power unit. Nothing special but nothing that will let you down. Safe choice for a developing team."},
-    {id:"pu_experimental",name:"Experimental MGU-H — Proto", mfr:"Classified", spec:3,
+    {id:"pu_experimental",name:"Experimental MGU-H — Proto", mfr:"Classified", spec:3, cost:15, unlockRound:10,
      pace:10, reliability:4, fuel:-3, straightSpeed:9, description:"Cutting-edge prototype unit. Extraordinary power when it works — but thermal management issues mean elevated retirement risk."},
   ],
 
   aero: [
-    {id:"aero_high",      name:"High Downforce Package", spec:"Monaco",
+    {id:"aero_high",      name:"High Downforce Package", spec:"Monaco", cost:5, unlockRound:2,
      cornerSpeed:10, straightSpeed:-5, tyreWear:1, wetPerformance:2,
      circuitBonus:{street:4,technical:3,"high-downforce":2},
-     description:"Maximum mechanical grip. Dominates Monaco, Singapore, Hungary. Severely compromised at power circuits — expect to be overtaken on every straight at Monza."},
-    {id:"aero_medhi",     name:"Medium-High Package", spec:"Versatile+",
+     description:"Maximum mechanical grip. Dominates Monaco, Singapore, Hungary. Severely compromised at power circuits."},
+    {id:"aero_medhi",     name:"Medium-High Package", spec:"Versatile+", cost:3, unlockRound:1,
      cornerSpeed:7, straightSpeed:-2, tyreWear:0, wetPerformance:1,
      circuitBonus:{technical:2,street:2},
-     description:"Balanced towards downforce. Works well at the majority of circuits, particularly technical layouts. Competitive at most rounds without being optimal at any."},
-    {id:"aero_balanced",  name:"Balanced Package", spec:"Standard",
+     description:"Balanced towards downforce. Works well at the majority of circuits, particularly technical layouts."},
+    {id:"aero_balanced",  name:"Balanced Package", spec:"Standard", cost:0,
      cornerSpeed:5, straightSpeed:0, tyreWear:0, wetPerformance:0,
      circuitBonus:{},
-     description:"True all-rounder. No specific weakness. The benchmark spec — teams with better-optimised packages beat this at specific circuits but this is competitive everywhere."},
-    {id:"aero_medlo",     name:"Medium-Low Package", spec:"Speed Bias",
+     description:"True all-rounder. No specific weakness. The benchmark spec — competitive everywhere."},
+    {id:"aero_medlo",     name:"Medium-Low Package", spec:"Speed Bias", cost:3, unlockRound:1,
      cornerSpeed:2, straightSpeed:3, tyreWear:-1, wetPerformance:-1,
      circuitBonus:{"high-speed":2,"low-downforce":3},
-     description:"Optimised for power circuits. Better straight-line speed at the cost of corner stability. Strong at Spa, Austria, Silverstone. Struggles in slow-speed corners."},
-    {id:"aero_low",       name:"Low Drag Package", spec:"Monza",
+     description:"Optimised for power circuits. Better straight-line speed at the cost of corner stability."},
+    {id:"aero_low",       name:"Low Drag Package", spec:"Monza", cost:4, unlockRound:1,
      cornerSpeed:-3, straightSpeed:8, tyreWear:-2, wetPerformance:-3,
      circuitBonus:{"low-downforce":6,"high-speed":4},
-     description:"Minimum wing configuration. Blistering on the straights at Monza and Las Vegas. A liability anywhere else — the car slides through medium and slow corners."},
-    {id:"aero_groundfx",  name:"Ground Effect Max", spec:"Technical",
+     description:"Minimum wing configuration. Blistering on the straights at Monza and Las Vegas."},
+    {id:"aero_groundfx",  name:"Ground Effect Max", spec:"Technical", cost:6, unlockRound:4,
      cornerSpeed:8, straightSpeed:1, tyreWear:2, wetPerformance:-1,
      circuitBonus:{technical:5,mixed:3},
-     description:"Maximises Venturi floor aerodynamics. Generates extraordinary cornering grip at medium-high speed but increases tyre wear and is sensitive to surface irregularities."},
-    {id:"aero_adaptive",  name:"Adaptive Wing System", spec:"Active",
+     description:"Maximises Venturi floor aerodynamics. Generates extraordinary cornering grip at medium-high speed."},
+    {id:"aero_adaptive",  name:"Adaptive Wing System", spec:"Active", cost:9, unlockRound:7,
      cornerSpeed:6, straightSpeed:4, tyreWear:0, wetPerformance:1,
      circuitBonus:{mixed:4,"high-speed":3,technical:2},
-     description:"Active aero elements adjust downforce between corners and straights. Excellent across all circuit types — the future of F1 aero but complex to set up reliably."},
-    {id:"aero_experimental",name:"Experimental Beam Wing", spec:"Prototype",
+     description:"Active aero elements adjust downforce between corners and straights. Excellent across all circuit types."},
+    {id:"aero_experimental",name:"Experimental Beam Wing", spec:"Prototype", cost:13, unlockRound:11,
      cornerSpeed:9, straightSpeed:2, tyreWear:3, wetPerformance:0,
      circuitBonus:{technical:6,"high-downforce":5,street:3},
-     description:"Radical rear aero concept. Extraordinary downforce figures in testing. Significant tyre wear penalty and questionable durability over full race distance."},
+     description:"Radical rear aero concept. Extraordinary downforce figures — significant tyre wear and durability concerns."},
   ],
 
   suspension: [
-    {id:"sus_aggressive",  name:"Aggressive Active Suspension", spec:"Quali",
+    {id:"sus_aggressive",  name:"Aggressive Active Suspension", spec:"Quali", cost:5, unlockRound:3,
      pace:8, tyreWear:3, consistency:-2, wetPerformance:-2,
-     description:"Maximum mechanical compliance on a single lap. Drives the tyres hard into the surface for extraordinary grip in qualifying. Burns through rubber over 50+ laps."},
-    {id:"sus_semi_rigid",  name:"Semi-Rigid Setup", spec:"Performance",
+     description:"Maximum mechanical compliance on a single lap. Burns through rubber over 50+ laps."},
+    {id:"sus_semi_rigid",  name:"Semi-Rigid Setup", spec:"Performance", cost:2, unlockRound:1,
      pace:6, tyreWear:1, consistency:0, wetPerformance:-1,
-     description:"Good single-lap pace with manageable tyre life. The go-to choice for teams that want to compete in qualifying without sacrificing the race."},
-    {id:"sus_balanced",    name:"Balanced Geometry", spec:"Standard",
+     description:"Good single-lap pace with manageable tyre life."},
+    {id:"sus_balanced",    name:"Balanced Geometry", spec:"Standard", cost:0,
      pace:4, tyreWear:0, consistency:2, wetPerformance:0,
-     description:"Textbook setup. Predictable at all circuit types, consistent tyre wear, no surprises in race trim. The engineering team's default when circuit data is limited."},
-    {id:"sus_compliant",   name:"Compliant Tyre-Friendly", spec:"Race",
+     description:"Textbook setup. Predictable at all circuit types. The engineering default."},
+    {id:"sus_compliant",   name:"Compliant Tyre-Friendly", spec:"Race", cost:2, unlockRound:1,
      pace:1, tyreWear:-3, consistency:4, wetPerformance:2,
-     description:"Maximises tyre life over race distance. Loses pace in qualifying but enables one-stop strategies where others cannot. Strong in desert and abrasive conditions."},
-    {id:"sus_high_rake",   name:"High Rake Configuration", spec:"Ferrari",
+     description:"Maximises tyre life over race distance. Enables one-stop strategies where others cannot."},
+    {id:"sus_high_rake",   name:"High Rake Configuration", spec:"Ferrari", cost:3, unlockRound:2,
      pace:5, tyreWear:2, consistency:-1, wetPerformance:1,
-     description:"Extreme nose-up attitude generates massive mechanical grip in slow corners. Ferrari-style philosophy. Excellent at Monaco and Hungary, complicated to optimise."},
-    {id:"sus_low_rake",    name:"Low Rake Configuration", spec:"Mercedes",
+     description:"Extreme nose-up attitude generates massive mechanical grip in slow corners."},
+    {id:"sus_low_rake",    name:"Low Rake Configuration", spec:"Mercedes", cost:3, unlockRound:2,
      pace:6, tyreWear:0, consistency:3, wetPerformance:0,
-     description:"Flat geometry for high-speed aerodynamic stability. Mercedes philosophy. Predictable at 200km/h+. Loses something in the tight stuff but consistent over race stints."},
-    {id:"sus_adaptive",   name:"Computer-Controlled Active", spec:"Advanced",
+     description:"Flat geometry for high-speed aerodynamic stability. Predictable at 200km/h+."},
+    {id:"sus_adaptive",   name:"Computer-Controlled Active", spec:"Advanced", cost:8, unlockRound:6,
      pace:7, tyreWear:-1, consistency:4, wetPerformance:2,
-     description:"FIA-legal active elements adjust damping in real time. Best of both worlds — qualifying pace with manageable tyre wear. Expensive and complex to run reliably."},
-    {id:"sus_track_spec",  name:"Track-Specific Stiff Geometry", spec:"Specialist",
+     description:"FIA-legal active elements adjust damping in real time. Best of both worlds."},
+    {id:"sus_track_spec",  name:"Track-Specific Stiff Geometry", spec:"Specialist", cost:5, unlockRound:3,
      pace:8, tyreWear:2, consistency:-3, wetPerformance:-3,
-     description:"Ultra-rigid setup optimised for smooth, fast circuits. Spectacular at Bahrain and Jeddah in the dry. Completely wrong for bumpy street circuits or wet conditions."},
+     description:"Ultra-rigid setup optimised for smooth, fast circuits. Wrong for street circuits or wet."},
   ],
 
   gearbox: [
-    {id:"gb_cutting_edge", name:"Cutting-Edge 9-Speed Seamless", spec:"Prototype",
+    {id:"gb_cutting_edge", name:"Cutting-Edge 9-Speed Seamless", spec:"Prototype", cost:7, unlockRound:4,
      pace:8, reliability:-3, cornerExit:9,
-     description:"Fastest shifts in the paddock. Sub-40ms paddle response gives measurable pace on traction zones. Experimental metallurgy means elevated failure risk at high mileage."},
-    {id:"gb_proven",       name:"Proven 8-Speed Spec", spec:"Reliable",
+     description:"Fastest shifts in the paddock. Sub-40ms paddle response. Elevated failure risk at high mileage."},
+    {id:"gb_proven",       name:"Proven 8-Speed Spec", spec:"Reliable", cost:2, unlockRound:1,
      pace:5, reliability:5, cornerExit:6,
-     description:"Race-proven unit accumulated across thousands of competitive miles. Won't let you down. Won't blow anyone away either. The engineering director's safe option."},
-    {id:"gb_high_torque",  name:"High Torque Sequential", spec:"Power",
+     description:"Race-proven unit. Won't let you down. The engineering director's safe option."},
+    {id:"gb_high_torque",  name:"High Torque Sequential", spec:"Power", cost:3, unlockRound:2,
      pace:6, reliability:2, cornerExit:8,
-     description:"Optimised for low-speed traction out of hairpins and chicanes. Big benefit at Monaco, Singapore, Hungary. Puts extra stress on internals over longer race distances."},
-    {id:"gb_lightweight",  name:"Lightweight Carbon Unit", spec:"Weight Saving",
+     description:"Optimised for low-speed traction out of hairpins and chicanes."},
+    {id:"gb_lightweight",  name:"Lightweight Carbon Unit", spec:"Weight Saving", cost:4, unlockRound:2,
      pace:7, reliability:0, cornerExit:5,
-     description:"Sheds 2.1kg over the standard unit. Marginal pace gain across every corner exit of every lap. Carbon internals are susceptible to shock loads over kerbs."},
-    {id:"gb_conservative", name:"Conservative Long-Life Spec", spec:"Endurance",
+     description:"Sheds 2.1kg over the standard unit. Carbon internals susceptible to kerb shock loads."},
+    {id:"gb_conservative", name:"Conservative Long-Life Spec", spec:"Endurance", cost:0,
      pace:2, reliability:9, cornerExit:3,
-     description:"Engineered for multiple race weekends without a grid penalty. Sacrifices outright performance for longevity — the right call for teams on a tight tokens budget."},
-    {id:"gb_midfield",     name:"Standard Sequential Paddle", spec:"Mid-Tier",
+     description:"Engineered for multiple race weekends without a grid penalty."},
+    {id:"gb_midfield",     name:"Standard Sequential Paddle", spec:"Mid-Tier", cost:0,
      pace:4, reliability:6, cornerExit:5,
-     description:"Solid all-rounder. Decent shift times, decent reliability, no strong opinion in either direction. Midfield teams running this won't be disadvantaged or advantaged by it."},
-    {id:"gb_torque_split",  name:"Torque Vectoring Differential", spec:"Advanced",
+     description:"Solid all-rounder. Decent shift times, decent reliability. No surprises."},
+    {id:"gb_torque_split",  name:"Torque Vectoring Differential", spec:"Advanced", cost:5, unlockRound:3,
      pace:7, reliability:3, cornerExit:10,
-     description:"Actively distributes torque between rear wheels mid-corner. Remarkable traction on corner exit, particularly in wet conditions. Complex calibration required."},
-    {id:"gb_hybrid_mguk",  name:"Enhanced MGU-K Integration", spec:"Hybrid",
+     description:"Actively distributes torque between rear wheels mid-corner. Remarkable traction in wet."},
+    {id:"gb_hybrid_mguk",  name:"Enhanced MGU-K Integration", spec:"Hybrid", cost:8, unlockRound:6,
      pace:9, reliability:4, cornerExit:7,
-     description:"Deep integration with the hybrid system for maximum energy deployment on traction zones. Blistering out of low-speed corners with full battery. High heat generation under sustained use."},
+     description:"Deep integration with the hybrid system for maximum energy deployment on traction zones."},
   ],
 
   frontWing: [
-    {id:"fw_high_cascade",  name:"High Downforce Cascade Wing", spec:"Maximum",
+    {id:"fw_high_cascade",  name:"High Downforce Cascade Wing", spec:"Maximum", cost:6, unlockRound:4,
      cornerSpeed:9, straightSpeed:-4, wetPerformance:3, balance:8,
-     description:"Multiple flap cascade generating extraordinary downforce. Nose stability through high-speed corners is class-leading. Significant drag penalty on long straights."},
-    {id:"fw_adjustable",    name:"Adjustable Multi-Plate", spec:"Flexible",
+     description:"Multiple flap cascade generating extraordinary downforce. Significant drag penalty."},
+    {id:"fw_adjustable",    name:"Adjustable Multi-Plate", spec:"Flexible", cost:2, unlockRound:1,
      cornerSpeed:7, straightSpeed:-1, wetPerformance:2, balance:6,
-     description:"Fully adjustable flap angles give engineers wide setup latitude. Can be configured across the downforce spectrum between sessions. Good general-purpose choice."},
-    {id:"fw_standard",      name:"Standard Spec Wing", spec:"Balanced",
+     description:"Fully adjustable flap angles give engineers wide setup latitude."},
+    {id:"fw_standard",      name:"Standard Spec Wing", spec:"Balanced", cost:0,
      cornerSpeed:5, straightSpeed:0, wetPerformance:0, balance:5,
-     description:"The regulation minimum configuration. Compliant, predictable, gives the baseline. Most teams run something more developed — this is the starting point, not the destination."},
-    {id:"fw_low_drag",      name:"Low-Drag Single Plane", spec:"Speed",
+     description:"The regulation minimum configuration. Predictable, gives the baseline."},
+    {id:"fw_low_drag",      name:"Low-Drag Single Plane", spec:"Speed", cost:3, unlockRound:1,
      cornerSpeed:1, straightSpeed:7, wetPerformance:-3, balance:3,
-     description:"Minimal frontal area for maximum straight-line speed. The monza wing. Borderline understeery everywhere except power circuits. Unpleasant in the wet — front grip evaporates."},
-    {id:"fw_mech_grip",     name:"Mechanical Grip Focus", spec:"Slow Corner",
+     description:"Minimal frontal area for maximum straight-line speed. The Monza wing."},
+    {id:"fw_mech_grip",     name:"Mechanical Grip Focus", spec:"Slow Corner", cost:3, unlockRound:2,
      cornerSpeed:8, straightSpeed:-2, wetPerformance:2, balance:7,
-     description:"Generates front-end grip through mechanical means rather than aerodynamic load. Less sensitive to dirty air — can follow closely in traffic without severe understeer."},
-    {id:"fw_aero_eff",      name:"Aerodynamic Efficiency Spec", spec:"High Speed",
+     description:"Generates front-end grip through mechanical means. Less sensitive to dirty air."},
+    {id:"fw_aero_eff",      name:"Aerodynamic Efficiency Spec", spec:"High Speed", cost:4, unlockRound:2,
      cornerSpeed:6, straightSpeed:3, wetPerformance:1, balance:6,
-     description:"Optimised for high-speed aerodynamic efficiency. Generates downforce at high speed with reduced drag. Strong through the fast corners of Silverstone and Spa."},
-    {id:"fw_experimental",  name:"Experimental Carbon Compound", spec:"Prototype",
+     description:"Optimised for high-speed aerodynamic efficiency. Strong at Silverstone and Spa."},
+    {id:"fw_experimental",  name:"Experimental Carbon Compound", spec:"Prototype", cost:10, unlockRound:8,
      cornerSpeed:10, straightSpeed:-1, wetPerformance:1, balance:4,
-     description:"Exotic carbon layup generates exceptional downforce figures. Unparalleled in corners. Sensitivity to yaw angle is higher than conventional wings — tricky balance to find."},
-    {id:"fw_x_flow",        name:"X-Flow Vortex Generator", spec:"Innovative",
+     description:"Exotic carbon layup generates exceptional downforce figures. Tricky balance to find."},
+    {id:"fw_x_flow",        name:"X-Flow Vortex Generator", spec:"Innovative", cost:6, unlockRound:5,
      cornerSpeed:7, straightSpeed:2, wetPerformance:2, balance:8,
-     description:"Vortex generators accelerate airflow to the sidepods and floor. Unusually broad operating window — works across circuit types. Used by several midfield teams to punch above their weight."},
+     description:"Vortex generators accelerate airflow to the sidepods and floor. Broad operating window."},
   ],
 };
 
@@ -223,19 +223,38 @@ const TEAM_DEFAULT_PARTS = {
 };
 
 const TEAMS = [
-  {id:"mclaren",strategy:"aggressive_two",   name:"McLaren",      abbr:"MCL",color:"#FF8000",tc:"#000",basePitSpeed:90,parts:{...TEAM_DEFAULT_PARTS.mclaren}},
-  {id:"mercedes",strategy:"undercut_king",  name:"Mercedes",     abbr:"MER",color:"#00D2BE",tc:"#000",basePitSpeed:88,parts:{...TEAM_DEFAULT_PARTS.mercedes}},
-  {id:"redbull",strategy:"one_stop",   name:"Red Bull",     abbr:"RBR",color:"#3671C6",tc:"#fff",basePitSpeed:95,parts:{...TEAM_DEFAULT_PARTS.redbull}},
-  {id:"ferrari",strategy:"overcut",   name:"Ferrari",      abbr:"FER",color:"#E8002D",tc:"#fff",basePitSpeed:87,parts:{...TEAM_DEFAULT_PARTS.ferrari}},
-  {id:"williams",strategy:"fuel_save",  name:"Williams",     abbr:"WIL",color:"#37BEDD",tc:"#000",basePitSpeed:83,parts:{...TEAM_DEFAULT_PARTS.williams}},
-  {id:"racingbulls",strategy:"reactive",name:"Racing Bulls",abbr:"RBX",color:"#6692FF",tc:"#fff",basePitSpeed:84,parts:{...TEAM_DEFAULT_PARTS.racingbulls}},
-  {id:"astonmartin",strategy:"safety_car",name:"Aston Martin",abbr:"AMR",color:"#358C75",tc:"#fff",basePitSpeed:82,parts:{...TEAM_DEFAULT_PARTS.astonmartin}},
-  {id:"haas",strategy:"tyre_banker",      name:"Haas",         abbr:"HAS",color:"#B6BABD",tc:"#000",basePitSpeed:80,parts:{...TEAM_DEFAULT_PARTS.haas}},
-  {id:"audi",strategy:"one_stop",      name:"Audi",         abbr:"AUD",color:"#B30000",tc:"#fff",basePitSpeed:78,parts:{...TEAM_DEFAULT_PARTS.audi}},
-  {id:"alpine",strategy:"reactive",    name:"Alpine",       abbr:"ALP",color:"#0093CC",tc:"#fff",basePitSpeed:79,parts:{...TEAM_DEFAULT_PARTS.alpine}},
-  {id:"cadillac",strategy:"fuel_save",  name:"Cadillac",     abbr:"CAD",color:"#6B6B6B",tc:"#fff",basePitSpeed:76,parts:{...TEAM_DEFAULT_PARTS.cadillac}},
+  {id:"mclaren",    tier:"top", strategy:"aggressive_two", name:"McLaren",      abbr:"MCL",color:"#FF8000",tc:"#000",basePitSpeed:90,parts:{...TEAM_DEFAULT_PARTS.mclaren}},
+  {id:"mercedes",   tier:"top", strategy:"undercut_king",  name:"Mercedes",     abbr:"MER",color:"#00D2BE",tc:"#000",basePitSpeed:88,parts:{...TEAM_DEFAULT_PARTS.mercedes}},
+  {id:"redbull",    tier:"top", strategy:"one_stop",       name:"Red Bull",     abbr:"RBR",color:"#3671C6",tc:"#fff",basePitSpeed:95,parts:{...TEAM_DEFAULT_PARTS.redbull}},
+  {id:"ferrari",    tier:"top", strategy:"overcut",        name:"Ferrari",      abbr:"FER",color:"#E8002D",tc:"#fff",basePitSpeed:87,parts:{...TEAM_DEFAULT_PARTS.ferrari}},
+  {id:"williams",   tier:"mid", strategy:"fuel_save",      name:"Williams",     abbr:"WIL",color:"#37BEDD",tc:"#000",basePitSpeed:83,parts:{...TEAM_DEFAULT_PARTS.williams}},
+  {id:"racingbulls",tier:"mid", strategy:"reactive",       name:"Racing Bulls", abbr:"RBX",color:"#6692FF",tc:"#fff",basePitSpeed:84,parts:{...TEAM_DEFAULT_PARTS.racingbulls}},
+  {id:"astonmartin",tier:"mid", strategy:"safety_car",     name:"Aston Martin", abbr:"AMR",color:"#358C75",tc:"#fff",basePitSpeed:82,parts:{...TEAM_DEFAULT_PARTS.astonmartin}},
+  {id:"alpine",     tier:"mid", strategy:"reactive",       name:"Alpine",       abbr:"ALP",color:"#0093CC",tc:"#fff",basePitSpeed:79,parts:{...TEAM_DEFAULT_PARTS.alpine}},
+  {id:"haas",       tier:"low", strategy:"tyre_banker",    name:"Haas",         abbr:"HAS",color:"#B6BABD",tc:"#000",basePitSpeed:80,parts:{...TEAM_DEFAULT_PARTS.haas}},
+  {id:"audi",       tier:"low", strategy:"one_stop",       name:"Audi",         abbr:"AUD",color:"#B30000",tc:"#fff",basePitSpeed:78,parts:{...TEAM_DEFAULT_PARTS.audi}},
+  {id:"cadillac",   tier:"low", strategy:"fuel_save",      name:"Cadillac",     abbr:"CAD",color:"#6B6B6B",tc:"#fff",basePitSpeed:76,parts:{...TEAM_DEFAULT_PARTS.cadillac}},
 ];
 
+
+// ── Budget tier configuration ────────────────────────────────────────────────
+const TIER_CONFIG = {
+  top: {label:"TOP TEAM",   color:"#E8002D", startBudget:20, budgetPerRound:8,  desc:"Leading constructor · Full factory resources"},
+  mid: {label:"MID-FIELD",  color:"#FFC906", startBudget:12, budgetPerRound:5,  desc:"Independent constructor · Focused development"},
+  low: {label:"BACKMARKER", color:"#778899", startBudget:8,  budgetPerRound:3,  desc:"New or developing team · Limited budget"},
+};
+
+function initBudgets() {
+  return Object.fromEntries(TEAMS.map(t=>[t.id, (TIER_CONFIG[t.tier]||TIER_CONFIG.low).startBudget]));
+}
+
+function initOwned() {
+  // Each team pre-owns all their default parts
+  return Object.fromEntries(TEAMS.map(t=>[
+    t.id,
+    Object.values(TEAM_DEFAULT_PARTS[t.id]||{}).filter(Boolean),
+  ]));
+}
 
 // ║  Defines 8 race strategy archetypes. Each strategy carries numeric      ║
 // ║  directly into runRace() and runSprint(). Teams are assigned a default  ║
@@ -1450,7 +1469,7 @@ function RoundDetail({r, onBack}) {
   );
 }
 
-function EditModal({type,data,teams,drivers,onSave,onClose}){
+function EditModal({type,data,teams,drivers,onSave,onClose,teamBudgets,teamOwned,currentRound,onBuyPart}){
   const [f,setF]=useState({...data,goodTracks:data.goodTracks||[],badTracks:data.badTracks||[],mental:data.mental||7,rivals:data.rivals||[]});
   const isD=type==="driver";
   const sf=isD?[["pace","Raw Pace"],["consistency","Consistency"],["wet","Wet Weather"],["overtaking","Overtaking"],["defense","Defense"],["experience","Experience"]]:[]/*PARTS_UI*/;
@@ -1459,7 +1478,20 @@ function EditModal({type,data,teams,drivers,onSave,onClose}){
     <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.9)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}}>
       <div style={{background:"#161618",border:"1px solid #2A2A30",borderRadius:8,padding:24,width:460,maxHeight:"88vh",overflowY:"auto"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
-          <span style={{fontSize:16,fontWeight:700,letterSpacing:2.5,color:"#E8002D"}}>{isD?"EDIT DRIVER":"EDIT TEAM"}</span>
+          <div>
+            <span style={{fontSize:16,fontWeight:700,letterSpacing:2.5,color:"#E8002D"}}>{isD?"EDIT DRIVER":"EDIT TEAM"}</span>
+            {!isD&&(()=>{
+              const teamObj=teams.find(t=>t.id===data.id)||data;
+              const tier=TIER_CONFIG[teamObj.tier||"low"]||TIER_CONFIG.low;
+              const budget=(teamBudgets&&teamBudgets[data.id])||0;
+              return(
+                <div style={{display:"flex",gap:8,alignItems:"center",marginTop:5}}>
+                  <span style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:tier.color,background:tier.color+"18",padding:"2px 7px",borderRadius:2}}>{tier.label}</span>
+                  <span style={{fontSize:12,color:"#aaa"}}>💰 <span style={{color:"#FFC906",fontWeight:700}}>{budget}</span> tokens</span>
+                </div>
+              );
+            })()}
+          </div>
           <button onClick={onClose} style={{background:"none",border:"none",color:"#aaa",cursor:"pointer",fontSize:26}}>×</button>
         </div>
         {isD?(
@@ -1561,22 +1593,27 @@ function EditModal({type,data,teams,drivers,onSave,onClose}){
           </div>
         )}
         {sf.map(([k,label])=>(<div key={k} style={{marginBottom:12}}></div>))}
-        {/* Parts editor for teams */}
+        {/* Parts upgrade shop for teams */}
         {!isD&&(()=>{
           const SLOT_LABELS = [
-            ["powerUnit","⚡ POWER UNIT",    "powerUnit"],
-            ["aero",     "🏎 AERODYNAMICS",   "aero"],
-            ["suspension","🔧 SUSPENSION",    "suspension"],
-            ["gearbox",  "⚙️ GEARBOX",        "gearbox"],
-            ["frontWing","🪂 FRONT WING",     "frontWing"],
+            ["powerUnit","⚡ POWER UNIT",   "powerUnit"],
+            ["aero",     "🏎 AERODYNAMICS",  "aero"],
+            ["suspension","🔧 SUSPENSION",   "suspension"],
+            ["gearbox",  "⚙️ GEARBOX",       "gearbox"],
+            ["frontWing","🪂 FRONT WING",    "frontWing"],
           ];
           const currentParts = f.parts||{};
           const previewStats = getTeamStats({...f, parts:currentParts});
+          const owned = (teamOwned&&teamOwned[data.id])||[];
+          const budget = (teamBudgets&&teamBudgets[data.id])||0;
           return(
             <div style={{marginBottom:14}}>
-              <div style={{fontSize:11,color:"#4488FF",fontWeight:700,letterSpacing:1.5,marginBottom:10}}>🔩 CAR PARTS</div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                <span style={{fontSize:11,color:"#4488FF",fontWeight:700,letterSpacing:1.5}}>🔩 UPGRADE SHOP</span>
+                <span style={{fontSize:11,color:"#FFC906",fontWeight:700}}>💰 {budget} tokens available</span>
+              </div>
 
-              {/* Derived stats preview */}
+              {/* Stats preview */}
               <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:14,padding:"10px 12px",background:"#0D0D14",borderRadius:5,border:"1px solid #2A2A30"}}>
                 {[
                   ["CAR PACE",    previewStats.carPace,   "#E8002D"],
@@ -1593,7 +1630,7 @@ function EditModal({type,data,teams,drivers,onSave,onClose}){
                 ))}
               </div>
 
-              {/* Part slot selectors */}
+              {/* Part slots */}
               {SLOT_LABELS.map(([slotKey, slotLabel, partsKey])=>{
                 const partsList = PARTS[partsKey];
                 const currentId = currentParts[slotKey];
@@ -1602,25 +1639,47 @@ function EditModal({type,data,teams,drivers,onSave,onClose}){
                   <div key={slotKey} style={{marginBottom:12,background:"#111115",borderRadius:5,border:"1px solid #1E1E22",overflow:"hidden"}}>
                     <div style={{fontSize:10,color:"#4488FF",fontWeight:700,letterSpacing:1.5,padding:"8px 12px",background:"#0D0D18",borderBottom:"1px solid #1E1E22"}}>
                       {slotLabel}
-                      <span style={{marginLeft:8,fontSize:10,color:"#aaa",fontWeight:400}}>{current.name}</span>
+                      <span style={{marginLeft:8,fontSize:10,color:"#aaa",fontWeight:400}}>Equipped: {current.name}</span>
                     </div>
-                    <div style={{padding:"8px 10px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:5,maxHeight:220,overflowY:"auto"}}>
+                    <div style={{padding:"8px 10px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:5,maxHeight:240,overflowY:"auto"}}>
                       {partsList.map(part=>{
-                        const sel = currentId===part.id||((!currentId)&&part===partsList[0]);
+                        const isEquipped = currentId===part.id||((!currentId)&&part===partsList[0]);
+                        const isOwned    = owned.includes(part.id)||(part.cost===0&&!part.unlockRound);
+                        const isLocked   = part.unlockRound && currentRound < part.unlockRound;
+                        const canAfford  = budget >= (part.cost||0);
+                        let borderColor="#2A2A30", bgColor="#161618", labelColor="#ccc", actionEl=null;
+                        if(isEquipped){
+                          borderColor="#4488FF66"; bgColor="#4488FF12"; labelColor="#4488FF";
+                          actionEl=<span style={{fontSize:9,color:"#4488FF",fontWeight:700,letterSpacing:1}}>✓ EQUIPPED</span>;
+                        } else if(isOwned){
+                          borderColor="#44CC8844"; bgColor="#44CC8808";
+                          actionEl=<button type="button" onClick={()=>{setF(p=>({...p,parts:{...p.parts||{},[slotKey]:part.id}}));}}
+                            style={{fontSize:9,color:"#44CC88",fontWeight:700,letterSpacing:1,background:"#44CC8820",border:"1px solid #44CC8844",borderRadius:2,padding:"2px 6px",cursor:"pointer"}}>EQUIP</button>;
+                        } else if(isLocked){
+                          bgColor="#0D0D10"; labelColor="#556";
+                          actionEl=<span style={{fontSize:9,color:"#556",letterSpacing:1}}>🔒 ROUND {part.unlockRound}</span>;
+                        } else if(!canAfford){
+                          labelColor="#556";
+                          actionEl=<span style={{fontSize:9,color:"#FF4444",letterSpacing:1}}>💰 {part.cost} (short {part.cost-budget})</span>;
+                        } else {
+                          borderColor="#FFC90633";
+                          actionEl=<button type="button" onClick={()=>{if(onBuyPart)onBuyPart(data.id,slotKey,part.id,part.cost);}}
+                            style={{fontSize:9,color:"#FFC906",fontWeight:700,letterSpacing:1,background:"#FFC90620",border:"1px solid #FFC90644",borderRadius:2,padding:"2px 6px",cursor:"pointer"}}>BUY · {part.cost}🪙</button>;
+                        }
                         return(
-                          <button key={part.id} type="button"
-                            onClick={()=>setF(prev=>({...prev,parts:{...prev.parts||{},[slotKey]:part.id}}))}
-                            style={{background:sel?"#4488FF18":"#161618",border:`1px solid ${sel?"#4488FF66":"#2A2A30"}`,borderRadius:4,padding:"7px 9px",cursor:"pointer",textAlign:"left",transition:"all 0.12s"}}>
-                            <div style={{fontSize:11,fontWeight:700,color:sel?"#4488FF":"#ccc",marginBottom:3,lineHeight:1.3}}>{part.name}</div>
+                          <div key={part.id}
+                            style={{background:bgColor,border:`1px solid ${borderColor}`,borderRadius:4,padding:"7px 9px",opacity:isLocked?0.5:1,transition:"all 0.12s"}}>
+                            <div style={{fontSize:11,fontWeight:700,color:isEquipped?labelColor:isLocked?"#556":"#ccc",marginBottom:3,lineHeight:1.3}}>{part.name}</div>
                             {part.spec&&<div style={{fontSize:9,color:"#445",marginBottom:4,letterSpacing:0.5}}>{part.spec}</div>}
-                            <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                            <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:5}}>
                               {Object.entries(part).filter(([k])=>["pace","reliability","cornerSpeed","straightSpeed","tyreWear","wetPerformance","fuel","cornerExit","balance"].includes(k)&&part[k]!==undefined&&part[k]!==0).slice(0,4).map(([k,v])=>(
                                 <span key={k} style={{fontSize:8,padding:"1px 5px",borderRadius:2,background:v>0?"#44CC8818":"#E8002D18",color:v>0?"#44CC88":"#E8002D",fontWeight:700}}>
-                                  {k.replace("Speed","Spd").replace("Performance","Perf").replace("cornerexit","Exit")}: {v>0?"+":""}{v}
+                                  {k.replace("Speed","Spd").replace("Performance","Perf")}: {v>0?"+":""}{v}
                                 </span>
                               ))}
                             </div>
-                          </button>
+                            {actionEl}
+                          </div>
                         );
                       })}
                     </div>
@@ -2711,6 +2770,8 @@ export default function F1Sim(){
   const [raceSaved,setRaceSaved]=useState(false);
   const [dbSaving,setDbSaving]=useState(false);
   const [selectedRound,setSelectedRound]=useState(null);
+  const [teamBudgets,setTeamBudgets]=useState(()=>{try{const s=localStorage.getItem('f1sim_budgets');return s?JSON.parse(s):initBudgets();}catch{return initBudgets();}});
+  const [teamOwned,setTeamOwned]=useState(()=>{try{const s=localStorage.getItem('f1sim_owned');return s?JSON.parse(s):initOwned();}catch{return initOwned();}});
   // auto-save
   React.useEffect(()=>{
     try{localStorage.setItem('f1sim_drivers',JSON.stringify(drivers));}catch(e){}
@@ -2721,6 +2782,12 @@ export default function F1Sim(){
   React.useEffect(()=>{
     try{localStorage.setItem('f1sim_champ',JSON.stringify(championship));}catch(e){}
   },[championship]);
+  React.useEffect(()=>{
+    try{localStorage.setItem('f1sim_budgets',JSON.stringify(teamBudgets));}catch(e){}
+  },[teamBudgets]);
+  React.useEffect(()=>{
+    try{localStorage.setItem('f1sim_owned',JSON.stringify(teamOwned));}catch(e){}
+  },[teamOwned]);
 
   // save/load
   const exportSave=()=>{
@@ -2948,6 +3015,12 @@ export default function F1Sim(){
     };
     setChampionship(prev=>[...prev,entry]);
     setRaceSaved(true);
+    // Award budget tokens to every team after each race
+    setTeamBudgets(prev=>{
+      const next={...prev};
+      teams.forEach(t=>{const tc=TIER_CONFIG[t.tier]||TIER_CONFIG.low;next[t.id]=(next[t.id]||0)+tc.budgetPerRound;});
+      return next;
+    });
 
     // submit + refresh community model
     if(communityEnabled && !SUPABASE_URL.includes('YOUR_PROJECT')) {
@@ -3158,6 +3231,14 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
 
   const saveDriver=d=>{if(drivers.find(x=>x.id===d.id))setDrivers(p=>p.map(x=>x.id===d.id?d:x));else setDrivers(p=>[...p,{...d,id:`c_${Date.now()}`}]);setModal(null);};
   const saveTeam=t=>{if(teams.find(x=>x.id===t.id))setTeams(p=>p.map(x=>x.id===t.id?t:x));else setTeams(p=>[...p,{...t,id:`c_${Date.now()}`}]);setModal(null);};
+  // Buy a part upgrade: deduct tokens, add to owned, equip it on the team
+  const buyPart=(teamId,slotKey,partId,cost)=>{
+    setTeamBudgets(prev=>({...prev,[teamId]:Math.max(0,(prev[teamId]||0)-cost)}));
+    setTeamOwned(prev=>({...prev,[teamId]:[...new Set([...(prev[teamId]||[]),partId])]}));
+    setTeams(prev=>prev.map(t=>t.id===teamId?{...t,parts:{...t.parts,[slotKey]:partId}}:t));
+    // Also update the modal data so the UI refreshes immediately
+    setModal(prev=>prev?{...prev,data:{...prev.data,parts:{...prev.data.parts,[slotKey]:partId}}}:prev);
+  };
 
   const surnameMap=buildSurnameMap(drivers,teams);
 
@@ -3500,7 +3581,15 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                 {teams.map(t=>(
                   <div key={t.id} className="hov" onClick={()=>setModal({type:"team",data:t})} style={{background:"#161618",border:`1px solid ${t.color}22`,borderTop:`3px solid ${t.color}`,borderRadius:4,padding:16,cursor:"pointer",transition:"background 0.15s"}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
-                      <div><div style={{fontSize:20,fontWeight:700}}>{t.name}</div><div style={{fontSize:14,color:"#778",letterSpacing:1.5,marginTop:2}}>⚙️ {t.engine}</div></div>
+                      <div>
+                        <div style={{fontSize:20,fontWeight:700}}>{t.name}</div>
+                        <div style={{display:"flex",gap:7,alignItems:"center",marginTop:3}}>
+                          {(()=>{const tc=TIER_CONFIG[t.tier||"low"]||TIER_CONFIG.low;return(
+                            <span style={{fontSize:9,fontWeight:700,letterSpacing:1.5,color:tc.color,background:tc.color+"1A",padding:"1px 6px",borderRadius:2}}>{tc.label}</span>
+                          );})()}
+                          <span style={{fontSize:11,color:"#aaa"}}>💰 <span style={{color:"#FFC906",fontWeight:700}}>{teamBudgets[t.id]||0}</span></span>
+                        </div>
+                      </div>
                       <div style={{background:t.color,color:t.tc||"#fff",fontSize:14,fontWeight:700,padding:"3px 8px",letterSpacing:2.5,borderRadius:2}}>{t.abbr}</div>
                     </div>
                     {(()=>{const _s=getTeamStats(t);return[["CAR PACE",_s.carPace],["RELIABILITY",_s.reliability],["PIT SPEED",_s.pitSpeed]].map(([l,v])=>(
@@ -5317,7 +5406,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
           </div>
         )}
 
-        {modal&&<EditModal type={modal.type} data={modal.data} teams={teams} drivers={drivers} onSave={modal.type==="driver"?saveDriver:saveTeam} onClose={()=>setModal(null)}/>}
+        {modal&&<EditModal type={modal.type} data={modal.data} teams={teams} drivers={drivers} onSave={modal.type==="driver"?saveDriver:saveTeam} onClose={()=>setModal(null)} teamBudgets={teamBudgets} teamOwned={teamOwned} currentRound={championship.length+1} onBuyPart={buyPart}/>}
     </div>
     </ErrorBoundary>
   );
