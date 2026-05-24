@@ -774,7 +774,7 @@ function runFP(sessionNum, drivers, teams, track) {
   const tyreGain   = sessionNum===1 ? 0 : 0.8;
   const sessionForm = {};
   drivers.forEach(d => { sessionForm[d.id] = (Math.random()-0.5)*2*formSpread; });
-  const positions = drivers.map(d => {
+  const raw = drivers.map(d => {
     const team = teams.find(t=>t.id===d.teamId)||teams[teams.length-1];
     const base  = calcQualBase(d, team, track);
     const form  = sessionForm[d.id];
@@ -782,8 +782,11 @@ function runFP(sessionNum, drivers, teams, track) {
     const lap   = (Math.random()-0.5)*2*lapSpread;
     const fuelPenalty = sessionNum===1 ? -(Math.random()*3+1) : -(Math.random()*2+0.5);
     const score = base + form + tyre + lap + fuelPenalty;
-    return {driver:d, team, score};
-  }).sort((a,b)=>b.score-a.score).map((e,i)=>({...e, pos:i+1}));
+    const laps  = Math.floor(Math.random()*8 + (sessionNum===1?12:15));
+    return {driver:d, team, score, laps};
+  }).sort((a,b)=>b.score-a.score);
+  const best = raw[0]?.score||0;
+  const positions = raw.map((e,i)=>({...e, pos:i+1, gap:i===0?null:((best-e.score)*0.011).toFixed(3)}));
   return {positions, sessionNum};
 }
 
@@ -3589,7 +3592,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                 <div style={{display:"grid",gridTemplateColumns:"1fr 340px",gap:16,alignItems:"start"}}>
                   <div>
                     <div style={{display:"grid",gap:5}}>
-                      {cur.data.results.map((e,i)=>(
+                      {cur.data.positions.map((e,i)=>(
                         <div key={e.driver.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",background:"#161618",border:"1px solid #1E1E22",borderLeft:`3px solid ${e.team.color}`,borderRadius:3}}>
                           <div style={{width:28,textAlign:"center",fontSize:13,fontWeight:700,color:i<3?"#FFC906":"#666"}}>{i+1}</div>
                           <div style={{width:44,fontFamily:"monospace",fontSize:11,fontWeight:700,color:e.team.color,letterSpacing:1}}>{e.driver.abbr}</div>
@@ -3598,7 +3601,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                             <div style={{fontSize:11,color:e.team.color,letterSpacing:1}}>{e.team.name}</div>
                           </div>
                           <div style={{textAlign:"right"}}>
-                            <div style={{fontSize:13,fontFamily:"monospace",color:i===0?"#FFC906":"#ccc"}}>{i===0?"BEST":`+${e.gap}s`}</div>
+                            <div style={{fontSize:13,fontFamily:"monospace",color:i===0?"#FFC906":"#ccc"}}>{e.gap?`+${e.gap}s`:"BEST"}</div>
                             <div style={{fontSize:11,color:"#556"}}>{e.laps} laps</div>
                           </div>
                         </div>
