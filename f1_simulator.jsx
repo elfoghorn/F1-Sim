@@ -8,21 +8,239 @@ import { useState, useRef } from "react";
 
 // ===================== DATA =====================
 
+
+// ── Car parts catalogue ─────────────────────────────────────────────────────
+// Each team equips one part from each of the 5 slots.
+// Parts replace the flat carPace/reliability/pitSpeed with a composite system.
+// getTeamStats(team) derives effective stats from the equipped parts.
+
+const PARTS = {
+
+  powerUnit: [
+    {id:"pu_mercedes_a",  name:"Mercedes PU — Spec A", mfr:"Mercedes", spec:3,
+     pace:8, reliability:7, fuel:-1, straightSpeed:9, description:"Dominant hybrid unit. Best peak power in the field but demands careful fuel management over race distance."},
+    {id:"pu_ferrari_a",   name:"Ferrari PU — Spec A", mfr:"Ferrari", spec:3,
+     pace:9, reliability:6, fuel:-2, straightSpeed:10, description:"Highest peak power. Phenomenal qualifying engine but harder on fuel — forces conservative mapping in long stints."},
+    {id:"pu_honda_rbpt",  name:"Honda RBPT — Spec B", mfr:"Honda", spec:3,
+     pace:7, reliability:9, fuel:0, straightSpeed:7, description:"Bulletproof reliability. Lower peak power but exceptional harvest efficiency — suits high-downforce circuits."},
+    {id:"pu_audi_a",      name:"Audi PU — Spec A", mfr:"Audi", spec:2,
+     pace:5, reliability:8, fuel:1, straightSpeed:6, description:"New manufacturer finding its feet. Thermally efficient and fuel-friendly but not yet at the top teams' level."},
+    {id:"pu_ford_rbpt",   name:"Ford/RBPT — Spec A", mfr:"Ford", spec:2,
+     pace:6, reliability:7, fuel:0, straightSpeed:7, description:"Ford-badged RBPT unit for customer teams. Solid mid-tier performance, good straight-line speed relative to reliability."},
+    {id:"pu_alpine_a",    name:"Alpine PU — Spec B", mfr:"Alpine", spec:2,
+     pace:4, reliability:7, fuel:1, straightSpeed:5, description:"Improved from last year's troubled unit. Better reliability but still a meaningful deficit to the leading manufacturers."},
+    {id:"pu_customer_a",  name:"Customer Spec — Gen 3", mfr:"Generic", spec:1,
+     pace:2, reliability:8, fuel:0, straightSpeed:3, description:"Standard customer power unit. Nothing special but nothing that will let you down. Safe choice for a developing team."},
+    {id:"pu_experimental",name:"Experimental MGU-H — Proto", mfr:"Classified", spec:3,
+     pace:10, reliability:4, fuel:-3, straightSpeed:9, description:"Cutting-edge prototype unit. Extraordinary power when it works — but thermal management issues mean elevated retirement risk."},
+  ],
+
+  aero: [
+    {id:"aero_high",      name:"High Downforce Package", spec:"Monaco",
+     cornerSpeed:10, straightSpeed:-5, tyreWear:1, wetPerformance:2,
+     circuitBonus:{street:4,technical:3,"high-downforce":2},
+     description:"Maximum mechanical grip. Dominates Monaco, Singapore, Hungary. Severely compromised at power circuits — expect to be overtaken on every straight at Monza."},
+    {id:"aero_medhi",     name:"Medium-High Package", spec:"Versatile+",
+     cornerSpeed:7, straightSpeed:-2, tyreWear:0, wetPerformance:1,
+     circuitBonus:{technical:2,street:2},
+     description:"Balanced towards downforce. Works well at the majority of circuits, particularly technical layouts. Competitive at most rounds without being optimal at any."},
+    {id:"aero_balanced",  name:"Balanced Package", spec:"Standard",
+     cornerSpeed:5, straightSpeed:0, tyreWear:0, wetPerformance:0,
+     circuitBonus:{},
+     description:"True all-rounder. No specific weakness. The benchmark spec — teams with better-optimised packages beat this at specific circuits but this is competitive everywhere."},
+    {id:"aero_medlo",     name:"Medium-Low Package", spec:"Speed Bias",
+     cornerSpeed:2, straightSpeed:3, tyreWear:-1, wetPerformance:-1,
+     circuitBonus:{"high-speed":2,"low-downforce":3},
+     description:"Optimised for power circuits. Better straight-line speed at the cost of corner stability. Strong at Spa, Austria, Silverstone. Struggles in slow-speed corners."},
+    {id:"aero_low",       name:"Low Drag Package", spec:"Monza",
+     cornerSpeed:-3, straightSpeed:8, tyreWear:-2, wetPerformance:-3,
+     circuitBonus:{"low-downforce":6,"high-speed":4},
+     description:"Minimum wing configuration. Blistering on the straights at Monza and Las Vegas. A liability anywhere else — the car slides through medium and slow corners."},
+    {id:"aero_groundfx",  name:"Ground Effect Max", spec:"Technical",
+     cornerSpeed:8, straightSpeed:1, tyreWear:2, wetPerformance:-1,
+     circuitBonus:{technical:5,mixed:3},
+     description:"Maximises Venturi floor aerodynamics. Generates extraordinary cornering grip at medium-high speed but increases tyre wear and is sensitive to surface irregularities."},
+    {id:"aero_adaptive",  name:"Adaptive Wing System", spec:"Active",
+     cornerSpeed:6, straightSpeed:4, tyreWear:0, wetPerformance:1,
+     circuitBonus:{mixed:4,"high-speed":3,technical:2},
+     description:"Active aero elements adjust downforce between corners and straights. Excellent across all circuit types — the future of F1 aero but complex to set up reliably."},
+    {id:"aero_experimental",name:"Experimental Beam Wing", spec:"Prototype",
+     cornerSpeed:9, straightSpeed:2, tyreWear:3, wetPerformance:0,
+     circuitBonus:{technical:6,"high-downforce":5,street:3},
+     description:"Radical rear aero concept. Extraordinary downforce figures in testing. Significant tyre wear penalty and questionable durability over full race distance."},
+  ],
+
+  suspension: [
+    {id:"sus_aggressive",  name:"Aggressive Active Suspension", spec:"Quali",
+     pace:8, tyreWear:3, consistency:-2, wetPerformance:-2,
+     description:"Maximum mechanical compliance on a single lap. Drives the tyres hard into the surface for extraordinary grip in qualifying. Burns through rubber over 50+ laps."},
+    {id:"sus_semi_rigid",  name:"Semi-Rigid Setup", spec:"Performance",
+     pace:6, tyreWear:1, consistency:0, wetPerformance:-1,
+     description:"Good single-lap pace with manageable tyre life. The go-to choice for teams that want to compete in qualifying without sacrificing the race."},
+    {id:"sus_balanced",    name:"Balanced Geometry", spec:"Standard",
+     pace:4, tyreWear:0, consistency:2, wetPerformance:0,
+     description:"Textbook setup. Predictable at all circuit types, consistent tyre wear, no surprises in race trim. The engineering team's default when circuit data is limited."},
+    {id:"sus_compliant",   name:"Compliant Tyre-Friendly", spec:"Race",
+     pace:1, tyreWear:-3, consistency:4, wetPerformance:2,
+     description:"Maximises tyre life over race distance. Loses pace in qualifying but enables one-stop strategies where others cannot. Strong in desert and abrasive conditions."},
+    {id:"sus_high_rake",   name:"High Rake Configuration", spec:"Ferrari",
+     pace:5, tyreWear:2, consistency:-1, wetPerformance:1,
+     description:"Extreme nose-up attitude generates massive mechanical grip in slow corners. Ferrari-style philosophy. Excellent at Monaco and Hungary, complicated to optimise."},
+    {id:"sus_low_rake",    name:"Low Rake Configuration", spec:"Mercedes",
+     pace:6, tyreWear:0, consistency:3, wetPerformance:0,
+     description:"Flat geometry for high-speed aerodynamic stability. Mercedes philosophy. Predictable at 200km/h+. Loses something in the tight stuff but consistent over race stints."},
+    {id:"sus_adaptive",   name:"Computer-Controlled Active", spec:"Advanced",
+     pace:7, tyreWear:-1, consistency:4, wetPerformance:2,
+     description:"FIA-legal active elements adjust damping in real time. Best of both worlds — qualifying pace with manageable tyre wear. Expensive and complex to run reliably."},
+    {id:"sus_track_spec",  name:"Track-Specific Stiff Geometry", spec:"Specialist",
+     pace:8, tyreWear:2, consistency:-3, wetPerformance:-3,
+     description:"Ultra-rigid setup optimised for smooth, fast circuits. Spectacular at Bahrain and Jeddah in the dry. Completely wrong for bumpy street circuits or wet conditions."},
+  ],
+
+  gearbox: [
+    {id:"gb_cutting_edge", name:"Cutting-Edge 9-Speed Seamless", spec:"Prototype",
+     pace:8, reliability:-3, cornerExit:9,
+     description:"Fastest shifts in the paddock. Sub-40ms paddle response gives measurable pace on traction zones. Experimental metallurgy means elevated failure risk at high mileage."},
+    {id:"gb_proven",       name:"Proven 8-Speed Spec", spec:"Reliable",
+     pace:5, reliability:5, cornerExit:6,
+     description:"Race-proven unit accumulated across thousands of competitive miles. Won't let you down. Won't blow anyone away either. The engineering director's safe option."},
+    {id:"gb_high_torque",  name:"High Torque Sequential", spec:"Power",
+     pace:6, reliability:2, cornerExit:8,
+     description:"Optimised for low-speed traction out of hairpins and chicanes. Big benefit at Monaco, Singapore, Hungary. Puts extra stress on internals over longer race distances."},
+    {id:"gb_lightweight",  name:"Lightweight Carbon Unit", spec:"Weight Saving",
+     pace:7, reliability:0, cornerExit:5,
+     description:"Sheds 2.1kg over the standard unit. Marginal pace gain across every corner exit of every lap. Carbon internals are susceptible to shock loads over kerbs."},
+    {id:"gb_conservative", name:"Conservative Long-Life Spec", spec:"Endurance",
+     pace:2, reliability:9, cornerExit:3,
+     description:"Engineered for multiple race weekends without a grid penalty. Sacrifices outright performance for longevity — the right call for teams on a tight tokens budget."},
+    {id:"gb_midfield",     name:"Standard Sequential Paddle", spec:"Mid-Tier",
+     pace:4, reliability:6, cornerExit:5,
+     description:"Solid all-rounder. Decent shift times, decent reliability, no strong opinion in either direction. Midfield teams running this won't be disadvantaged or advantaged by it."},
+    {id:"gb_torque_split",  name:"Torque Vectoring Differential", spec:"Advanced",
+     pace:7, reliability:3, cornerExit:10,
+     description:"Actively distributes torque between rear wheels mid-corner. Remarkable traction on corner exit, particularly in wet conditions. Complex calibration required."},
+    {id:"gb_hybrid_mguk",  name:"Enhanced MGU-K Integration", spec:"Hybrid",
+     pace:9, reliability:4, cornerExit:7,
+     description:"Deep integration with the hybrid system for maximum energy deployment on traction zones. Blistering out of low-speed corners with full battery. High heat generation under sustained use."},
+  ],
+
+  frontWing: [
+    {id:"fw_high_cascade",  name:"High Downforce Cascade Wing", spec:"Maximum",
+     cornerSpeed:9, straightSpeed:-4, wetPerformance:3, balance:8,
+     description:"Multiple flap cascade generating extraordinary downforce. Nose stability through high-speed corners is class-leading. Significant drag penalty on long straights."},
+    {id:"fw_adjustable",    name:"Adjustable Multi-Plate", spec:"Flexible",
+     cornerSpeed:7, straightSpeed:-1, wetPerformance:2, balance:6,
+     description:"Fully adjustable flap angles give engineers wide setup latitude. Can be configured across the downforce spectrum between sessions. Good general-purpose choice."},
+    {id:"fw_standard",      name:"Standard Spec Wing", spec:"Balanced",
+     cornerSpeed:5, straightSpeed:0, wetPerformance:0, balance:5,
+     description:"The regulation minimum configuration. Compliant, predictable, gives the baseline. Most teams run something more developed — this is the starting point, not the destination."},
+    {id:"fw_low_drag",      name:"Low-Drag Single Plane", spec:"Speed",
+     cornerSpeed:1, straightSpeed:7, wetPerformance:-3, balance:3,
+     description:"Minimal frontal area for maximum straight-line speed. The monza wing. Borderline understeery everywhere except power circuits. Unpleasant in the wet — front grip evaporates."},
+    {id:"fw_mech_grip",     name:"Mechanical Grip Focus", spec:"Slow Corner",
+     cornerSpeed:8, straightSpeed:-2, wetPerformance:2, balance:7,
+     description:"Generates front-end grip through mechanical means rather than aerodynamic load. Less sensitive to dirty air — can follow closely in traffic without severe understeer."},
+    {id:"fw_aero_eff",      name:"Aerodynamic Efficiency Spec", spec:"High Speed",
+     cornerSpeed:6, straightSpeed:3, wetPerformance:1, balance:6,
+     description:"Optimised for high-speed aerodynamic efficiency. Generates downforce at high speed with reduced drag. Strong through the fast corners of Silverstone and Spa."},
+    {id:"fw_experimental",  name:"Experimental Carbon Compound", spec:"Prototype",
+     cornerSpeed:10, straightSpeed:-1, wetPerformance:1, balance:4,
+     description:"Exotic carbon layup generates exceptional downforce figures. Unparalleled in corners. Sensitivity to yaw angle is higher than conventional wings — tricky balance to find."},
+    {id:"fw_x_flow",        name:"X-Flow Vortex Generator", spec:"Innovative",
+     cornerSpeed:7, straightSpeed:2, wetPerformance:2, balance:8,
+     description:"Vortex generators accelerate airflow to the sidepods and floor. Unusually broad operating window — works across circuit types. Used by several midfield teams to punch above their weight."},
+  ],
+};
+
+// Derive effective team stats from equipped parts
+// Returns { carPace, reliability, pitSpeed, tyreLife, wetBonus, cornerBonus, straightBonus }
+function getTeamStats(team) {
+  const parts = team.parts || {};
+  const pu  = PARTS.powerUnit.find(p=>p.id===parts.powerUnit)  || PARTS.powerUnit[6];
+  const ae  = PARTS.aero.find(p=>p.id===parts.aero)            || PARTS.aero[2];
+  const sus = PARTS.suspension.find(p=>p.id===parts.suspension) || PARTS.suspension[2];
+  const gb  = PARTS.gearbox.find(p=>p.id===parts.gearbox)      || PARTS.gearbox[1];
+  const fw  = PARTS.frontWing.find(p=>p.id===parts.frontWing)  || PARTS.frontWing[2];
+
+  // Base pace from PU and aero (primary contributors)
+  // pace: base 60 + weighted part contributions (top PU+aero stack → ~99, bottom → ~65)
+  const rawPace = 60 + (
+    (pu.pace||5)*1.8 +
+    (ae.cornerSpeed||5)*0.7 +
+    Math.max(0,(ae.straightSpeed||0))*0.5 +
+    (sus.pace||4)*0.6 +
+    (gb.pace||4)*0.5 +
+    (fw.cornerSpeed||5)*0.4
+  );
+
+  // reliability: PU and gearbox are primary failure modes
+  const rawReliability = 50 + (
+    (pu.reliability||7)*2.2 +
+    (gb.reliability||5)*1.8 +
+    (sus.tyreWear>2?-3:0)    // aggressive suspension stresses drivetrain
+  );
+
+  // Tyre life from suspension and aero
+  const tyreLife = 50 + (sus.tyreWear||0)*(-4) + (ae.tyreWear||0)*(-3);
+
+  // Wet performance bonus
+  const wetBonus = (ae.wetPerformance||0)*1.5 + (sus.wetPerformance||0)*1.2 + (fw.wetPerformance||0);
+
+  // Corner vs straight breakdown (for circuit-type bonus in calcBase)
+  const cornerBonus = (ae.cornerSpeed||5) + (fw.cornerSpeed||5) + (sus.pace||4)*0.5;
+  const straightBonus = (ae.straightSpeed||0) + (pu.straightSpeed||5)*0.8;
+
+  // Pit speed from gearbox and team infrastructure (keep base pitSpeed)
+  const pitSpeed = team.basePitSpeed||80;
+
+  return {
+    carPace:      Math.round(Math.max(55, Math.min(99, rawPace))),
+    reliability:  Math.round(Math.max(50, Math.min(99, rawReliability))),
+    pitSpeed,
+    tyreLife:     Math.round(Math.max(30, Math.min(90, tyreLife))),
+    wetBonus:     Math.round(wetBonus),
+    cornerBonus,
+    straightBonus,
+    // Store circuit bonuses for calcBase
+    aeroCircuitBonus: ae.circuitBonus||{},
+    pu, ae, sus, gb, fw,
+  };
+}
+
+// Default parts per team (fits their real-world philosophy)
+const TEAM_DEFAULT_PARTS = {
+  mclaren:    { powerUnit:"pu_mercedes_a", aero:"aero_medhi",   suspension:"sus_semi_rigid", gearbox:"gb_high_torque",  frontWing:"fw_adjustable" },
+  mercedes:   { powerUnit:"pu_mercedes_a", aero:"aero_balanced", suspension:"sus_low_rake",  gearbox:"gb_cutting_edge", frontWing:"fw_aero_eff" },
+  redbull:    { powerUnit:"pu_ford_rbpt",  aero:"aero_groundfx", suspension:"sus_balanced",   gearbox:"gb_cutting_edge", frontWing:"fw_experimental" },
+  ferrari:    { powerUnit:"pu_ferrari_a",  aero:"aero_high",     suspension:"sus_high_rake",  gearbox:"gb_hybrid_mguk",  frontWing:"fw_high_cascade" },
+  williams:   { powerUnit:"pu_mercedes_a", aero:"aero_balanced", suspension:"sus_compliant",  gearbox:"gb_proven",       frontWing:"fw_standard" },
+  racingbulls:{ powerUnit:"pu_ford_rbpt",  aero:"aero_medlo",    suspension:"sus_balanced",   gearbox:"gb_midfield",     frontWing:"fw_adjustable" },
+  astonmartin:{ powerUnit:"pu_honda_rbpt", aero:"aero_medhi",    suspension:"sus_balanced",   gearbox:"gb_proven",       frontWing:"fw_mech_grip" },
+  haas:       { powerUnit:"pu_ferrari_a",  aero:"aero_medlo",    suspension:"sus_semi_rigid", gearbox:"gb_midfield",     frontWing:"fw_standard" },
+  audi:       { powerUnit:"pu_audi_a",     aero:"aero_balanced", suspension:"sus_balanced",   gearbox:"gb_conservative", frontWing:"fw_standard" },
+  alpine:     { powerUnit:"pu_alpine_a",   aero:"aero_medhi",    suspension:"sus_balanced",   gearbox:"gb_midfield",     frontWing:"fw_adjustable" },
+  cadillac:   { powerUnit:"pu_customer_a", aero:"aero_balanced", suspension:"sus_compliant",  gearbox:"gb_conservative", frontWing:"fw_standard" },
+};
+
 const TEAMS = [
-  {id:"mclaren",strategy:"aggressive_two",   name:"McLaren",      abbr:"MCL",color:"#FF8000",tc:"#000",carPace:92,reliability:88,pitSpeed:90,engine:"Mercedes"},
-  {id:"mercedes",strategy:"undercut_king",  name:"Mercedes",     abbr:"MER",color:"#00D2BE",tc:"#000",carPace:94,reliability:86,pitSpeed:88,engine:"Mercedes"},
-  {id:"redbull",strategy:"one_stop",   name:"Red Bull",     abbr:"RBR",color:"#3671C6",tc:"#fff",carPace:89,reliability:85,pitSpeed:95,engine:"Ford/RBPT"},
-  {id:"ferrari",strategy:"overcut",   name:"Ferrari",      abbr:"FER",color:"#E8002D",tc:"#fff",carPace:90,reliability:84,pitSpeed:87,engine:"Ferrari"},
-  {id:"williams",strategy:"fuel_save",  name:"Williams",     abbr:"WIL",color:"#37BEDD",tc:"#000",carPace:78,reliability:80,pitSpeed:83,engine:"Mercedes"},
-  {id:"racingbulls",strategy:"reactive",name:"Racing Bulls",abbr:"RBX",color:"#6692FF",tc:"#fff",carPace:75,reliability:82,pitSpeed:84,engine:"Ford/RBPT"},
-  {id:"astonmartin",strategy:"safety_car",name:"Aston Martin",abbr:"AMR",color:"#358C75",tc:"#fff",carPace:82,reliability:83,pitSpeed:82,engine:"Honda"},
-  {id:"haas",strategy:"tyre_banker",      name:"Haas",         abbr:"HAS",color:"#B6BABD",tc:"#000",carPace:70,reliability:78,pitSpeed:80,engine:"Ferrari"},
-  {id:"audi",strategy:"one_stop",      name:"Audi",         abbr:"AUD",color:"#B30000",tc:"#fff",carPace:72,reliability:75,pitSpeed:78,engine:"Audi"},
-  {id:"alpine",strategy:"reactive",    name:"Alpine",       abbr:"ALP",color:"#0093CC",tc:"#fff",carPace:68,reliability:77,pitSpeed:79,engine:"Mercedes"},
-  {id:"cadillac",strategy:"fuel_save",  name:"Cadillac",     abbr:"CAD",color:"#6B6B6B",tc:"#fff",carPace:62,reliability:72,pitSpeed:76,engine:"Ferrari"},
+  {id:"mclaren",strategy:"aggressive_two",   name:"McLaren",      abbr:"MCL",color:"#FF8000",tc:"#000",basePitSpeed:90,parts:{...TEAM_DEFAULT_PARTS.mclaren}},
+  {id:"mercedes",strategy:"undercut_king",  name:"Mercedes",     abbr:"MER",color:"#00D2BE",tc:"#000",basePitSpeed:88,parts:{...TEAM_DEFAULT_PARTS.mercedes}},
+  {id:"redbull",strategy:"one_stop",   name:"Red Bull",     abbr:"RBR",color:"#3671C6",tc:"#fff",basePitSpeed:95,parts:{...TEAM_DEFAULT_PARTS.redbull}},
+  {id:"ferrari",strategy:"overcut",   name:"Ferrari",      abbr:"FER",color:"#E8002D",tc:"#fff",basePitSpeed:87,parts:{...TEAM_DEFAULT_PARTS.ferrari}},
+  {id:"williams",strategy:"fuel_save",  name:"Williams",     abbr:"WIL",color:"#37BEDD",tc:"#000",basePitSpeed:83,parts:{...TEAM_DEFAULT_PARTS.williams}},
+  {id:"racingbulls",strategy:"reactive",name:"Racing Bulls",abbr:"RBX",color:"#6692FF",tc:"#fff",basePitSpeed:84,parts:{...TEAM_DEFAULT_PARTS.racingbulls}},
+  {id:"astonmartin",strategy:"safety_car",name:"Aston Martin",abbr:"AMR",color:"#358C75",tc:"#fff",basePitSpeed:82,parts:{...TEAM_DEFAULT_PARTS.astonmartin}},
+  {id:"haas",strategy:"tyre_banker",      name:"Haas",         abbr:"HAS",color:"#B6BABD",tc:"#000",basePitSpeed:80,parts:{...TEAM_DEFAULT_PARTS.haas}},
+  {id:"audi",strategy:"one_stop",      name:"Audi",         abbr:"AUD",color:"#B30000",tc:"#fff",basePitSpeed:78,parts:{...TEAM_DEFAULT_PARTS.audi}},
+  {id:"alpine",strategy:"reactive",    name:"Alpine",       abbr:"ALP",color:"#0093CC",tc:"#fff",basePitSpeed:79,parts:{...TEAM_DEFAULT_PARTS.alpine}},
+  {id:"cadillac",strategy:"fuel_save",  name:"Cadillac",     abbr:"CAD",color:"#6B6B6B",tc:"#fff",basePitSpeed:76,parts:{...TEAM_DEFAULT_PARTS.cadillac}},
 ];
 
 
+// ║  Defines 8 race strategy archetypes. Each strategy carries numeric      ║
+// ║  directly into runRace() and runSprint(). Teams are assigned a default  ║
+// ║                                                                          ║
+// ║  Overcut Gamble · Fuel Saving Mode · Safety Car Hunter · Tyre Banker    ║
 // ===================== TEAM STRATEGIES =====================
 const TEAM_STRATEGIES = [
   {
@@ -87,6 +305,10 @@ function getTeamStrategy(team) {
   return TEAM_STRATEGIES.find(s=>s.id===team.strategy)||TEAM_STRATEGIES[1];
 }
 
+// Known rivalries for richer narrative
+
+// ║  Rivals are stored per-driver as rivals:[] arrays. getRivalry() checks  ║
+// ║  description string used in qualifying, sprint and race narratives.     ║
 /**
  * Returns a rivalry object if dA and dB have a mutual rivalry set.
  * @param {object} dA - First driver object (with .rivals array)
@@ -171,14 +393,18 @@ const CPDS       = ["Softs","Mediums","Hards","Intermediates"];
 const FAIL       = ["engine failure","hydraulics failure","gearbox failure","suspension damage","power unit issue","brake failure","water pressure loss"];
 const EVT_C      = {incident:"#FF4444",dnf:"#FF6644",safetycar:"#FFC906",weather:"#4488FF",charge:"#44CC88",fastestlap:"#CC44FF",battle:"#FF8844",pitstop:"#44AAFF",drop:"#FF8844",start:"#E8002D",strategy:"#BB66FF"};
 
+const pick  = a => a[Math.floor(Math.random()*a.length)];
 const pickN = (a,n) => [...a].sort(()=>Math.random()-0.5).slice(0,n);
 const Lf    = (t,f) => Math.max(1,Math.floor(t*f));
 
 // ===================== SIMULATION ENGINE =====================
 
 
-const pick=(a)=>a[Math.floor(Math.random()*a.length)];
-const _pick=pick;
+const _pick=(a)=>a[Math.floor(Math.random()*a.length)];
+
+// ║  8 driver style archetypes, each applying stat modifiers to the         ║
+// ║  race pace (overallPace), DNF risk, overtaking/defense weighting.       ║
+// ║  Styles: Aggressive · Smooth · Qualifier · Defender · Charger           ║
 
 // ===================== DRIVING STYLES =====================
 const DRIVING_STYLES = [
@@ -237,6 +463,11 @@ function getStyleMods(d) {
   return style ? style.mods : {pace:0,consistency:0,overtaking:0,defense:0,wet:0,experience:0,dnfRisk:0,qualBonus:0,racePace:0};
 }
 
+// ║  calcBase()      — Deterministic base score from driver+team+track.     ║
+// ║  calcQualBase()  — calcBase + qualifying style bonus.                   ║
+// ║                    traffic, rivalries, mechanical issues, strategy).     ║
+// ║  runSprint()     — Abbreviated race (~100km). Sprint points for top 8.  ║
+// ║                    DNFs, weather, fastest lap, position battles.        ║
 /**
  * Calculates a driver's base performance score for a given track.
  * Incorporates: car pace, driver stats, driving style mods, circuit type,
@@ -254,29 +485,38 @@ function calcBase(d, team, track) {
   const eo = d.overtaking + sm.overtaking;
   const edf= d.defense    + sm.defense;
   const ex = d.experience + sm.experience;
-
-  let s = team.carPace*0.55 + ep*0.45;
-  // Circuit-type bonus applied to the most relevant effective stat
+  // derive team performance from equipped parts
+  const ts = getTeamStats(team);
+  let s = ts.carPace*0.55 + ep*0.45;
+  // Circuit type bonus (uses effective stats)
   if (track.type==="high-speed"||track.type==="low-downforce") s+=ep*0.06;
   else if (track.type==="technical") {
     s+=ec*0.06;
-    if(d.style==="technical") s+=4;
+    if(d.style==="technical") s+=4; // technical specialist bonus
   }
   else if (track.type==="street") {
     s+=ex*0.03+edf*0.02;
-    if(d.style==="defender") s+=2;
+    if(d.style==="defender") s+=2; // street defender bonus
   }
-  // Downforce delta: reward cars closer to the circuit's preferred level
+  // Downforce matching
   const dfDiff=Math.abs((track.downforce||6)-6);
-  s+=team.carPace*0.01*dfDiff*(track.downforce>6?0.5:-0.3);
+  s+=ts.carPace*0.01*dfDiff*(track.downforce>6?0.5:-0.3);
+  // parts circuit bonus
+  if(ts.aeroCircuitBonus&&track.type&&ts.aeroCircuitBonus[track.type]) s+=ts.aeroCircuitBonus[track.type]*0.5;
+  // High altitude
   if((track.alt||0)>500) s-=((track.alt-500)/2000)*((100-ex)*0.04);
+  // Night races
   if(track.night) s+=ex*0.025;
+  // Street circuits
   if(track.street) s+=ex*0.02+edf*0.015;
-  // High abrasion punishes low-consistency drivers disproportionately
+  // High abrasion (smooth style helps here)
   if((track.abrasive||3)>5) s-=((track.abrasive-5)*0.3)*((100-ec)/40);
+  // DRS zones
   if((track.drs||2)>=3) s+=eo*0.015;
+  // Good/bad track bonuses
   if((d.goodTracks||[]).includes(track.id)) s+=5;
   if((d.badTracks||[]).includes(track.id)) s-=5;
+  // Mental
   s+=((d.mental||7)-5)*0.45;
   return s;
 }
@@ -553,7 +793,8 @@ function runRace(grid, teams, track) {
   let entries=grid.map((q,i)=>{
     const {driver:d,team}=q;
     const strat=getTeamStrategy(team);
-    let pace=isWet?team.carPace*0.35+d.pace*0.15+d.wet*0.5:team.carPace*0.5+d.pace*0.3+d.consistency*0.2;
+    const _ts=getTeamStats(team);
+    let pace=isWet?_ts.carPace*0.35+d.pace*0.15+d.wet*0.5+(_ts.wetBonus||0)*0.3:_ts.carPace*0.5+d.pace*0.3+d.consistency*0.2;
     pace*=(strat.mods?.overallPace||1.0);
     if(track.type==="street") pace+=(d.experience+d.defense)*0.05;
     if(track.type==="high-speed") pace+=d.pace*0.06;
@@ -564,7 +805,7 @@ function runRace(grid, teams, track) {
     pace+=((d.mental||7)-5)*0.35;
     pace-=i*0.18*(track.od/100)*(hasSC?0.55:1);
     pace+=(Math.random()-0.5)*9;
-    const dnfR=Math.max(0.02,(100-team.reliability)/100*0.28+Math.max(0,(5-(d.mental||7))*0.02)+(strat.mods?.dnfRisk||0));
+    const dnfR=Math.max(0.02,(100-_ts.reliability)/100*0.28+Math.max(0,(5-(d.mental||7))*0.02)+(strat.mods?.dnfRisk||0));
     const dnf=Math.random()<dnfR;
     const dnfL=dnf?Math.max(2,Lf(TL,0.05)+Math.floor(Math.random()*Lf(TL,0.85))):null;
     const fl1=i>4&&Math.random()<0.032;
@@ -1011,7 +1252,7 @@ function RoundDetail({r, onBack}) {
 function EditModal({type,data,teams,drivers,onSave,onClose}){
   const [f,setF]=useState({...data,goodTracks:data.goodTracks||[],badTracks:data.badTracks||[],mental:data.mental||7,rivals:data.rivals||[]});
   const isD=type==="driver";
-  const sf=isD?[["pace","Raw Pace"],["consistency","Consistency"],["wet","Wet Weather"],["overtaking","Overtaking"],["defense","Defense"],["experience","Experience"]]:[["carPace","Car Pace"],["reliability","Reliability"],["pitSpeed","Pit Speed"]];
+  const sf=isD?[["pace","Raw Pace"],["consistency","Consistency"],["wet","Wet Weather"],["overtaking","Overtaking"],["defense","Defense"],["experience","Experience"]]:[]/*PARTS_UI*/;
   const inp={background:"#1E1E22",border:"1px solid #333",color:"#F0F0F0",padding:"9px 12px",width:"100%",fontFamily:"inherit",fontSize:16,borderRadius:3};
   return(
     <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.9)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -1118,15 +1359,81 @@ function EditModal({type,data,teams,drivers,onSave,onClose}){
             ):null;})()}
           </div>
         )}
-        {sf.map(([k,label])=>(
-          <div key={k} style={{marginBottom:12}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
-              <span style={{fontSize:14,color:"#aaa",letterSpacing:1.5}}>{label.toUpperCase()}</span>
-              <span style={{fontSize:16,fontWeight:700,color:"#F0F0F0",fontFamily:"monospace"}}>{f[k]}</span>
+        {sf.map(([k,label])=>(<div key={k} style={{marginBottom:12}}></div>))}
+        {/* Parts editor for teams */}
+        {!isD&&(()=>{
+          const SLOT_LABELS = [
+            ["powerUnit","⚡ POWER UNIT",    "powerUnit"],
+            ["aero",     "🏎 AERODYNAMICS",   "aero"],
+            ["suspension","🔧 SUSPENSION",    "suspension"],
+            ["gearbox",  "⚙️ GEARBOX",        "gearbox"],
+            ["frontWing","🪂 FRONT WING",     "frontWing"],
+          ];
+          const currentParts = f.parts||{};
+          const previewStats = getTeamStats({...f, parts:currentParts});
+          return(
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:11,color:"#4488FF",fontWeight:700,letterSpacing:1.5,marginBottom:10}}>🔩 CAR PARTS</div>
+
+              {/* Derived stats preview */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:14,padding:"10px 12px",background:"#0D0D14",borderRadius:5,border:"1px solid #2A2A30"}}>
+                {[
+                  ["CAR PACE",    previewStats.carPace,   "#E8002D"],
+                  ["RELIABILITY", previewStats.reliability,"#44CC88"],
+                  ["TYRE LIFE",   previewStats.tyreLife,   "#FFC906"],
+                  ["WET BONUS",   previewStats.wetBonus>0?"+"+previewStats.wetBonus:previewStats.wetBonus,"#4488FF"],
+                  ["CORNERS",     Math.round(previewStats.cornerBonus/2), "#BB66FF"],
+                  ["STRAIGHTS",   Math.round(previewStats.straightBonus/2),"#FF8844"],
+                ].map(([l,v,c])=>(
+                  <div key={l} style={{textAlign:"center"}}>
+                    <div style={{fontSize:16,fontWeight:900,color:c,lineHeight:1}}>{v}</div>
+                    <div style={{fontSize:9,color:"#556",letterSpacing:1,marginTop:2}}>{l}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Part slot selectors */}
+              {SLOT_LABELS.map(([slotKey, slotLabel, partsKey])=>{
+                const partsList = PARTS[partsKey];
+                const currentId = currentParts[slotKey];
+                const current   = partsList.find(p=>p.id===currentId)||partsList[0];
+                return(
+                  <div key={slotKey} style={{marginBottom:12,background:"#111115",borderRadius:5,border:"1px solid #1E1E22",overflow:"hidden"}}>
+                    <div style={{fontSize:10,color:"#4488FF",fontWeight:700,letterSpacing:1.5,padding:"8px 12px",background:"#0D0D18",borderBottom:"1px solid #1E1E22"}}>
+                      {slotLabel}
+                      <span style={{marginLeft:8,fontSize:10,color:"#aaa",fontWeight:400}}>{current.name}</span>
+                    </div>
+                    <div style={{padding:"8px 10px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:5,maxHeight:220,overflowY:"auto"}}>
+                      {partsList.map(part=>{
+                        const sel = currentId===part.id||((!currentId)&&part===partsList[0]);
+                        return(
+                          <button key={part.id} type="button"
+                            onClick={()=>setF(prev=>({...prev,parts:{...prev.parts||{},[slotKey]:part.id}}))}
+                            style={{background:sel?"#4488FF18":"#161618",border:`1px solid ${sel?"#4488FF66":"#2A2A30"}`,borderRadius:4,padding:"7px 9px",cursor:"pointer",textAlign:"left",transition:"all 0.12s"}}>
+                            <div style={{fontSize:11,fontWeight:700,color:sel?"#4488FF":"#ccc",marginBottom:3,lineHeight:1.3}}>{part.name}</div>
+                            {part.spec&&<div style={{fontSize:9,color:"#445",marginBottom:4,letterSpacing:0.5}}>{part.spec}</div>}
+                            <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                              {Object.entries(part).filter(([k])=>["pace","reliability","cornerSpeed","straightSpeed","tyreWear","wetPerformance","fuel","cornerExit","balance"].includes(k)&&part[k]!==undefined&&part[k]!==0).slice(0,4).map(([k,v])=>(
+                                <span key={k} style={{fontSize:8,padding:"1px 5px",borderRadius:2,background:v>0?"#44CC8818":"#E8002D18",color:v>0?"#44CC88":"#E8002D",fontWeight:700}}>
+                                  {k.replace("Speed","Spd").replace("Performance","Perf").replace("cornerexit","Exit")}: {v>0?"+":""}{v}
+                                </span>
+                              ))}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {current.description&&(
+                      <div style={{padding:"6px 12px 8px",fontSize:11,color:"#556",lineHeight:1.5,borderTop:"1px solid #1A1A22",fontStyle:"italic"}}>
+                        {current.description}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-            <input type="range" min={40} max={100} step={1} value={f[k]} onChange={e=>setF(p=>({...p,[k]:parseInt(e.target.value)}))} style={{width:"100%",accentColor:"#E8002D"}}/>
-          </div>
-        ))}
+          );
+        })()}
         <div style={{display:"flex",gap:10,marginTop:18}}>
           <button onClick={()=>onSave(f)} style={{flex:1,background:"#E8002D",color:"#fff",border:"none",padding:11,cursor:"pointer",fontFamily:"inherit",fontSize:16,fontWeight:700,letterSpacing:2.5,borderRadius:3}}>SAVE</button>
           <button onClick={onClose} style={{background:"transparent",color:"#aaa",border:"1px solid #333",padding:"11px 18px",cursor:"pointer",fontFamily:"inherit",fontSize:15,borderRadius:3}}>CANCEL</button>
@@ -1161,6 +1468,11 @@ function QGrid({entries,gapFrom,posLabel,elimLine,elimColor="#FF4444"}){
 }
 
 // Aggregated qualifying: run N times, average grid positions → canonical grid
+
+// ║  When ACCURACY selector is set to ×5/×10/×20, these functions run the  ║
+// ║  random variance. The canonical result is the most probable outcome.    ║
+// ║  aggQual()   — Average qualifying grid from N runs                      ║
+// ║  aggSprint() — Average sprint positions from N runs                     ║
 function aggQual(n, drivers, teams, track) {
   if(n<=1) return runQ1Q2Q3(drivers,teams,track);
 
@@ -1287,7 +1599,8 @@ function aggSprint(n, grid, teams, track) {
 }
 
 
-// Runs the full weekend pipeline N times, averaging positions and points. Powers the MULTI-SIM tab.
+// ║  Runs the full weekend pipeline (qual + optional sprint + race) N times ║
+// ║  average position, total points. Powers the 📊 MULTI-SIM tab.          ║
 function runMultiSim(n, drivers, teams, track) {
   const acc = {};
   drivers.forEach(d => {
@@ -1355,7 +1668,8 @@ const TESTING_SESSIONS = [
 ];
 
 
-// Generates pre-season test data: qualifying sim laps and long-run stints per day, with weather conditions.
+// ║  Generates per-day test data: qualifying simulation laps, long-run      ║
+// ║  character (installation / setup / quali sims) with conditions.         ║
 function runPreseasonTest(days, drivers, teams, trackId) {
   const track = TRACKS.find(t=>t.id===trackId)||TRACKS[0];
   const ISSUE_TYPES = ["Hydraulics issue","Power unit concern","Gearbox problem","Brake failure","Cooling issue","Suspension damage","Oil leak","Electrical fault","DRS fault","Floor damage"];
@@ -1375,7 +1689,8 @@ function runPreseasonTest(days, drivers, teams, trackId) {
   // Build per-driver overall data once, then vary by day
   const driverBases = drivers.map(d=>{
     const team=teams.find(t=>t.id===d.teamId)||teams[teams.length-1];
-    const base=87+(100-team.carPace)*0.28+(100-d.pace)*0.14;
+    const _tts=getTeamStats(team);
+    const base=87+(100-_tts.carPace)*0.28+(100-d.pace)*0.14;
     const altPenalty=((track.alt||0)>500?(track.alt-500)/8000:0);
     return {driver:d,team,base,altPenalty};
   });
@@ -1409,7 +1724,7 @@ function runPreseasonTest(days, drivers, teams, trackId) {
       lapTotal[d.id]=lapsDone;
 
       // Per-day issues — more common on day 1
-      const issueChance=(100-team.reliability)/260*(di===0?1.6:di===1?1.0:0.7);
+      const issueChance=(100-_tts.reliability)/260*(di===0?1.6:di===1?1.0:0.7);
       const issue=Math.random()<issueChance?{
         type:ISSUE_TYPES[Math.floor(Math.random()*ISSUE_TYPES.length)],
         session:_pick(["Morning","Afternoon"]),
@@ -1450,6 +1765,11 @@ function fmtLap(s){const m=Math.floor(s/60);return `${m}:${(s%60).toFixed(3).pad
 // ===================== SESSION CAPTIONS =====================
 
 
+// ║  Sky Sports-style written reports for each session. All randomised      ║
+// ║                                                                          ║
+// ║  buildSprintCaption()     — Sprint race report with rivalries            ║
+// ║  buildDayCaption()        — Per-day test report                          ║
+// ║  buildQ2Caption()         — Q2 session narrative with tyre strategy      ║
 function buildQualifyingCaption(q1,q2,q3,grid,track){
   const pole=grid[0], p2=grid[1], p3=grid[2], p4=grid[3]||grid[2];
   const q2elim=q1.filter(e=>e.elim1);
@@ -1914,7 +2234,8 @@ function buildQ3Caption(q3, track){
 }
 
 
-// Seven commentary stages rendered by the race view, from lights out to podium.
+// ║  Reusable React components: Bar, MentalBar, TrackPicker, RivalPicker,  ║
+// ║  STAGE_DEFS: the 7 Croft & Brundle commentary stages (lights out →     ║
 const STAGE_DEFS=[
   {key:"start",   title:"LIGHTS OUT",      emoji:"🚦",color:"#E8002D",lapHint:"Laps 1–5"},
   {key:"early",   title:"EARLY RUNNING",   emoji:"⚡",color:"#FF8844",lapHint:"Laps 6–20"},
@@ -1926,6 +2247,20 @@ const STAGE_DEFS=[
 ];
 
 // ===================== MAIN APP =====================
+
+
+// ║  F1Sim is the root React component. All state lives here.               ║
+// ║  State:   drivers, teams, track, view, qual, sprint, race, stages,      ║
+// ║                                                                          ║
+// ║           → testing → multisim → championship                           ║
+// ║  Persistence: localStorage keys:                                         ║
+// ║    f1sim_teams   — serialised team array                                ║
+
+// ║  Shows on first load. F1 2027 is the only active series; F2/F3/F4/     ║
+// ║  ready to be activated in future versions.                               ║
+
+// ║  Anonymised race simulation data is sent to a Supabase backend.         ║
+// ║  local model via Bayesian blending. All data is opt-in and anonymous.   ║
 
 
 // Replace these with your own Supabase project URL and anon key.
@@ -2795,7 +3130,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
           podium_pct:r.podiumPct||0, avg_pos:r.avgPos||11,
         })),
         driver_stats: enrichedStats,
-        team_paces: teams.map(t=>({id:t.id,pace:t.carPace})),
+        team_paces: teams.map(t=>{const s=getTeamStats(t);return{id:t.id,pace:s.carPace};}),
         actual_winner_id: null,
         prediction_correct: null,
         openf1_session_key: sk,
@@ -2901,7 +3236,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                   <button key={t} onClick={()=>setGTab(t)} style={{background:gTab===t?"#2A2A30":"transparent",color:gTab===t?"#F0F0F0":"#899",border:"1px solid #2A2A30",padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>{l}</button>
                 ))}
                 <button onClick={()=>setModal({type:"driver",data:{name:"",abbr:"",num:99,teamId:teams[0]?.id||"",pace:78,consistency:78,wet:75,overtaking:75,defense:75,experience:65,mental:7,flag:"🏁",goodTracks:[],badTracks:[]}})} style={{background:"#E8002D",color:"#fff",border:"none",padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>+ DRIVER</button>
-                <button onClick={()=>setModal({type:"team",data:{name:"",abbr:"",color:"#aaa",tc:"#fff",carPace:70,reliability:75,pitSpeed:78,engine:"Customer"}})} style={{background:"#2A2A30",color:"#ccc",border:"none",padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>+ TEAM</button>
+                <button onClick={()=>setModal({type:"team",data:{name:"",abbr:"",color:"#aaa",tc:"#fff",basePitSpeed:78,engine:"Customer",strategy:"one_stop",parts:{...TEAM_DEFAULT_PARTS.cadillac}}})} style={{background:"#2A2A30",color:"#ccc",border:"none",padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>+ TEAM</button>
               </div>
             </div>
 
@@ -2954,9 +3289,9 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                       <div><div style={{fontSize:20,fontWeight:700}}>{t.name}</div><div style={{fontSize:14,color:"#778",letterSpacing:1.5,marginTop:2}}>⚙️ {t.engine}</div></div>
                       <div style={{background:t.color,color:t.tc||"#fff",fontSize:14,fontWeight:700,padding:"3px 8px",letterSpacing:2.5,borderRadius:2}}>{t.abbr}</div>
                     </div>
-                    {[["CAR PACE",t.carPace],["RELIABILITY",t.reliability],["PIT SPEED",t.pitSpeed]].map(([l,v])=>(
+                    {(()=>{const _s=getTeamStats(t);return[["CAR PACE",_s.carPace],["RELIABILITY",_s.reliability],["PIT SPEED",_s.pitSpeed]].map(([l,v])=>(
                       <div key={l} style={{marginBottom:9}}><div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"#778",letterSpacing:1.5,marginBottom:2}}><span>{l}</span><span style={{color:"#bbb"}}>{v}</span></div><Bar val={v} color={t.color}/></div>
-                    ))}
+                    ));})()} 
                     {(()=>{const st=TEAM_STRATEGIES.find(s=>s.id===t.strategy);return st?(
                       <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8,marginBottom:2}}>
                         <span style={{fontSize:12}}>{st.icon}</span>
