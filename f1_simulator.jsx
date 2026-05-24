@@ -774,7 +774,7 @@ function runFP(sessionNum, drivers, teams, track) {
   const tyreGain   = sessionNum===1 ? 0 : 0.8;
   const sessionForm = {};
   drivers.forEach(d => { sessionForm[d.id] = (Math.random()-0.5)*2*formSpread; });
-  const positions = drivers.map(d => {
+  const raw = drivers.map(d => {
     const team = teams.find(t=>t.id===d.teamId)||teams[teams.length-1];
     const base  = calcQualBase(d, team, track);
     const form  = sessionForm[d.id];
@@ -782,8 +782,11 @@ function runFP(sessionNum, drivers, teams, track) {
     const lap   = (Math.random()-0.5)*2*lapSpread;
     const fuelPenalty = sessionNum===1 ? -(Math.random()*3+1) : -(Math.random()*2+0.5);
     const score = base + form + tyre + lap + fuelPenalty;
-    return {driver:d, team, score};
-  }).sort((a,b)=>b.score-a.score).map((e,i)=>({...e, pos:i+1}));
+    const laps  = Math.floor(Math.random()*8 + (sessionNum===1?12:15));
+    return {driver:d, team, score, laps};
+  }).sort((a,b)=>b.score-a.score);
+  const best = raw[0]?.score||0;
+  const positions = raw.map((e,i)=>({...e, pos:i+1, gap:i===0?null:((best-e.score)*0.011).toFixed(3)}));
   return {positions, sessionNum};
 }
 
@@ -2662,6 +2665,21 @@ function EntryMenu({onSelect}) {
   );
 }
 
+class ErrorBoundary extends React.Component {
+  constructor(p){super(p);this.state={err:null};}
+  static getDerivedStateFromError(e){return{err:e};}
+  render(){
+    if(this.state.err){
+      return React.createElement('div',{style:{padding:32,fontFamily:'monospace',background:'#0C0C0F',minHeight:'100vh'}},
+        React.createElement('div',{style:{fontSize:20,fontWeight:700,color:'#E8002D',marginBottom:12}},'⚠️ F1 SIM — RENDER ERROR'),
+        React.createElement('pre',{style:{fontSize:12,color:'#FF8844',whiteSpace:'pre-wrap',background:'#111',padding:16,borderRadius:4}},this.state.err.stack||String(this.state.err)),
+        React.createElement('button',{onClick:()=>this.setState({err:null}),style:{marginTop:16,background:'#E8002D',color:'#fff',border:'none',padding:'8px 20px',cursor:'pointer',fontFamily:'monospace',fontSize:14,fontWeight:700,borderRadius:3}},'↺ DISMISS')
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function F1Sim(){
   const [showMenu,setShowMenu]=React.useState(()=>{
     try{return localStorage.getItem('f1sim_series')!=='f1';}catch{return true;}
@@ -2899,8 +2917,8 @@ export default function F1Sim(){
           q3: qual.q3.map(e=>({...e, driver:{name:e.driver.name,flag:e.driver.flag,abbr:e.driver.abbr,id:e.driver.id}, team:{name:e.team.name,color:e.team.color}})),
           runsUsed: qual.runsUsed||1,
         } : null,
-        fp1: fp1 ? fp1.results.map(e=>({driverName:e.driver.name,driverFlag:e.driver.flag,driverAbbr:e.driver.abbr,teamName:e.team.name,teamColor:e.team.color,gap:e.gap,laps:e.laps})) : null,
-        fp2: fp2 ? fp2.results.map(e=>({driverName:e.driver.name,driverFlag:e.driver.flag,driverAbbr:e.driver.abbr,teamName:e.team.name,teamColor:e.team.color,gap:e.gap,laps:e.laps})) : null,
+        fp1: fp1 ? fp1.positions.map(e=>({driverName:e.driver.name,driverFlag:e.driver.flag,driverAbbr:e.driver.abbr,teamName:e.team.name,teamColor:e.team.color,gap:e.gap,laps:e.laps})) : null,
+        fp2: fp2 ? fp2.positions.map(e=>({driverName:e.driver.name,driverFlag:e.driver.flag,driverAbbr:e.driver.abbr,teamName:e.team.name,teamColor:e.team.color,gap:e.gap,laps:e.laps})) : null,
         sprintQual: sprintQual ? {
           sq1: sprintQual.sq1.map(e=>({...e,driver:{name:e.driver.name,flag:e.driver.flag,abbr:e.driver.abbr,id:e.driver.id},team:{name:e.team.name,color:e.team.color}})),
           sq2: sprintQual.sq2.map(e=>({...e,driver:{name:e.driver.name,flag:e.driver.flag,abbr:e.driver.abbr,id:e.driver.id},team:{name:e.team.name,color:e.team.color}})),
@@ -3366,6 +3384,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
   }}/>;
 
   return(
+    <ErrorBoundary>
     <div style={{background:"#0C0C0F",minHeight:"100vh",fontFamily:"'Rajdhani','Segoe UI',sans-serif",color:"#F0F0F0"}}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&display=swap');
@@ -3548,7 +3567,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
         )}
 
         
-        {view==="qualifying"&&qual&&(()=>{
+        {view==="qualifying"&&qual&&(()=>{try{
           // Build tab list: FP1 → (FP2 or SQ1/SQ2/SQ3) → Q1 → Q2 → Q3
           const tabs=[];
           if(fp1) tabs.push({k:"fp1",l:"FP1",sub:"FREE PRACTICE",dur:"60 MIN",color:"#4488FF",kind:"fp",data:fp1});
@@ -3589,7 +3608,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                 <div style={{display:"grid",gridTemplateColumns:"1fr 340px",gap:16,alignItems:"start"}}>
                   <div>
                     <div style={{display:"grid",gap:5}}>
-                      {cur.data.results.map((e,i)=>(
+                      {cur.data.positions.map((e,i)=>(
                         <div key={e.driver.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",background:"#161618",border:"1px solid #1E1E22",borderLeft:`3px solid ${e.team.color}`,borderRadius:3}}>
                           <div style={{width:28,textAlign:"center",fontSize:13,fontWeight:700,color:i<3?"#FFC906":"#666"}}>{i+1}</div>
                           <div style={{width:44,fontFamily:"monospace",fontSize:11,fontWeight:700,color:e.team.color,letterSpacing:1}}>{e.driver.abbr}</div>
@@ -3598,7 +3617,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                             <div style={{fontSize:11,color:e.team.color,letterSpacing:1}}>{e.team.name}</div>
                           </div>
                           <div style={{textAlign:"right"}}>
-                            <div style={{fontSize:13,fontFamily:"monospace",color:i===0?"#FFC906":"#ccc"}}>{i===0?"BEST":`+${e.gap}s`}</div>
+                            <div style={{fontSize:13,fontFamily:"monospace",color:i===0?"#FFC906":"#ccc"}}>{e.gap?`+${e.gap}s`:"BEST"}</div>
                             <div style={{fontSize:11,color:"#556"}}>{e.laps} laps</div>
                           </div>
                         </div>
@@ -3686,10 +3705,10 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                 <button onClick={doRace} style={{background:"#E8002D",color:"#fff",border:"none",padding:"10px 24px",cursor:"pointer",fontFamily:"inherit",fontSize:16,fontWeight:700,letterSpacing:3,borderRadius:3}}>START RACE →</button>
               </div>
             </div>
-          );
+          );}catch(e){return<div style={{padding:24,background:"#1A0808",border:"2px solid #E8002D",borderRadius:6,margin:8,fontFamily:"monospace"}}><div style={{color:"#E8002D",fontWeight:700,fontSize:16,marginBottom:8}}>⚠️ QUALIFYING VIEW ERROR — please report this</div><pre style={{color:"#FF8844",fontSize:12,whiteSpace:"pre-wrap"}}>{e&&e.stack?e.stack:String(e)}</pre></div>;}
         })()}
 
-        
+
         {view==="sprint"&&sprint&&(
           <div style={{animation:"fadeIn 0.2s ease"}}>
             <div style={{marginBottom:14}}>
@@ -5300,5 +5319,6 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
 
         {modal&&<EditModal type={modal.type} data={modal.data} teams={teams} drivers={drivers} onSave={modal.type==="driver"?saveDriver:saveTeam} onClose={()=>setModal(null)}/>}
     </div>
+    </ErrorBoundary>
   );
 }
