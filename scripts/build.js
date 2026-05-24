@@ -31,6 +31,8 @@ function findModule(name) {
     `/home/${process.env.USER || 'claude'}/.npm-global/lib/node_modules/@mermaid-js/mermaid-cli/node_modules/.bin/${name}`,
     `/home/${process.env.USER || 'claude'}/.npm-global/lib/node_modules/tsx/node_modules/.bin/${name}`,
     `/home/${process.env.USER || 'claude'}/.npm-global/lib/node_modules/.bin/${name}`,
+    `/opt/node22/bin/${name}`,
+    `/usr/local/bin/${name}`,
   ];
   for (const c of candidates) {
     if (fs.existsSync(c)) return c;
@@ -42,6 +44,9 @@ function findSucrase() {
   const candidates = [
     path.join(ROOT, 'node_modules', '@mermaid-js', 'mermaid-cli', 'node_modules', 'sucrase'),
     `/home/${process.env.USER || 'claude'}/.npm-global/lib/node_modules/@mermaid-js/mermaid-cli/node_modules/sucrase`,
+    '/opt/node22/lib/node_modules/sucrase',
+    '/usr/local/lib/node_modules/sucrase',
+    '/usr/lib/node_modules/sucrase',
   ];
   for (const c of candidates) {
     if (fs.existsSync(c)) return require(c);
