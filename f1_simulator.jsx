@@ -3060,7 +3060,7 @@ export default function F1Sim(){
     // Award budget tokens to every team after each race
     setTeamBudgets(prev=>{
       const next={...prev};
-      teams.forEach(t=>{const tc=TIER_CONFIG[t.tier]||TIER_CONFIG.low;next[t.id]=(next[t.id]||0)+tc.capPerRound;});
+      teams.forEach(t=>{next[t.id]=(next[t.id]||0)+1;});
       return next;
     });
 
