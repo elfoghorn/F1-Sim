@@ -1976,7 +1976,7 @@ function runPreseasonTest(days, drivers, teams, trackId) {
     const _tts=getTeamStats(team);
     const base=87+(100-_tts.carPace)*0.28+(100-d.pace)*0.14;
     const altPenalty=((track.alt||0)>500?(track.alt-500)/8000:0);
-    return {driver:d,team,base,altPenalty};
+    return {driver:d,team,tts:_tts,base,altPenalty};
   });
 
   // Generate each day
@@ -1988,7 +1988,7 @@ function runPreseasonTest(days, drivers, teams, trackId) {
     const incidents=[];
     const lapTotal={};
 
-    const dayResults=driverBases.map(({driver:d,team,base,altPenalty})=>{
+    const dayResults=driverBases.map(({driver:d,team,tts:_tts,base,altPenalty})=>{
       // Each day slightly different pace picture — teams try different configs
       const setupVar=(Math.random()-0.5)*0.6; // team setup direction that day
       const timeMod=char.timeMod*(Math.random()*0.8+0.6);
