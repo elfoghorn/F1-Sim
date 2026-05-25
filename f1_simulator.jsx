@@ -1934,7 +1934,7 @@ function runMultiSim(n, drivers, teams, track) {
     podiumPct:      r.podiums / n,
     dnfPct:         r.dnfs / n,
     polePct:        r.poles / n,
-  })).sort((a, b) => a.avgPos - b.avgPos);
+  })).sort((a, b) => b.totalPts - a.totalPts);
 }
 
 
@@ -5145,7 +5145,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                   style={{background:championship.length===0?"#1A1A1A":"#2A2A30",color:championship.length===0?"#bbb":"#FFC906",border:`1px solid ${championship.length===0?"#1A1A1A":"#FFC90644"}`,padding:"8px 16px",cursor:championship.length===0?"default":"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>
                   ↩ UNDO LAST
                 </button>
-                <button onClick={()=>{if(window.confirm("Reset the entire championship? This cannot be undone."))setChampionship([]);setSelectedRound(null);}} disabled={championship.length===0}
+                <button onClick={()=>{if(window.confirm("Reset the entire championship? This cannot be undone.")){{setChampionship([]);setSelectedRound(null);setTeamBudgets(initBudgets());}}}} disabled={championship.length===0}
                   style={{background:championship.length===0?"#1A1A1A":"#2A1010",color:championship.length===0?"#bbb":"#FF4444",border:`1px solid ${championship.length===0?"#1A1A1A":"#FF444444"}`,padding:"8px 16px",cursor:championship.length===0?"default":"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>
                   ✕ RESET
                 </button>
