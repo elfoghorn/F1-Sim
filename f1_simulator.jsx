@@ -1495,7 +1495,7 @@ function RoundDetail({r, onBack}) {
   );
 }
 
-function EditModal({type,data,teams,drivers,onSave,onClose,teamBudgets,currentRound,onEquipPart}){
+function EditModal({type,data,teams,drivers,onSave,onClose,teamBudgets,currentRound,onEquipPart,onSetBudget}){
   const [f,setF]=useState({...data,goodTracks:data.goodTracks||[],badTracks:data.badTracks||[],mental:data.mental||7,rivals:data.rivals||[]});
   const isD=type==="driver";
   const sf=isD?[["pace","Raw Pace"],["consistency","Consistency"],["wet","Wet Weather"],["overtaking","Overtaking"],["defense","Defense"],["experience","Experience"]]:[]/*PARTS_UI*/;
@@ -1513,7 +1513,13 @@ function EditModal({type,data,teams,drivers,onSave,onClose,teamBudgets,currentRo
               return(
                 <div style={{display:"flex",gap:8,alignItems:"center",marginTop:5}}>
                   <span style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:tier.color,background:tier.color+"18",padding:"2px 7px",borderRadius:2}}>{tier.label}</span>
-                  <span style={{fontSize:12,color:"#aaa"}}>Budget cap: <span style={{color:"#FFC906",fontWeight:700}}>£{cap}m</span></span>
+                  <span style={{fontSize:12,color:"#aaa",display:"flex",alignItems:"center",gap:4}}>
+                    Budget cap: £<input
+                      type="number" min={1} max={999} value={cap}
+                      onChange={e=>{const v=parseInt(e.target.value)||1;if(onSetBudget)onSetBudget(data.id,v);}}
+                      style={{width:52,background:"#111115",border:"1px solid #FFC90644",borderRadius:3,color:"#FFC906",fontWeight:700,fontSize:13,padding:"1px 5px",fontFamily:"inherit",textAlign:"center"}}
+                    />m
+                  </span>
                 </div>
               );
             })()}
@@ -3267,6 +3273,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
 
   const saveDriver=d=>{if(drivers.find(x=>x.id===d.id))setDrivers(p=>p.map(x=>x.id===d.id?d:x));else setDrivers(p=>[...p,{...d,id:`c_${Date.now()}`}]);setModal(null);};
   const saveTeam=t=>{if(teams.find(x=>x.id===t.id))setTeams(p=>p.map(x=>x.id===t.id?t:x));else setTeams(p=>[...p,{...t,id:`c_${Date.now()}`}]);setModal(null);};
+  const setBudgetCap=(teamId,cap)=>setTeamBudgets(prev=>({...prev,[teamId]:Math.max(1,cap)}));
   const equipPart=(teamId,slotKey,partId)=>{
     setTeams(prev=>prev.map(t=>t.id===teamId?{...t,parts:{...t.parts,[slotKey]:partId}}:t));
     setModal(prev=>prev?{...prev,data:{...prev.data,parts:{...prev.data.parts,[slotKey]:partId}}}:prev);
@@ -5438,7 +5445,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
           </div>
         )}
 
-        {modal&&<EditModal type={modal.type} data={modal.data} teams={teams} drivers={drivers} onSave={modal.type==="driver"?saveDriver:saveTeam} onClose={()=>setModal(null)} teamBudgets={teamBudgets} currentRound={championship.length+1} onEquipPart={equipPart}/>}
+        {modal&&<EditModal type={modal.type} data={modal.data} teams={teams} drivers={drivers} onSave={modal.type==="driver"?saveDriver:saveTeam} onClose={()=>setModal(null)} teamBudgets={teamBudgets} currentRound={championship.length+1} onEquipPart={equipPart} onSetBudget={setBudgetCap}/>}
     </div>
     </ErrorBoundary>
   );
