@@ -1624,7 +1624,17 @@ function EditModal({type,data,teams,drivers,onSave,onClose,teamBudgets,currentRo
             ):null;})()}
           </div>
         )}
-        {sf.map(([k,label])=>(<div key={k} style={{marginBottom:12}}></div>))}
+        {sf.map(([k,label])=>(
+          <div key={k} style={{marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+              <span style={{fontSize:13,color:"#aaa",letterSpacing:1.5}}>{label.toUpperCase()}</span>
+              <span style={{fontSize:15,fontWeight:700,color:f[k]>=90?"#E8002D":f[k]>=75?"#FFC906":"#aaa",fontFamily:"monospace"}}>{f[k]}</span>
+            </div>
+            <input type="range" min={40} max={99} step={1} value={f[k]||70}
+              onChange={e=>setF(p=>({...p,[k]:parseInt(e.target.value)}))}
+              style={{width:"100%",accentColor:"#E8002D"}}/>
+          </div>
+        ))}
         {/* Parts upgrade shop for teams */}
         {!isD&&(()=>{
           const SLOT_LABELS = [
