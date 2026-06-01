@@ -3024,7 +3024,12 @@ function F2Sim({onBack}){
         <button onClick={()=>setView("garage")} style={nb(view==="garage")}>GARAGE</button>
         <button onClick={()=>setView("tracks")} style={nb(view==="tracks")}>TRACKS</button>
         <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,paddingRight:14,flexShrink:0}}>
-          <button onClick={onBack} style={{background:"transparent",color:"#444",border:"1px solid #1E2040",padding:"3px 9px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1,borderRadius:2,whiteSpace:"nowrap"}}>⏏ MENU</button>
+          <button onClick={onBack}
+            style={{background:"#080A1A",color:"#0067FF",border:"1px solid #0067FF55",padding:"5px 14px",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:700,letterSpacing:1.5,borderRadius:3,whiteSpace:"nowrap",transition:"all 0.15s"}}
+            onMouseEnter={e=>{e.currentTarget.style.background="#0067FF22";e.currentTarget.style.borderColor="#0067FF99";}}
+            onMouseLeave={e=>{e.currentTarget.style.background="#080A1A";e.currentTarget.style.borderColor="#0067FF55";}}>
+            ⏏ HOME
+          </button>
         </div>
       </div>
 
@@ -4123,7 +4128,12 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
           ))}
           <div style={{width:1,height:20,background:"#2A2A30"}}/>
           {/* Back to menu */}
-          <button onClick={()=>setShowMenu(true)} title="Back to series select" style={{background:"transparent",color:"#444",border:"1px solid #2A2A30",padding:"3px 9px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1,borderRadius:2,whiteSpace:"nowrap"}}>⏏ MENU</button>
+          <button onClick={()=>setShowMenu(true)} title="Back to series select"
+            style={{background:"#1A0A0A",color:"#E8002D",border:"1px solid #E8002D55",padding:"5px 14px",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:700,letterSpacing:1.5,borderRadius:3,whiteSpace:"nowrap",transition:"all 0.15s",display:"flex",alignItems:"center",gap:5}}
+            onMouseEnter={e=>{e.currentTarget.style.background="#E8002D22";e.currentTarget.style.borderColor="#E8002D99";}}
+            onMouseLeave={e=>{e.currentTarget.style.background="#1A0A0A";e.currentTarget.style.borderColor="#E8002D55";}}>
+            ⏏ HOME
+          </button>
           <button
             onClick={()=>{setCommunityEnabled(p=>!p);setDbError(false);setDbSubmitCount(0);}}
             title={communityEnabled?"Community model ON — sharing anonymous data":"Community model OFF — click to enable"}
