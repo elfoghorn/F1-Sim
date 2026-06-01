@@ -3287,6 +3287,7 @@ function F2Sim({onBack}){
   const [testSession,setTestSession]=useState("AM");
   const [championship,setChampionship]=useState(()=>{try{const s=localStorage.getItem('f2sim_champ');return s?JSON.parse(s):[];}catch{return [];}});
   const [f2ChampTab,setF2ChampTab]=useState("drivers");
+  const [f2QTab,setF2QTab]=useState("quali");
   const [isGen,setIsGen]=useState(false);
   const [genMsg,setGenMsg]=useState("");
   const [runAccuracy,setRunAccuracy]=useState(5);
@@ -3662,49 +3663,46 @@ function F2Sim({onBack}){
                 <button onClick={doRace} style={{background:"#44CC8818",color:"#44CC88",border:"1px solid #44CC8855",padding:"6px 16px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,borderRadius:3}}>▶ FEATURE →</button>
               </div>
             </div>
-            {qual&&(()=>{
-              const [qTab,setQTab]=React.useState("quali");
-              return(
-                <>
-                  <div style={{display:"flex",gap:3,marginBottom:14,background:"#0A0A18",padding:4,borderRadius:5,border:`1px solid #1A1A30`}}>
-                    {[["quali","QUALIFYING ORDER",F2C],["sprint","SPRINT GRID (REV TOP-10)","#FFC906"],["feature","FEATURE GRID","#44CC88"]].map(([k,l,c])=>(
-                      <button key={k} onClick={()=>setQTab(k)} style={{flex:1,background:qTab===k?`${c}18`:"transparent",color:qTab===k?c:"#556",border:`1px solid ${qTab===k?c+"44":"transparent"}`,padding:"7px 0",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1,borderRadius:3}}>
-                        {l}
-                      </button>
+            {qual&&(
+              <>
+                <div style={{display:"flex",gap:3,marginBottom:14,background:"#0A0A18",padding:4,borderRadius:5,border:`1px solid #1A1A30`}}>
+                  {[["quali","QUALIFYING ORDER",F2C],["sprint","SPRINT GRID (REV TOP-10)","#FFC906"],["feature","FEATURE GRID","#44CC88"]].map(([k,l,c])=>(
+                    <button key={k} onClick={()=>setF2QTab(k)} style={{flex:1,background:f2QTab===k?`${c}18`:"transparent",color:f2QTab===k?c:"#556",border:`1px solid ${f2QTab===k?c+"44":"transparent"}`,padding:"7px 0",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1,borderRadius:3}}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:14}}>
+                  {(f2QTab==="quali"?qual.positions:f2QTab==="sprint"?qual.sprintGrid:qual.featureGrid).map((e,i)=>{
+                    const best=qual.positions[0].score;
+                    const gapS=i===0?null:((best-e.score)*0.011).toFixed(3);
+                    const noteColor=f2QTab==="sprint"?(i<10?"#FFC906":"#556"):f2QTab==="feature"?(i<10?"#44CC88":"#556"):F2C;
+                    return(
+                      <div key={e.driver.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:i<3?"#0D0D1C":"#0E0E1E",border:`1px solid ${i<3?`${noteColor}22`:"#1A1A30"}`,borderLeft:`3px solid ${e.team.color}`,borderRadius:3}}>
+                        <div style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?"#FFC906":i===1?"#aaa":i===2?"#CD7F32":"transparent",color:i<3?"#000":"#556",fontSize:12,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #1A1A30":"none",flexShrink:0}}>{i+1}</div>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:14,fontWeight:700}}>{e.driver.flag} {e.driver.name}</div>
+                          <div style={{fontSize:11,color:e.team.color,letterSpacing:1}}>{e.team.name}</div>
+                        </div>
+                        <div style={{textAlign:"right",flexShrink:0}}>
+                          <div style={{fontSize:12,fontFamily:"monospace",color:i===0?noteColor:"#aaa"}}>{i===0?(f2QTab==="quali"?"POLE":"P1"):gapS?`+${gapS}s`:""}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {qual.events&&qual.events.length>0&&(
+                  <div style={{background:"#0A0A18",border:`1px solid ${F2C}22`,borderRadius:6,padding:14}}>
+                    <div style={{fontSize:11,color:F2C,fontWeight:700,letterSpacing:2,marginBottom:10}}>QUALIFYING REPORT</div>
+                    {qual.events.map((ev,i)=>(
+                      <div key={i} style={{borderLeft:`3px solid ${EVT_C[ev.type]||F2C}`,padding:"7px 12px",marginBottom:5,background:"#0D0D1C",borderRadius:"0 3px 3px 0"}}>
+                        <div style={{fontSize:13,lineHeight:1.6}}>{ev.icon} {ev.text}</div>
+                      </div>
                     ))}
                   </div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:14}}>
-                    {(qTab==="quali"?qual.positions:qTab==="sprint"?qual.sprintGrid:qual.featureGrid).map((e,i)=>{
-                      const best=qual.positions[0].score;
-                      const gapS=i===0?null:((best-e.score)*0.011).toFixed(3);
-                      const noteColor=qTab==="sprint"?(i<10?"#FFC906":"#556"):qTab==="feature"?(i<10?"#44CC88":"#556"):F2C;
-                      return(
-                        <div key={e.driver.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:i<3?"#0D0D1C":"#0E0E1E",border:`1px solid ${i<3?`${noteColor}22`:"#1A1A30"}`,borderLeft:`3px solid ${e.team.color}`,borderRadius:3}}>
-                          <div style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?"#FFC906":i===1?"#aaa":i===2?"#CD7F32":"transparent",color:i<3?"#000":"#556",fontSize:12,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #1A1A30":"none",flexShrink:0}}>{i+1}</div>
-                          <div style={{flex:1,minWidth:0}}>
-                            <div style={{fontSize:14,fontWeight:700}}>{e.driver.flag} {e.driver.name}</div>
-                            <div style={{fontSize:11,color:e.team.color,letterSpacing:1}}>{e.team.name}</div>
-                          </div>
-                          <div style={{textAlign:"right",flexShrink:0}}>
-                            <div style={{fontSize:12,fontFamily:"monospace",color:i===0?noteColor:"#aaa"}}>{i===0?(qTab==="quali"?"POLE":"P1"):gapS?`+${gapS}s`:""}</div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {qual.events&&qual.events.length>0&&(
-                    <div style={{background:"#0A0A18",border:`1px solid ${F2C}22`,borderRadius:6,padding:14}}>
-                      <div style={{fontSize:11,color:F2C,fontWeight:700,letterSpacing:2,marginBottom:10}}>QUALIFYING REPORT</div>
-                      {qual.events.map((ev,i)=>(
-                        <div key={i} style={{borderLeft:`3px solid ${EVT_C[ev.type]||F2C}`,padding:"7px 12px",marginBottom:5,background:"#0D0D1C",borderRadius:"0 3px 3px 0"}}>
-                          <div style={{fontSize:13,lineHeight:1.6}}>{ev.icon} {ev.text}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              );
-            })()}
+                )}
+              </>
+            )}
             {!qual&&<div style={{textAlign:"center",padding:"60px 0",color:"#334",fontSize:16}}>No qualifying data — select a track and run qualifying.</div>}
           </div>
         )}
