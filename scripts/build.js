@@ -47,6 +47,9 @@ function findSucrase() {
     '/opt/node22/lib/node_modules/sucrase',
     '/usr/local/lib/node_modules/sucrase',
     '/usr/lib/node_modules/sucrase',
+    // Windows global npm
+    path.join(process.env.APPDATA||'', 'npm', 'node_modules', 'sucrase'),
+    path.join(process.env.APPDATA||'', 'Roaming', 'npm', 'node_modules', 'sucrase'),
   ];
   for (const c of candidates) {
     if (fs.existsSync(c)) return require(c);
@@ -110,16 +113,17 @@ function build() {
   // ── Minify ───────────────────────────────────────────────────────────────
   console.log('▸ Minifying...');
   const esbuild = findModule('esbuild');
+  let minified;
   if (!esbuild) {
-    console.error('❌ esbuild not found. Run: npm install esbuild');
-    process.exit(1);
+    console.warn('⚠️  esbuild not found — skipping minification, using compiled output directly');
+    minified = patched;
+  } else {
+    const { execSync } = require('child_process');
+    execSync(`cat ${TMP_COMP} | ${esbuild} --minify --loader=js > ${TMP_MINI}`);
+    minified = fs.readFileSync(TMP_MINI, 'utf8');
+    const ratio = ((1 - minified.length / patched.length) * 100).toFixed(0);
+    console.log(`Minified: ${minified.length} bytes (${ratio}% smaller) ✅`);
   }
-
-  const { execSync } = require('child_process');
-  execSync(`cat ${TMP_COMP} | ${esbuild} --minify --loader=js > ${TMP_MINI}`);
-  const minified = fs.readFileSync(TMP_MINI, 'utf8');
-  const ratio = ((1 - minified.length / patched.length) * 100).toFixed(0);
-  console.log(`Minified: ${minified.length} bytes (${ratio}% smaller) ✅`);
 
   // ── Patch into index.html ────────────────────────────────────────────────
   console.log('▸ Patching index.html...');
