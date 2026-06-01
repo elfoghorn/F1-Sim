@@ -2810,6 +2810,306 @@ const F2_TRACKS = [
 
 // ===================== F2 COMPONENTS =====================
 
+// ===================== F2 SIMULATION ENGINE =====================
+
+const F2_PTS_FEATURE = [25,18,15,12,10,8,6,4,2,1];
+const F2_PTS_SPRINT  = [10,8,6,5,4,3,2,1];
+const F2_FAIL = ["engine failure","hydraulics failure","gearbox failure","suspension damage","brake failure","fuel pressure loss","oil leak","MGU fault"];
+
+function calcF2Base(d, team, track) {
+  const sm=getStyleMods(d);
+  const ep=d.pace+sm.pace, ec=d.consistency+sm.consistency;
+  const eo=d.overtaking+sm.overtaking, ex=d.experience+sm.experience;
+  const ts=getF2TeamStats(team);
+  // F2 spec chassis: team setup contributes ~30%, driver ~70%
+  let s=ts.carPace*0.30+ep*0.70;
+  if(track.type==="high-speed"||track.type==="low-downforce") s+=ep*0.05;
+  else if(track.type==="technical"){s+=ec*0.06;if(d.style==="technical")s+=3;}
+  else if(track.type==="street"){s+=ex*0.025+(d.defense||75)*0.015;if(d.style==="defender")s+=2;}
+  if(ts.aeroCircuitBonus&&track.type&&ts.aeroCircuitBonus[track.type]) s+=ts.aeroCircuitBonus[track.type]*0.35;
+  if((track.alt||0)>500) s-=((track.alt-500)/2000)*((100-ex)*0.04);
+  if(track.night) s+=ex*0.02;
+  if(track.street) s+=ex*0.018;
+  if((track.abrasive||3)>5) s-=((track.abrasive-5)*0.3)*((100-ec)/40);
+  if((track.drs||2)>=3) s+=eo*0.01;
+  if((d.goodTracks||[]).includes(track.id)) s+=5;
+  if((d.badTracks||[]).includes(track.id)) s-=5;
+  s+=((d.mental||7)-5)*0.4;
+  return s;
+}
+function calcF2QualBase(d,team,track){
+  const sm=getStyleMods(d);
+  return calcF2Base(d,team,track)+(sm.qualBonus||0)*0.65;
+}
+
+// F2 Qualifying — single 30-min session, all 20 drivers, top-10 reversed for sprint
+function runF2Qual(drivers,teams,track){
+  const form={};
+  drivers.forEach(d=>{form[d.id]=(Math.random()-0.5)*2*7;});
+  const positions=drivers.map(d=>{
+    const team=teams.find(t=>t.id===d.teamId)||teams[teams.length-1];
+    const score=calcF2QualBase(d,team,track)+form[d.id]+1.5*(0.7+Math.random()*0.6)+(Math.random()-0.5)*2*4;
+    return {driver:d,team,score};
+  }).sort((a,b)=>b.score-a.score).map((e,i)=>({...e,pos:i+1}));
+  const featureGrid=[...positions];
+  const top10=[...positions.slice(0,10)].reverse();
+  const sprintGrid=[...top10,...positions.slice(10)];
+  const events=genF2QualEvents(positions,track);
+  return {positions,featureGrid,sprintGrid,events};
+}
+
+function aggF2Qual(n,drivers,teams,track){
+  if(n<=1) return runF2Qual(drivers,teams,track);
+  const scoreAcc={};
+  drivers.forEach(d=>{scoreAcc[d.id]=[];});
+  let displayRun=null;
+  for(let i=0;i<n;i++){
+    const q=runF2Qual(drivers,teams,track);
+    if(i===Math.floor(n/2)) displayRun=q;
+    q.positions.forEach(e=>scoreAcc[e.driver.id].push(e.score));
+  }
+  const avg=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:0;
+  const positions=drivers.map(d=>{
+    const team=teams.find(t=>t.id===d.teamId)||teams[teams.length-1];
+    return {driver:d,team,score:avg(scoreAcc[d.id])};
+  }).sort((a,b)=>b.score-a.score).map((e,i)=>({...e,pos:i+1}));
+  const featureGrid=[...positions];
+  const sprintGrid=[...[...positions.slice(0,10)].reverse(),...positions.slice(10)];
+  const events=displayRun?displayRun.events:genF2QualEvents(positions,track);
+  return {positions,featureGrid,sprintGrid,events,runsUsed:n};
+}
+
+function genF2QualEvents(positions,track){
+  const evts=[];
+  const fast=positions[0],second=positions[1];
+  const gap=second?((fast.score-second.score)*0.011).toFixed(3):"0.000";
+  const SECTORS=["the first chicane","Turn "+Math.ceil((track.corners||16)/3),"the hairpin","the final complex","a high-speed sweeper"];
+  if(Math.random()<0.45){
+    const victim=_pick(positions.slice(4,18));
+    evts.push({type:"yellow",icon:"🟡",text:`⚠️ YELLOW FLAG — ${victim.driver.name} (${victim.team.name}) loses the car at ${_pick(SECTORS)}. Session briefly neutralised — ${_pick(["several runners on hot laps have to abort","the session restarts with 6 minutes remaining","timing screens frozen; frustration in several garages"])}.`});
+  }
+  if(Math.random()<0.25){
+    const m=_pick(positions.slice(3,17));
+    evts.push({type:"mechanical",icon:"🔧",text:`🔧 ${m.driver.name} (${m.team.name}) reports a ${_pick(["brake issue","hydraulics warning","DRS fault","gearbox hesitation","water temperature alarm"])} over the radio and aborts the session. Time is running out for the mechanics.`});
+  }
+  evts.push({type:"pole",icon:"🏁",text:`${fast.driver.name} takes F2 pole at ${track.circuit}. ${gap}s over ${second?.driver.name||"P2"} in a single-session format where every tenth counts. Sprint grid: top-10 REVERSED, so ${positions[9]?.driver.name||"P10"} starts the sprint from pole position.`});
+  if(positions[9]){
+    evts.push({type:"info",icon:"🔄",text:`REVERSED GRID: ${positions[9].driver.name} (P10 in qualifying) starts the Sprint from pole. ${fast.driver.name} — fastest qualifier — drops to P10 and must fight through the field in ${track.laps?Math.round(track.laps*0.45):22} laps. F2 at its most dramatic.`});
+  }
+  return evts;
+}
+
+// F2 FP (45-min session)
+function runF2FP(drivers,teams,track){
+  const form={};
+  drivers.forEach(d=>{form[d.id]=(Math.random()-0.5)*2*11;});
+  const raw=drivers.map(d=>{
+    const team=teams.find(t=>t.id===d.teamId)||teams[teams.length-1];
+    const score=calcF2Base(d,team,track)+form[d.id]+(Math.random()-0.5)*2*6-(Math.random()*3+1);
+    const laps=Math.floor(Math.random()*10+15);
+    return {driver:d,team,score,laps};
+  }).sort((a,b)=>b.score-a.score);
+  const best=raw[0]?.score||0;
+  return raw.map((e,i)=>({...e,pos:i+1,gap:i===0?null:((best-e.score)*0.011).toFixed(3)}));
+}
+
+// F2 Testing (3 days × 2 sessions)
+function runF2Testing(drivers,teams,track){
+  const form={};
+  drivers.forEach(d=>{form[d.id]=(Math.random()-0.5)*2*15;});
+  const raw=drivers.map(d=>{
+    const team=teams.find(t=>t.id===d.teamId)||teams[teams.length-1];
+    const score=calcF2Base(d,team,track)+form[d.id]+(Math.random()-0.5)*2*9;
+    const laps=Math.floor(Math.random()*28+30);
+    return {driver:d,team,score,laps};
+  }).sort((a,b)=>b.score-a.score);
+  const best=raw[0]?.score||0;
+  return raw.map((e,i)=>({...e,pos:i+1,gap:i===0?null:((best-e.score)*0.011).toFixed(3)}));
+}
+
+// F2 Sprint race (~21 laps, no pit stops, reverse-top-10 grid)
+function runF2Sprint(grid,teams,track){
+  const laps=Math.max(16,track.lapLen?Math.round(105/track.lapLen):22);
+  const isWet=Math.random()*100<track.wr;
+  const hasSC=Math.random()<0.42;
+  const scLap=hasSC?Math.floor(Math.random()*Math.max(1,laps-4))+2:0;
+  const entries=grid.map((e,gp)=>{
+    const {driver:d,team}=e;
+    const ts=getF2TeamStats(team);
+    const sm=getStyleMods(d);
+    let pace=isWet?ts.carPace*0.22+d.pace*0.18+d.wet*0.60+(ts.wetBonus||0)*0.3:ts.carPace*0.28+d.pace*0.42+d.consistency*0.30;
+    pace-=gp*0.09*(track.od/100);
+    if(d.style==="charger"&&gp>8) pace+=4;
+    if(d.style==="aggressive"&&gp>5) pace+=2.5;
+    pace+=sm.pace*0.4+sm.consistency*0.3;
+    if(ts.aeroCircuitBonus?.[track.type]) pace+=ts.aeroCircuitBonus[track.type]*0.3;
+    if(hasSC&&(d.style==="aggressive"||d.style==="charger")) pace+=1.5;
+    pace+=(Math.random()-0.5)*7;
+    const dnfRisk=Math.max(0.01,0.045+(sm.dnfRisk||0)+(d.style==="aggressive"?0.025:0));
+    const dnf=Math.random()<dnfRisk;
+    return {driver:d,team,gridPos:gp+1,pace,dnf,dnfLap:dnf?Math.floor(Math.random()*laps)+1:null};
+  });
+  const finished=entries.filter(e=>!e.dnf).sort((a,b)=>b.pace-a.pace);
+  const dnfs=entries.filter(e=>e.dnf);
+  const all=[...finished,...dnfs];
+  let cg=0;
+  all.forEach((e,i)=>{
+    e.finalPos=i+1;
+    e.points=(!e.dnf&&i<8)?F2_PTS_SPRINT[i]:0;
+    if(i===0)e.gap=0; else if(e.dnf)e.gap=null; else{cg=parseFloat((cg+Math.random()*1.5+0.2).toFixed(3));e.gap=cg;}
+  });
+  return {positions:all,events:genF2RaceEvents(all,laps,track,isWet,hasSC,scLap,"sprint"),isWet,hasSC,scLap,totalLaps:laps};
+}
+
+function aggF2Sprint(n,grid,teams,track){
+  if(n<=1) return runF2Sprint(grid,teams,track);
+  const posAcc={},dnfCount={},dnfLaps={};
+  let repRace=null,wetCnt=0,scCnt=0,scLapSum=0;
+  grid.forEach(({driver})=>{posAcc[driver.id]=[];dnfCount[driver.id]=0;dnfLaps[driver.id]=[];});
+  for(let i=0;i<n;i++){
+    const r=runF2Sprint(grid,teams,track);
+    if(i===Math.floor(n/2)) repRace=r;
+    if(r.isWet) wetCnt++;
+    if(r.hasSC){scCnt++;scLapSum+=r.scLap;}
+    r.positions.forEach((e,idx)=>{posAcc[e.driver.id].push(idx+1);if(e.dnf){dnfCount[e.driver.id]++;if(e.dnfLap)dnfLaps[e.driver.id].push(e.dnfLap);}});
+  }
+  const avg=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:0;
+  const canon=grid.map(({driver,team})=>{
+    const dnfR=dnfCount[driver.id]/n;
+    const isDNF=dnfR>=0.5;
+    const ap=avg(posAcc[driver.id]);
+    return {driver,team,gridPos:grid.findIndex(e=>e.driver.id===driver.id)+1,avgPos:ap,isDNF,dnfLap:isDNF&&dnfLaps[driver.id].length?Math.round(avg(dnfLaps[driver.id])):null,dnfRate:dnfR};
+  }).sort((a,b)=>a.isDNF!==b.isDNF?(a.isDNF?1:-1):a.avgPos-b.avgPos);
+  let cg=0;
+  canon.forEach((e,i)=>{e.finalPos=i+1;e.dnf=e.isDNF;e.points=(!e.isDNF&&i<8)?F2_PTS_SPRINT[i]:0;if(i===0)e.gap=0;else if(e.isDNF)e.gap=null;else{cg=parseFloat((cg+Math.max(0.2,(e.avgPos-canon[0].avgPos)*0.9)).toFixed(3));e.gap=cg;}});
+  return {positions:canon,events:repRace?.events||[],isWet:wetCnt>=n/2,hasSC:scCnt>=n/2,scLap:scCnt?Math.round(scLapSum/scCnt):0,totalLaps:repRace?.totalLaps||22,runsUsed:n};
+}
+
+// F2 Feature race (~42 laps, mandatory pit stop, Option+Prime compounds)
+function runF2Feature(grid,teams,track){
+  const laps=Math.max(30,track.lapLen?Math.round(190/track.lapLen):42);
+  const isWet=Math.random()*100<track.wr;
+  const hasSC=Math.random()<0.50;
+  const scLap=hasSC?Math.floor(Math.random()*Math.max(1,laps-8))+4:0;
+  const vsc=!hasSC&&Math.random()<0.28;
+  const vscLap=vsc?Math.floor(Math.random()*Math.max(1,laps-8))+5:0;
+  const STRATS=["Option→Prime","Option→Prime","Option→Prime","Prime→Option","Prime→Option"];
+  const entries=grid.map((e,gp)=>{
+    const {driver:d,team}=e;
+    const ts=getF2TeamStats(team);
+    const sm=getStyleMods(d);
+    const strategy=TEAM_STRATEGIES.find(s=>s.id===team.strategy)||TEAM_STRATEGIES[0];
+    const stMods=strategy.mods||{};
+    let pace=isWet?ts.carPace*0.22+d.pace*0.18+d.wet*0.60+(ts.wetBonus||0)*0.28:ts.carPace*0.28+d.pace*0.36+d.consistency*0.36;
+    const tyreStrat=_pick(STRATS);
+    const onOpt=tyreStrat.startsWith("Option");
+    const pitLap=isWet?0:hasSC&&scLap>8?scLap-1:Math.floor(laps*(onOpt?0.37:0.55))+(Math.floor(Math.random()*6)-3);
+    if(onOpt) pace+=2.5;
+    pace*=(stMods.overallPace||1.0);
+    if(hasSC&&stMods.scBonus) pace*=(stMods.scBonus*0.25+0.75);
+    if(stMods.lateBoost) pace+=(stMods.lateBoost-1)*5;
+    pace+=sm.pace*0.4+sm.consistency*0.3+sm.racePace*0.2;
+    if(ts.aeroCircuitBonus?.[track.type]) pace+=ts.aeroCircuitBonus[track.type]*0.3;
+    pace-=gp*0.055*(track.od/100);
+    if(d.style==="charger"&&gp>10) pace+=3;
+    if(d.style==="strategist") pace+=1.5;
+    pace-=(100-(ts.tyreLife||60))/100*2.5;
+    pace+=(Math.random()-0.5)*7;
+    const dnfRisk=Math.max(0.01,0.055+(sm.dnfRisk||0)+(stMods.dnfRisk||0));
+    const dnf=Math.random()<dnfRisk;
+    return {driver:d,team,gridPos:gp+1,pace,dnf,dnfLap:dnf?Math.floor(Math.random()*laps)+1:null,tyreStrat,pitLap};
+  });
+  const finished=entries.filter(e=>!e.dnf).sort((a,b)=>b.pace-a.pace);
+  const dnfs=entries.filter(e=>e.dnf);
+  const all=[...finished,...dnfs];
+  let cg=0;
+  all.forEach((e,i)=>{
+    e.finalPos=i+1;
+    e.points=(!e.dnf&&i<10)?F2_PTS_FEATURE[i]:0;
+    if(i===0)e.gap=0; else if(e.dnf)e.gap=null; else{cg=parseFloat((cg+Math.random()*2.3+0.4).toFixed(3));e.gap=cg;}
+  });
+  const fastestLap=!isWet&&finished.length?_pick(finished.slice(0,Math.min(8,finished.length)))?.driver:null;
+  if(fastestLap){const fe=all.find(e=>e.driver.id===fastestLap.id);if(fe&&!fe.dnf&&fe.finalPos<=10)fe.points+=1;}
+  return {positions:all,events:genF2RaceEvents(all,laps,track,isWet,hasSC,scLap,"feature",vsc,vscLap),isWet,hasSC,scLap,vsc,vscLap,totalLaps:laps,fastestLap,fastestLapName:fastestLap?.name};
+}
+
+function aggF2Feature(n,grid,teams,track){
+  if(n<=1) return runF2Feature(grid,teams,track);
+  const posAcc={},dnfCount={},dnfLaps={},flCount={};
+  let repRace=null,wetCnt=0,scCnt=0,scLapSum=0;
+  grid.forEach(({driver})=>{posAcc[driver.id]=[];dnfCount[driver.id]=0;dnfLaps[driver.id]=[];});
+  for(let i=0;i<n;i++){
+    const r=runF2Feature(grid,teams,track);
+    if(i===Math.floor(n/2)) repRace=r;
+    if(r.isWet) wetCnt++;
+    if(r.hasSC){scCnt++;scLapSum+=r.scLap;}
+    if(r.fastestLap) flCount[r.fastestLap.id]=(flCount[r.fastestLap.id]||0)+1;
+    r.positions.forEach((e,idx)=>{posAcc[e.driver.id].push(idx+1);if(e.dnf){dnfCount[e.driver.id]++;if(e.dnfLap)dnfLaps[e.driver.id].push(e.dnfLap);}});
+  }
+  const avg=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:0;
+  const canon=grid.map(({driver,team})=>{
+    const dnfR=dnfCount[driver.id]/n;
+    const isDNF=dnfR>=0.5;
+    const ap=avg(posAcc[driver.id]);
+    return {driver,team,gridPos:grid.findIndex(e=>e.driver.id===driver.id)+1,avgPos:ap,isDNF,dnfLap:isDNF&&dnfLaps[driver.id].length?Math.round(avg(dnfLaps[driver.id])):null};
+  }).sort((a,b)=>a.isDNF!==b.isDNF?(a.isDNF?1:-1):a.avgPos-b.avgPos);
+  let cg=0;
+  canon.forEach((e,i)=>{e.finalPos=i+1;e.dnf=e.isDNF;e.points=(!e.isDNF&&i<10)?F2_PTS_FEATURE[i]:0;if(i===0)e.gap=0;else if(e.isDNF)e.gap=null;else{cg=parseFloat((cg+Math.max(0.3,(e.avgPos-canon[0].avgPos)*0.9)).toFixed(3));e.gap=cg;}});
+  const flId=Object.entries(flCount).sort((a,b)=>b[1]-a[1])[0]?.[0];
+  const fastestLap=flId?grid.find(e=>e.driver.id===flId)?.driver:null;
+  if(fastestLap){const fe=canon.find(e=>e.driver.id===fastestLap.id);if(fe&&!fe.dnf&&fe.finalPos<=10)fe.points+=1;}
+  return {positions:canon,events:repRace?.events||[],isWet:wetCnt>=n/2,hasSC:scCnt>=n/2,scLap:scCnt?Math.round(scLapSum/scCnt):0,totalLaps:repRace?.totalLaps||42,fastestLap,fastestLapName:fastestLap?.name,runsUsed:n};
+}
+
+function genF2RaceEvents(entries,laps,track,isWet,hasSC,scLap,type,vsc=false,vscLap=0){
+  const evts=[];
+  const leader=entries[0];
+  if(!leader) return evts;
+  // Start
+  if(Math.random()<(track.street?0.52:0.4)){
+    const victim=_pick(entries.slice(2,12));
+    evts.push({lap:1,type:"start",icon:"🚦",text:`FIRST LAP INCIDENT — ${victim.driver.name} (${victim.team.name}) ${_pick(["gets squeezed into the barrier at Turn 1","has contact with a rival and loses several places","locks up and runs wide over the kerbs","is spun around in a first-corner collision"])}. ${track.street?"The barriers are unforgiving here.":"Safety Car potential."}`});
+  }
+  // Weather
+  if(isWet) evts.push({lap:1,type:"weather",icon:"🌧️",text:`RAIN at ${track.circuit}. Intermediates mandatory — drivers reporting very low grip through ${_pick(["the first sector","the hairpin area","the high-speed complex"])}. Wet weather specialists will thrive here.`});
+  // Safety Car
+  if(hasSC){
+    const cause=_pick(entries.slice(Math.floor(entries.length/3))).driver;
+    evts.push({lap:scLap,type:"safetycar",icon:"🚗",text:`SAFETY CAR — Lap ${scLap}. ${cause.name} is stopped with ${_pick(F2_FAIL)}. The field bunches up — ${type==="feature"?"pit window opens for teams yet to stop. Crucial decision time on the pitwall":"sprint restarts in 2 laps with everything to play for"}. ${_pick(["This defines the race.","Every team reacting differently.","The Safety Car periods are where F2 races are won and lost."])}`});
+  }
+  if(vsc&&type==="feature") evts.push({lap:vscLap,type:"safetycar",icon:"🟡",text:`VIRTUAL SAFETY CAR — Lap ${vscLap}. Debris on track. Teams with open pit windows react immediately — a free stop under VSC is the dream scenario for any strategist.`});
+  // Battle for lead
+  if(entries.length>=2&&Math.random()<0.65){
+    const d2=entries[1];
+    evts.push({lap:Math.floor(laps*0.4),type:"battle",icon:"⚔️",text:`${leader.driver.name} vs ${d2.driver.name} — wheel-to-wheel at ${track.circuit}. ${_pick(["DRS closes the gap every straight.","Side by side through the braking zone.","The crowd on their feet.","This is the F2 rivalry that has defined the season so far."])}`});
+  }
+  // DNF drama
+  entries.filter(e=>e.dnf).slice(0,2).forEach(e=>{
+    evts.push({lap:e.dnfLap||Math.floor(laps*0.5),type:"dnf",icon:"❌",text:`RETIREMENT — ${e.driver.name} (${e.team.name}) stops on Lap ${e.dnfLap||"?"} with ${_pick(F2_FAIL)}. ${_pick(["Huge blow to championship hopes.","The team review it overnight.","Mechanical failure at the worst possible moment.","Championship points gone."])}`});
+  });
+  // Pit stop story (feature)
+  if(type==="feature"&&!isWet){
+    const pitters=entries.filter(e=>!e.dnf&&e.pitLap>0).slice(0,2);
+    pitters.forEach(e=>{
+      evts.push({lap:e.pitLap,type:"pitstop",icon:"🔧",text:`PIT STOP — ${e.driver.name} (${e.team.name}) boxes on Lap ${e.pitLap} switching ${e.tyreStrat||"compounds"}. ${_pick(["Clean stop.","Crew needs to improve on that.","Fast pit — track position maintained.","They come out just behind their rival — the race is back on."])}`});
+    });
+  }
+  // Charge through field
+  const chargers=entries.filter(e=>!e.dnf&&e.gridPos>e.finalPos+4);
+  if(chargers.length){
+    const ch=chargers[0];
+    evts.push({lap:Math.floor(laps*0.6),type:"charge",icon:"🚀",text:`${ch.driver.name} is FLYING — started P${ch.gridPos}, now running P${ch.finalPos}. ${_pick(["Fastest sector times in the field.","Using DRS to full effect on every straight.","The ${ch.team.name} setup is working perfectly on race tyres.","A masterclass in racecraft."])}`});
+  }
+  // Fastest lap
+  if(type==="feature"&&!isWet){
+    const flDriver=_pick(entries.filter(e=>!e.dnf&&e.finalPos<=10));
+    if(flDriver) evts.push({lap:laps-2,type:"fastestlap",icon:"💜",text:`FASTEST LAP — ${flDriver.driver.name} (${flDriver.team.name}) sets the fastest lap of the race on Lap ${laps-2}. ${flDriver.finalPos<=10?"The bonus championship point is theirs.":"Just outside the top-10 — the fastest lap point goes unclaimed."}`});
+  }
+  // Race conclusion
+  evts.push({lap:laps,type:"start",icon:"🏁",text:`${type==="feature"?"FEATURE RACE":"SPRINT RACE"} ENDS — ${leader.driver.name} (${leader.team.name}) wins at ${track.circuit}! ${entries[1]&&!entries[1].dnf?`${entries[1].driver.name} P2.`:""} ${entries[2]&&!entries[2].dnf?`${entries[2].driver.name} P3.`:""}`});
+  return evts.sort((a,b)=>(a.lap||0)-(b.lap||0));
+}
+
 function F2EditModal({type,data,teams,drivers,onSave,onClose}){
   const [f,setF]=useState({...data,goodTracks:data.goodTracks||[],badTracks:data.badTracks||[],mental:data.mental||7,rivals:data.rivals||[]});
   const isD=type==="driver";
@@ -2972,39 +3272,85 @@ function F2EditModal({type,data,teams,drivers,onSave,onClose}){
 }
 
 function F2Sim({onBack}){
-  const [drivers,setDrivers]=useState(()=>{
-    try{const s=localStorage.getItem('f2sim_drivers');return s?JSON.parse(s):F2_DRIVERS;}catch{return F2_DRIVERS;}
-  });
-  const [teams,setTeams]=useState(()=>{
-    try{const s=localStorage.getItem('f2sim_teams');return s?JSON.parse(s):F2_TEAMS;}catch{return F2_TEAMS;}
-  });
+  const [drivers,setDrivers]=useState(()=>{try{const s=localStorage.getItem('f2sim_drivers');return s?JSON.parse(s):F2_DRIVERS;}catch{return F2_DRIVERS;}});
+  const [teams,setTeams]=useState(()=>{try{const s=localStorage.getItem('f2sim_teams');return s?JSON.parse(s):F2_TEAMS;}catch{return F2_TEAMS;}});
   const [track,setTrack]=useState(F2_TRACKS[0]);
   const [view,setView]=useState("garage");
   const [gTab,setGTab]=useState("drivers");
   const [modal,setModal]=useState(null);
+  const [fp,setFp]=useState(null);
+  const [qual,setQual]=useState(null);
+  const [sprint,setSprint]=useState(null);
+  const [race,setRace]=useState(null);
+  const [testing,setTesting]=useState(null);
+  const [testDay,setTestDay]=useState(1);
+  const [testSession,setTestSession]=useState("AM");
+  const [championship,setChampionship]=useState(()=>{try{const s=localStorage.getItem('f2sim_champ');return s?JSON.parse(s):[];}catch{return [];}});
+  const [f2ChampTab,setF2ChampTab]=useState("drivers");
+  const [isGen,setIsGen]=useState(false);
+  const [genMsg,setGenMsg]=useState("");
+  const [runAccuracy,setRunAccuracy]=useState(5);
+  const [raceSaved,setRaceSaved]=useState(false);
 
   React.useEffect(()=>{try{localStorage.setItem('f2sim_drivers',JSON.stringify(drivers));}catch(e){}},[drivers]);
   React.useEffect(()=>{try{localStorage.setItem('f2sim_teams',JSON.stringify(teams));}catch(e){}},[teams]);
+  React.useEffect(()=>{try{localStorage.setItem('f2sim_champ',JSON.stringify(championship));}catch(e){}},[championship]);
 
   const teamDrivers=id=>drivers.filter(d=>d.teamId===id);
   const saveDriver=d=>setDrivers(prev=>prev.map(x=>x.id===d.id?d:x));
   const saveTeam=t=>setTeams(prev=>prev.some(x=>x.id===t.id)?prev.map(x=>x.id===t.id?t:x):[...prev,t]);
 
+  // Reset sessions when track changes
+  React.useEffect(()=>{setFp(null);setQual(null);setSprint(null);setRace(null);setRaceSaved(false);},[track.id]);
+
+  const doFP=()=>{
+    setIsGen(true);setGenMsg("Running free practice…");
+    setTimeout(()=>{setFp(runF2FP(drivers,teams,track));setIsGen(false);setView("fp");},(200));
+  };
+  const doQual=()=>{
+    setIsGen(true);setGenMsg("Running qualifying…");
+    setTimeout(()=>{setQual(aggF2Qual(runAccuracy,drivers,teams,track));setIsGen(false);setView("qualifying");},(200));
+  };
+  const doSprint=()=>{
+    if(!qual) return;
+    setIsGen(true);setGenMsg("Running sprint race…");
+    setTimeout(()=>{setSprint(aggF2Sprint(runAccuracy,qual.sprintGrid,teams,track));setIsGen(false);setView("sprint");},(200));
+  };
+  const doRace=()=>{
+    if(!qual) return;
+    setIsGen(true);setGenMsg("Running feature race…");
+    setTimeout(()=>{setRace(aggF2Feature(runAccuracy,qual.featureGrid,teams,track));setIsGen(false);setView("race");},(200));
+  };
+  const doTesting=()=>{
+    setIsGen(true);setGenMsg(`Running Day ${testDay} ${testSession} session…`);
+    setTimeout(()=>{setTesting(runF2Testing(drivers,teams,_pick(F2_TRACKS)));setIsGen(false);},150);
+  };
+  const saveToChampionship=()=>{
+    if(!qual||!race) return;
+    const round={
+      id:Date.now(),round:championship.length+1,
+      trackName:track.name,trackFlag:track.flag,trackCircuit:track.circuit,
+      trackId:track.id,
+      qual:{positions:qual.positions.map(e=>({driverId:e.driver.id,driverName:e.driver.name,driverFlag:e.driver.flag,teamId:e.team.id,teamName:e.team.name,teamColor:e.team.color,pos:e.pos,score:e.score}))},
+      sprint:sprint?{positions:sprint.positions.map(e=>({driverId:e.driver.id,driverName:e.driver.name,driverFlag:e.driver.flag,teamId:e.team.id,teamName:e.team.name,teamColor:e.team.color,finalPos:e.finalPos,points:e.points,dnf:e.dnf,gap:e.gap,gridPos:e.gridPos}))}:null,
+      race:{positions:race.positions.map(e=>({driverId:e.driver.id,driverName:e.driver.name,driverFlag:e.driver.flag,teamId:e.team.id,teamName:e.team.name,teamColor:e.team.color,finalPos:e.finalPos,points:e.points,dnf:e.dnf,gap:e.gap,gridPos:e.gridPos,tyreStrat:e.tyreStrat})),isWet:race.isWet,hasSC:race.hasSC,fastestLapName:race.fastestLapName,totalLaps:race.totalLaps},
+    };
+    setChampionship(prev=>[...prev,round]);
+    setRaceSaved(true);
+  };
+
   const F2C="#0067FF";
-  const nb=(active)=>({
+  const sprintLocked=!qual;
+  const raceLocked=!qual;
+  const nb=(active,locked=false)=>({
     background:active?`${F2C}18`:"transparent",
-    color:active?F2C:"#667",
+    color:locked?"#333":active?F2C:"#667",
     border:`1px solid ${active?F2C+"44":"transparent"}`,
     borderBottom:`2px solid ${active?F2C:"transparent"}`,
     padding:"6px 14px",
-    cursor:"pointer",
-    fontFamily:"inherit",
-    fontSize:13,
-    fontWeight:700,
-    letterSpacing:1.5,
-    height:58,
-    transition:"all 0.15s",
-    whiteSpace:"nowrap",
+    cursor:locked?"default":"pointer",
+    fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1.5,
+    height:58,transition:"all 0.15s",whiteSpace:"nowrap",opacity:locked?0.4:1,
   });
 
   return(
@@ -3023,10 +3369,33 @@ function F2Sim({onBack}){
         <div style={{fontSize:18,fontWeight:700,letterSpacing:4,color:F2C,marginRight:16,flexShrink:0}}>F2 ▶ SIM</div>
         <button onClick={()=>setView("garage")} style={nb(view==="garage")}>GARAGE</button>
         <button onClick={()=>setView("tracks")} style={nb(view==="tracks")}>TRACKS</button>
+        <button onClick={()=>setView("testing")} style={nb(view==="testing")}>TESTING</button>
+        <button onClick={()=>setView("fp")} style={nb(view==="fp")}>FP</button>
+        <button onClick={()=>!sprintLocked&&setView("qualifying")} style={nb(view==="qualifying")} disabled={false}>QUALIFYING</button>
+        <button onClick={()=>!sprintLocked&&setView("sprint")} style={nb(view==="sprint",sprintLocked)}>SPRINT</button>
+        <button onClick={()=>!raceLocked&&setView("race")} style={nb(view==="race",raceLocked)}>FEATURE RACE</button>
+        <button onClick={()=>setView("championship")} style={nb(view==="championship")}>🏆 CHAMPIONSHIP</button>
         <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,paddingRight:14,flexShrink:0}}>
-          <button onClick={onBack} style={{background:"transparent",color:"#444",border:"1px solid #1E2040",padding:"3px 9px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1,borderRadius:2,whiteSpace:"nowrap"}}>⏏ MENU</button>
+          <span style={{fontSize:11,color:"#556",letterSpacing:1,whiteSpace:"nowrap"}}>ACCURACY</span>
+          {[1,5,10,20].map(n=>(
+            <button key={n} onClick={()=>setRunAccuracy(n)} style={{background:runAccuracy===n?`${F2C}22`:"transparent",color:runAccuracy===n?F2C:"#556",border:`1px solid ${runAccuracy===n?F2C+"44":"#1E2040"}`,padding:"3px 8px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1,borderRadius:2,transition:"all 0.15s"}}>×{n}</button>
+          ))}
+          <div style={{width:1,height:20,background:"#1E2040"}}/>
+          <button onClick={onBack}
+            style={{background:"#080A1A",color:F2C,border:`1px solid ${F2C}55`,padding:"5px 14px",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:700,letterSpacing:1.5,borderRadius:3,whiteSpace:"nowrap",transition:"all 0.15s"}}
+            onMouseEnter={e=>{e.currentTarget.style.background=`${F2C}22`;e.currentTarget.style.borderColor=`${F2C}99`;}}
+            onMouseLeave={e=>{e.currentTarget.style.background="#080A1A";e.currentTarget.style.borderColor=`${F2C}55`;}}>
+            ⏏ HOME
+          </button>
         </div>
       </div>
+
+      {isGen&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(8,10,24,0.92)",zIndex:8000,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
+          <div style={{display:"flex",gap:8}}>{[0,1,2].map(i=><div key={i} style={{width:10,height:10,background:F2C,borderRadius:"50%",animation:"pulse 1.2s ease-in-out infinite",animationDelay:`${i*0.15}s`}}/>)}</div>
+          <div style={{fontSize:16,color:F2C,fontWeight:700,letterSpacing:3}}>{genMsg}</div>
+        </div>
+      )}
 
       <div style={{padding:18,maxWidth:1120,margin:"0 auto"}}>
 
@@ -3180,13 +3549,407 @@ function F2Sim({onBack}){
             </div>
             <div style={{marginTop:18,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <button onClick={()=>setView("garage")} style={{background:"transparent",color:"#667",border:"1px solid #1A1A30",padding:"11px 28px",cursor:"pointer",fontFamily:"inherit",fontSize:16,fontWeight:700,letterSpacing:3,borderRadius:3}}>← GARAGE</button>
-              <div style={{fontSize:14,color:"#556",letterSpacing:1}}>
-                {track.name} — {track.circuit}
-                <span style={{marginLeft:12,color:F2C,fontWeight:700}}>{track.flag}</span>
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                <div style={{fontSize:14,color:"#556"}}>{track.name} — {track.circuit} {track.flag}</div>
+                <button onClick={doFP} style={{background:"#111120",color:"#4488FF",border:"1px solid #4488FF44",padding:"10px 18px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:2,borderRadius:3}}>▶ FP</button>
+                <button onClick={doQual} style={{background:`${F2C}18`,color:F2C,border:`1px solid ${F2C}66`,padding:"10px 22px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:2,borderRadius:3}}>▶ QUALIFYING</button>
               </div>
             </div>
           </div>
         )}
+
+        {/* TESTING VIEW */}
+        {view==="testing"&&(
+          <div style={{animation:"fadeIn 0.2s ease"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
+              <div>
+                <div style={{fontSize:26,fontWeight:700,letterSpacing:3}}>PRE-SEASON TESTING</div>
+                <div style={{fontSize:14,color:"#556",letterSpacing:1.5,marginTop:2}}>BAHRAIN INTERNATIONAL CIRCUIT · 3 DAYS · MECHACHROME SPEC</div>
+              </div>
+              <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                <div style={{display:"flex",gap:4}}>
+                  {[1,2,3].map(d=><button key={d} onClick={()=>setTestDay(d)} style={{background:testDay===d?`${F2C}22`:"#111120",color:testDay===d?F2C:"#556",border:`1px solid ${testDay===d?F2C+"55":"#1A1A30"}`,padding:"5px 10px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,borderRadius:3}}>Day {d}</button>)}
+                </div>
+                <div style={{display:"flex",gap:4}}>
+                  {["AM","PM"].map(s=><button key={s} onClick={()=>setTestSession(s)} style={{background:testSession===s?`${F2C}22`:"#111120",color:testSession===s?F2C:"#556",border:`1px solid ${testSession===s?F2C+"55":"#1A1A30"}`,padding:"5px 10px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,borderRadius:3}}>{s}</button>)}
+                </div>
+                <button onClick={doTesting} style={{background:F2C,color:"#fff",border:"none",padding:"6px 18px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:2,borderRadius:3}}>▶ RUN SESSION</button>
+              </div>
+            </div>
+            {!testing&&(
+              <div style={{textAlign:"center",padding:"60px 0",color:"#334"}}>
+                <div style={{fontSize:32,marginBottom:12}}>🔬</div>
+                <div style={{fontSize:18,fontWeight:700,letterSpacing:2,marginBottom:8}}>NO SESSION DATA</div>
+                <div style={{fontSize:14,color:"#445"}}>Select a day and session, then hit RUN SESSION to begin testing.</div>
+              </div>
+            )}
+            {testing&&(
+              <div>
+                <div style={{fontSize:13,color:"#556",letterSpacing:2,marginBottom:10}}>DAY {testDay} · {testSession} SESSION · PROVISIONAL TIMES</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                  {testing.map((e,i)=>(
+                    <div key={e.driver.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"#0E0E1E",border:`1px solid ${i<3?"#1A2540":"#1A1A30"}`,borderLeft:`3px solid ${e.team.color}`,borderRadius:3}}>
+                      <div style={{width:28,textAlign:"center",fontSize:13,fontWeight:700,color:i<3?"#FFC906":"#445"}}>{i+1}</div>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:14,fontWeight:700}}>{e.driver.flag} {e.driver.name}</div>
+                        <div style={{fontSize:12,color:e.team.color,letterSpacing:1}}>{e.team.name}</div>
+                      </div>
+                      <div style={{textAlign:"right"}}>
+                        <div style={{fontSize:13,fontFamily:"monospace",color:i===0?F2C:"#aaa"}}>{i===0?"FASTEST":`+${e.gap}s`}</div>
+                        <div style={{fontSize:11,color:"#445"}}>{e.laps} laps</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{marginTop:12,padding:"10px 14px",background:"#0A0A18",border:`1px solid ${F2C}22`,borderRadius:4,fontSize:13,color:"#556",lineHeight:1.7}}>
+                  ⚠️ Testing times are indicative only — different fuel loads, tyre compounds, and setup programmes mean the real competitive order will only emerge in qualifying.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* FP VIEW */}
+        {view==="fp"&&(
+          <div style={{animation:"fadeIn 0.2s ease"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
+              <div>
+                <div style={{fontSize:26,fontWeight:700,letterSpacing:3}}>FREE PRACTICE</div>
+                <div style={{fontSize:14,color:"#556",letterSpacing:1.5,marginTop:2}}>{track.flag} {track.circuit} · 45 MINUTES</div>
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={doFP} style={{background:"#111120",color:"#4488FF",border:"1px solid #4488FF44",padding:"6px 16px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>↺ RE-RUN FP</button>
+                <button onClick={doQual} style={{background:`${F2C}18`,color:F2C,border:`1px solid ${F2C}55`,padding:"6px 16px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>▶ QUALIFYING →</button>
+              </div>
+            </div>
+            {!fp&&(
+              <div style={{textAlign:"center",padding:"60px 0",color:"#334"}}>
+                <div style={{fontSize:32,marginBottom:12}}>🔬</div>
+                <div style={{fontSize:16,fontWeight:700}}>No FP data — go to TRACKS and run FP or click RE-RUN FP above.</div>
+              </div>
+            )}
+            {fp&&(
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                {fp.map((e,i)=>(
+                  <div key={e.driver.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"#0E0E1E",border:`1px solid ${i<3?"#1A2030":"#1A1A30"}`,borderLeft:`3px solid ${e.team.color}`,borderRadius:3}}>
+                    <div style={{width:28,textAlign:"center",fontSize:13,fontWeight:700,color:i<3?"#FFC906":"#445"}}>{i+1}</div>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:14,fontWeight:700}}>{e.driver.flag} {e.driver.name}</div>
+                      <div style={{fontSize:12,color:e.team.color,letterSpacing:1}}>{e.team.name}</div>
+                    </div>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontSize:13,fontFamily:"monospace",color:i===0?F2C:"#aaa"}}>{i===0?"BEST":`+${e.gap}s`}</div>
+                      <div style={{fontSize:11,color:"#445"}}>{e.laps} laps</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* QUALIFYING VIEW */}
+        {view==="qualifying"&&(
+          <div style={{animation:"fadeIn 0.2s ease"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
+              <div>
+                <div style={{fontSize:26,fontWeight:700,letterSpacing:3}}>QUALIFYING</div>
+                <div style={{fontSize:14,color:"#556",letterSpacing:1.5,marginTop:2}}>{track.flag} {track.circuit} · 30 MIN SINGLE SESSION · TOP-10 REVERSED FOR SPRINT{qual?.runsUsed>1?` · ×${qual.runsUsed} AVERAGED`:""}</div>
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={doQual} style={{background:"#111120",color:"#667",border:"1px solid #1A1A30",padding:"6px 14px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,borderRadius:3}}>↺ RE-RUN</button>
+                <button onClick={doSprint} style={{background:`${F2C}18`,color:F2C,border:`1px solid ${F2C}55`,padding:"6px 16px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,borderRadius:3}}>▶ SPRINT →</button>
+                <button onClick={doRace} style={{background:"#44CC8818",color:"#44CC88",border:"1px solid #44CC8855",padding:"6px 16px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,borderRadius:3}}>▶ FEATURE →</button>
+              </div>
+            </div>
+            {qual&&(()=>{
+              const [qTab,setQTab]=React.useState("quali");
+              return(
+                <>
+                  <div style={{display:"flex",gap:3,marginBottom:14,background:"#0A0A18",padding:4,borderRadius:5,border:`1px solid #1A1A30`}}>
+                    {[["quali","QUALIFYING ORDER",F2C],["sprint","SPRINT GRID (REV TOP-10)","#FFC906"],["feature","FEATURE GRID","#44CC88"]].map(([k,l,c])=>(
+                      <button key={k} onClick={()=>setQTab(k)} style={{flex:1,background:qTab===k?`${c}18`:"transparent",color:qTab===k?c:"#556",border:`1px solid ${qTab===k?c+"44":"transparent"}`,padding:"7px 0",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1,borderRadius:3}}>
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:14}}>
+                    {(qTab==="quali"?qual.positions:qTab==="sprint"?qual.sprintGrid:qual.featureGrid).map((e,i)=>{
+                      const best=qual.positions[0].score;
+                      const gapS=i===0?null:((best-e.score)*0.011).toFixed(3);
+                      const noteColor=qTab==="sprint"?(i<10?"#FFC906":"#556"):qTab==="feature"?(i<10?"#44CC88":"#556"):F2C;
+                      return(
+                        <div key={e.driver.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:i<3?"#0D0D1C":"#0E0E1E",border:`1px solid ${i<3?`${noteColor}22`:"#1A1A30"}`,borderLeft:`3px solid ${e.team.color}`,borderRadius:3}}>
+                          <div style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?"#FFC906":i===1?"#aaa":i===2?"#CD7F32":"transparent",color:i<3?"#000":"#556",fontSize:12,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #1A1A30":"none",flexShrink:0}}>{i+1}</div>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:14,fontWeight:700}}>{e.driver.flag} {e.driver.name}</div>
+                            <div style={{fontSize:11,color:e.team.color,letterSpacing:1}}>{e.team.name}</div>
+                          </div>
+                          <div style={{textAlign:"right",flexShrink:0}}>
+                            <div style={{fontSize:12,fontFamily:"monospace",color:i===0?noteColor:"#aaa"}}>{i===0?(qTab==="quali"?"POLE":"P1"):gapS?`+${gapS}s`:""}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {qual.events&&qual.events.length>0&&(
+                    <div style={{background:"#0A0A18",border:`1px solid ${F2C}22`,borderRadius:6,padding:14}}>
+                      <div style={{fontSize:11,color:F2C,fontWeight:700,letterSpacing:2,marginBottom:10}}>QUALIFYING REPORT</div>
+                      {qual.events.map((ev,i)=>(
+                        <div key={i} style={{borderLeft:`3px solid ${EVT_C[ev.type]||F2C}`,padding:"7px 12px",marginBottom:5,background:"#0D0D1C",borderRadius:"0 3px 3px 0"}}>
+                          <div style={{fontSize:13,lineHeight:1.6}}>{ev.icon} {ev.text}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+            {!qual&&<div style={{textAlign:"center",padding:"60px 0",color:"#334",fontSize:16}}>No qualifying data — select a track and run qualifying.</div>}
+          </div>
+        )}
+
+        {/* SPRINT VIEW */}
+        {view==="sprint"&&(
+          <div style={{animation:"fadeIn 0.2s ease"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
+              <div>
+                <div style={{fontSize:26,fontWeight:700,letterSpacing:3}}>SPRINT RACE</div>
+                <div style={{fontSize:14,color:"#556",letterSpacing:1.5,marginTop:2}}>{track.flag} {track.circuit} · REVERSE TOP-10 GRID · {sprint?.totalLaps||"—"} LAPS{sprint?.runsUsed>1?` · ×${sprint.runsUsed} AVERAGED`:""}</div>
+              </div>
+              <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                {sprint?.isWet&&<span style={{background:"#4488FF18",color:"#4488FF",fontSize:12,fontWeight:700,padding:"3px 8px",borderRadius:2}}>🌧️ WET</span>}
+                {sprint?.hasSC&&<span style={{background:"#FFC90618",color:"#FFC906",fontSize:12,fontWeight:700,padding:"3px 8px",borderRadius:2}}>🚗 SC L{sprint.scLap}</span>}
+                {sprintLocked?<span style={{fontSize:13,color:"#445"}}>Run qualifying first</span>:<button onClick={doSprint} style={{background:"#111120",color:"#667",border:"1px solid #1A1A30",padding:"6px 14px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,borderRadius:3}}>↺ RE-RUN</button>}
+                <button onClick={doRace} style={{background:"#44CC8818",color:"#44CC88",border:"1px solid #44CC8855",padding:"6px 16px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,borderRadius:3}}>▶ FEATURE RACE →</button>
+              </div>
+            </div>
+            {sprint?(
+              <div style={{display:"grid",gridTemplateColumns:"1fr 340px",gap:16,alignItems:"start"}}>
+                <div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                    {sprint.positions.map((e,i)=>(
+                      <div key={e.driver.id} style={{display:"flex",alignItems:"center",gap:9,padding:"9px 13px",background:e.dnf?"#150A0A":i<3?"#0D0D1C":"#0E0E1E",border:`1px solid ${e.dnf?"#FF444422":i<3?"#FFC90618":"#1A1A30"}`,borderLeft:`3px solid ${e.dnf?"#FF4444":e.team.color}`,borderRadius:3,opacity:e.dnf?0.7:1}}>
+                        <div style={{width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?"#FFC906":i===1?"#aaa":i===2?"#CD7F32":"transparent",color:i<3?"#000":"#556",fontSize:11,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #1A1A30":"none",flexShrink:0}}>{e.dnf?"DNF":i+1}</div>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:13,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{e.driver.flag} {e.driver.name}</div>
+                          <div style={{fontSize:11,color:e.team.color,letterSpacing:1}}>{e.team.name}</div>
+                        </div>
+                        <div style={{textAlign:"right",flexShrink:0}}>
+                          {e.dnf?<div style={{fontSize:11,color:"#FF4444"}}>L{e.dnfLap||"?"}</div>:<>
+                            <div style={{fontSize:12,fontFamily:"monospace",color:i===0?"#FFC906":"#aaa"}}>{i===0?"🏁 WIN":`+${e.gap}s`}</div>
+                            {e.points>0&&<div style={{fontSize:11,color:F2C,fontWeight:700}}>+{e.points}pts</div>}
+                          </>}
+                        </div>
+                        <div style={{fontSize:9,color:"#334",flexShrink:0}}>P{e.gridPos}→</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div style={{background:"#0A0A18",border:`1px solid ${F2C}22`,borderRadius:6,padding:14,position:"sticky",top:16}}>
+                    <div style={{fontSize:11,color:F2C,fontWeight:700,letterSpacing:2,marginBottom:10}}>SPRINT RACE EVENTS</div>
+                    {sprint.events.map((ev,i)=>(
+                      <div key={i} style={{borderLeft:`3px solid ${EVT_C[ev.type]||F2C}`,padding:"7px 10px",marginBottom:4,background:"#0D0D1C",borderRadius:"0 3px 3px 0"}}>
+                        {ev.lap>0&&<div style={{fontSize:10,color:"#445",marginBottom:1}}>LAP {ev.lap}</div>}
+                        <div style={{fontSize:12,lineHeight:1.55}}>{ev.icon} {ev.text}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ):(
+              <div style={{textAlign:"center",padding:"60px 0",color:"#334",fontSize:16}}>{sprintLocked?"Run qualifying first to generate the sprint grid.":"No sprint data yet."}</div>
+            )}
+          </div>
+        )}
+
+        {/* FEATURE RACE VIEW */}
+        {view==="race"&&(
+          <div style={{animation:"fadeIn 0.2s ease"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
+              <div>
+                <div style={{fontSize:26,fontWeight:700,letterSpacing:3}}>FEATURE RACE</div>
+                <div style={{fontSize:14,color:"#556",letterSpacing:1.5,marginTop:2}}>{track.flag} {track.circuit} · {race?.totalLaps||"—"} LAPS · MANDATORY PIT STOP{race?.runsUsed>1?` · ×${race.runsUsed} AVERAGED`:""}</div>
+              </div>
+              <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                {race?.isWet&&<span style={{background:"#4488FF18",color:"#4488FF",fontSize:12,fontWeight:700,padding:"3px 8px",borderRadius:2}}>🌧️ WET</span>}
+                {race?.hasSC&&<span style={{background:"#FFC90618",color:"#FFC906",fontSize:12,fontWeight:700,padding:"3px 8px",borderRadius:2}}>🚗 SC L{race.scLap}</span>}
+                {race?.fastestLapName&&<span style={{background:"#BB66FF18",color:"#BB66FF",fontSize:12,fontWeight:700,padding:"3px 8px",borderRadius:2}}>💜 FL: {race.fastestLapName}</span>}
+                {raceLocked?<span style={{fontSize:13,color:"#445"}}>Run qualifying first</span>:<button onClick={doRace} style={{background:"#111120",color:"#667",border:"1px solid #1A1A30",padding:"6px 14px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,borderRadius:3}}>↺ RE-RUN</button>}
+                {race&&!raceSaved&&qual&&<button onClick={saveToChampionship} style={{background:"#44CC8818",color:"#44CC88",border:"1px solid #44CC8855",padding:"6px 16px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,borderRadius:3}}>💾 SAVE TO CHAMPIONSHIP</button>}
+                {raceSaved&&<span style={{fontSize:12,color:"#44CC88",fontWeight:700}}>✓ SAVED</span>}
+              </div>
+            </div>
+            {race?(
+              <div style={{display:"grid",gridTemplateColumns:"1fr 340px",gap:16,alignItems:"start"}}>
+                <div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                    {race.positions.map((e,i)=>(
+                      <div key={e.driver.id} style={{display:"flex",alignItems:"center",gap:9,padding:"9px 13px",background:e.dnf?"#150A0A":i<3?"#0D0D1C":"#0E0E1E",border:`1px solid ${e.dnf?"#FF444422":i<3?"#FFC90618":"#1A1A30"}`,borderLeft:`3px solid ${e.dnf?"#FF4444":e.team.color}`,borderRadius:3,opacity:e.dnf?0.7:1}}>
+                        <div style={{width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?"#FFC906":i===1?"#aaa":i===2?"#CD7F32":"transparent",color:i<3?"#000":"#556",fontSize:11,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #1A1A30":"none",flexShrink:0}}>{e.dnf?"DNF":i+1}</div>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:13,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{e.driver.flag} {e.driver.name}</div>
+                          <div style={{fontSize:11,color:e.team.color,letterSpacing:1}}>{e.team.name} {e.tyreStrat&&<span style={{color:"#445",fontSize:9}}>· {e.tyreStrat}</span>}</div>
+                        </div>
+                        <div style={{textAlign:"right",flexShrink:0}}>
+                          {e.dnf?<div style={{fontSize:11,color:"#FF4444"}}>L{e.dnfLap||"?"}</div>:<>
+                            <div style={{fontSize:12,fontFamily:"monospace",color:i===0?"#FFC906":"#aaa"}}>{i===0?"🏁 WIN":`+${e.gap}s`}</div>
+                            {e.points>0&&<div style={{fontSize:11,color:"#44CC88",fontWeight:700}}>+{e.points}pts</div>}
+                          </>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div style={{background:"#0A0A18",border:`1px solid #44CC8822`,borderRadius:6,padding:14,position:"sticky",top:16}}>
+                    <div style={{fontSize:11,color:"#44CC88",fontWeight:700,letterSpacing:2,marginBottom:10}}>FEATURE RACE EVENTS</div>
+                    {race.events.map((ev,i)=>(
+                      <div key={i} style={{borderLeft:`3px solid ${EVT_C[ev.type]||"#44CC88"}`,padding:"7px 10px",marginBottom:4,background:"#0D0D1C",borderRadius:"0 3px 3px 0"}}>
+                        {ev.lap>0&&<div style={{fontSize:10,color:"#445",marginBottom:1}}>LAP {ev.lap}</div>}
+                        <div style={{fontSize:12,lineHeight:1.55}}>{ev.icon} {ev.text}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ):(
+              <div style={{textAlign:"center",padding:"60px 0",color:"#334",fontSize:16}}>{raceLocked?"Run qualifying first to generate the feature race grid.":"No feature race data yet."}</div>
+            )}
+          </div>
+        )}
+
+        {/* CHAMPIONSHIP VIEW */}
+        {view==="championship"&&(()=>{
+          // Aggregate driver & constructor standings
+          const driverPts={}, teamPts={};
+          const driverWins={}, teamWins={}, driverPodiums={};
+          championship.forEach(round=>{
+            // Sprint points
+            (round.sprint?.positions||[]).forEach(e=>{
+              if(!driverPts[e.driverId]) driverPts[e.driverId]={name:e.driverName,flag:e.driverFlag,teamName:e.teamName,teamColor:e.teamColor,pts:0};
+              if(!teamPts[e.teamId]) teamPts[e.teamId]={name:e.teamName,color:e.teamColor,pts:0};
+              driverPts[e.driverId].pts+=e.points||0;
+              teamPts[e.teamId].pts+=e.points||0;
+            });
+            // Feature race points
+            (round.race?.positions||[]).forEach(e=>{
+              if(!driverPts[e.driverId]) driverPts[e.driverId]={name:e.driverName,flag:e.driverFlag,teamName:e.teamName,teamColor:e.teamColor,pts:0};
+              if(!teamPts[e.teamId]) teamPts[e.teamId]={name:e.teamName,color:e.teamColor,pts:0};
+              driverPts[e.driverId].pts+=e.points||0;
+              teamPts[e.teamId].pts+=e.points||0;
+              if(e.finalPos===1&&!e.dnf){driverWins[e.driverId]=(driverWins[e.driverId]||0)+1;teamWins[e.teamId]=(teamWins[e.teamId]||0)+1;}
+              if(e.finalPos<=3&&!e.dnf) driverPodiums[e.driverId]=(driverPodiums[e.driverId]||0)+1;
+            });
+          });
+          const driverStandings=Object.entries(driverPts).map(([id,d])=>({id,...d,wins:driverWins[id]||0,podiums:driverPodiums[id]||0})).sort((a,b)=>b.pts-a.pts);
+          const teamStandings=Object.entries(teamPts).map(([id,t])=>({id,...t,wins:teamWins[id]||0})).sort((a,b)=>b.pts-a.pts);
+          const maxPts=driverStandings[0]?.pts||1;
+          return(
+            <div style={{animation:"fadeIn 0.2s ease"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
+                <div>
+                  <div style={{fontSize:26,fontWeight:700,letterSpacing:3}}>F2 CHAMPIONSHIP</div>
+                  <div style={{fontSize:14,color:"#556",letterSpacing:1.5,marginTop:2}}>{championship.length} ROUNDS · FEATURE + SPRINT POINTS</div>
+                </div>
+                <div style={{display:"flex",gap:6}}>
+                  {[["DRIVERS","drivers"],["TEAMS","teams"],["ROUNDS","rounds"]].map(([l,t])=>(
+                    <button key={t} onClick={()=>setF2ChampTab(t)} style={{background:f2ChampTab===t?`${F2C}18`:"#111120",color:f2ChampTab===t?F2C:"#556",border:`1px solid ${f2ChampTab===t?F2C+"44":"#1A1A30"}`,padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>{l}</button>
+                  ))}
+                  {championship.length>0&&<button onClick={()=>{if(window.confirm("Clear all championship data?"))setChampionship([]);}} style={{background:"#1A0808",color:"#FF4444",border:"1px solid #FF444433",padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,borderRadius:3}}>RESET</button>}
+                </div>
+              </div>
+
+              {championship.length===0&&<div style={{textAlign:"center",padding:"60px 0",color:"#334"}}><div style={{fontSize:32,marginBottom:12}}>🏆</div><div style={{fontSize:16,fontWeight:700,color:"#445"}}>No rounds saved yet — run a full weekend and hit 💾 SAVE TO CHAMPIONSHIP.</div></div>}
+
+              {f2ChampTab==="drivers"&&driverStandings.length>0&&(
+                <div style={{display:"grid",gap:6}}>
+                  {driverStandings.map((d,i)=>(
+                    <div key={d.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 16px",background:i===0?"#0D0D1C":"#0E0E1E",border:`1px solid ${i===0?F2C+"33":"#1A1A30"}`,borderLeft:`3px solid ${d.teamColor||F2C}`,borderRadius:4}}>
+                      <div style={{width:32,textAlign:"center",fontSize:16,fontWeight:900,color:i===0?F2C:i<3?"#FFC906":"#445"}}>{i+1}</div>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:16,fontWeight:700}}>{d.flag} {d.name}</div>
+                        <div style={{fontSize:12,color:d.teamColor,letterSpacing:1}}>{d.teamName}</div>
+                      </div>
+                      <div style={{display:"flex",gap:16,alignItems:"center"}}>
+                        <div style={{textAlign:"center"}}><div style={{fontSize:11,color:"#445",letterSpacing:1}}>WINS</div><div style={{fontSize:15,fontWeight:700,color:"#FFC906"}}>{d.wins}</div></div>
+                        <div style={{textAlign:"center"}}><div style={{fontSize:11,color:"#445",letterSpacing:1}}>PDMS</div><div style={{fontSize:15,fontWeight:700,color:"#aaa"}}>{d.podiums}</div></div>
+                        <div style={{textAlign:"right",minWidth:60}}>
+                          <div style={{fontSize:22,fontWeight:900,color:i===0?F2C:"#F0F0F0"}}>{d.pts}</div>
+                          <div style={{fontSize:9,color:"#445",letterSpacing:1}}>POINTS</div>
+                        </div>
+                      </div>
+                      <div style={{width:100}}>
+                        <div style={{height:6,background:"#111120",borderRadius:3}}><div style={{height:6,width:`${(d.pts/maxPts)*100}%`,background:d.teamColor||F2C,borderRadius:3}}/></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {f2ChampTab==="teams"&&teamStandings.length>0&&(
+                <div style={{display:"grid",gap:6}}>
+                  {teamStandings.map((t,i)=>(
+                    <div key={t.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 16px",background:"#0E0E1E",border:`1px solid ${i===0?t.color+"33":"#1A1A30"}`,borderTop:`3px solid ${t.color}`,borderRadius:4}}>
+                      <div style={{width:32,textAlign:"center",fontSize:16,fontWeight:900,color:i===0?t.color:"#445"}}>{i+1}</div>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:17,fontWeight:700}}>{t.name}</div>
+                        <div style={{fontSize:12,color:"#556",letterSpacing:1}}>{t.wins} wins</div>
+                      </div>
+                      <div style={{fontSize:24,fontWeight:900,color:i===0?t.color:"#F0F0F0"}}>{t.pts}</div>
+                      <div style={{width:100}}><div style={{height:6,background:"#111120",borderRadius:3}}><div style={{height:6,width:`${(t.pts/(teamStandings[0]?.pts||1))*100}%`,background:t.color,borderRadius:3}}/></div></div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {f2ChampTab==="rounds"&&championship.length>0&&(
+                <div style={{display:"grid",gap:8}}>
+                  {[...championship].reverse().map(r=>(
+                    <div key={r.id} style={{background:"#0E0E1E",border:"1px solid #1A1A30",borderLeft:`3px solid ${F2C}`,borderRadius:4,padding:14}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                        <div>
+                          <div style={{fontSize:16,fontWeight:700}}>{r.trackFlag} Round {r.round} — {r.trackName}</div>
+                          <div style={{fontSize:12,color:"#556",marginTop:2}}>{r.trackCircuit}</div>
+                        </div>
+                        <div style={{display:"flex",gap:6}}>
+                          {r.race?.isWet&&<span style={{background:"#4488FF18",color:"#4488FF",fontSize:11,fontWeight:700,padding:"2px 6px",borderRadius:2}}>🌧️ WET</span>}
+                          {r.race?.hasSC&&<span style={{background:"#FFC90618",color:"#FFC906",fontSize:11,fontWeight:700,padding:"2px 6px",borderRadius:2}}>🚗 SC</span>}
+                        </div>
+                      </div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                        {r.sprint&&(
+                          <div>
+                            <div style={{fontSize:11,color:"#FFC906",fontWeight:700,letterSpacing:1.5,marginBottom:6}}>⚡ SPRINT</div>
+                            {r.sprint.positions.slice(0,3).map((e,i)=>(
+                              <div key={e.driverId} style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+                                <span style={{fontSize:11,color:i===0?"#FFC906":"#445",fontWeight:700,width:16}}>{i+1}</span>
+                                <span style={{fontSize:12,fontWeight:700}}>{e.driverFlag} {e.driverName}</span>
+                                {e.points>0&&<span style={{fontSize:11,color:F2C,marginLeft:"auto"}}>+{e.points}pts</span>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div>
+                          <div style={{fontSize:11,color:"#44CC88",fontWeight:700,letterSpacing:1.5,marginBottom:6}}>🏁 FEATURE</div>
+                          {(r.race?.positions||[]).slice(0,3).map((e,i)=>(
+                            <div key={e.driverId} style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+                              <span style={{fontSize:11,color:i===0?"#FFC906":"#445",fontWeight:700,width:16}}>{i+1}</span>
+                              <span style={{fontSize:12,fontWeight:700}}>{e.driverFlag} {e.driverName}</span>
+                              {e.points>0&&<span style={{fontSize:11,color:"#44CC88",marginLeft:"auto"}}>+{e.points}pts</span>}
+                            </div>
+                          ))}
+                          {r.race?.fastestLapName&&<div style={{fontSize:10,color:"#BB66FF",marginTop:4}}>💜 FL: {r.race.fastestLapName}</div>}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
       </div>
 
@@ -4123,7 +4886,12 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
           ))}
           <div style={{width:1,height:20,background:"#2A2A30"}}/>
           {/* Back to menu */}
-          <button onClick={()=>setShowMenu(true)} title="Back to series select" style={{background:"transparent",color:"#444",border:"1px solid #2A2A30",padding:"3px 9px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1,borderRadius:2,whiteSpace:"nowrap"}}>⏏ MENU</button>
+          <button onClick={()=>setShowMenu(true)} title="Back to series select"
+            style={{background:"#1A0A0A",color:"#E8002D",border:"1px solid #E8002D55",padding:"5px 14px",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:700,letterSpacing:1.5,borderRadius:3,whiteSpace:"nowrap",transition:"all 0.15s",display:"flex",alignItems:"center",gap:5}}
+            onMouseEnter={e=>{e.currentTarget.style.background="#E8002D22";e.currentTarget.style.borderColor="#E8002D99";}}
+            onMouseLeave={e=>{e.currentTarget.style.background="#1A0A0A";e.currentTarget.style.borderColor="#E8002D55";}}>
+            ⏏ HOME
+          </button>
           <button
             onClick={()=>{setCommunityEnabled(p=>!p);setDbError(false);setDbSubmitCount(0);}}
             title={communityEnabled?"Community model ON — sharing anonymous data":"Community model OFF — click to enable"}

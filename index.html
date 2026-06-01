@@ -20061,6 +20061,306 @@ const F2_TRACKS = [
 
 // ===================== F2 COMPONENTS =====================
 
+// ===================== F2 SIMULATION ENGINE =====================
+
+const F2_PTS_FEATURE = [25,18,15,12,10,8,6,4,2,1];
+const F2_PTS_SPRINT  = [10,8,6,5,4,3,2,1];
+const F2_FAIL = ["engine failure","hydraulics failure","gearbox failure","suspension damage","brake failure","fuel pressure loss","oil leak","MGU fault"];
+
+function calcF2Base(d, team, track) {
+  const sm=getStyleMods(d);
+  const ep=d.pace+sm.pace, ec=d.consistency+sm.consistency;
+  const eo=d.overtaking+sm.overtaking, ex=d.experience+sm.experience;
+  const ts=getF2TeamStats(team);
+  // F2 spec chassis: team setup contributes ~30%, driver ~70%
+  let s=ts.carPace*0.30+ep*0.70;
+  if(track.type==="high-speed"||track.type==="low-downforce") s+=ep*0.05;
+  else if(track.type==="technical"){s+=ec*0.06;if(d.style==="technical")s+=3;}
+  else if(track.type==="street"){s+=ex*0.025+(d.defense||75)*0.015;if(d.style==="defender")s+=2;}
+  if(ts.aeroCircuitBonus&&track.type&&ts.aeroCircuitBonus[track.type]) s+=ts.aeroCircuitBonus[track.type]*0.35;
+  if((track.alt||0)>500) s-=((track.alt-500)/2000)*((100-ex)*0.04);
+  if(track.night) s+=ex*0.02;
+  if(track.street) s+=ex*0.018;
+  if((track.abrasive||3)>5) s-=((track.abrasive-5)*0.3)*((100-ec)/40);
+  if((track.drs||2)>=3) s+=eo*0.01;
+  if((d.goodTracks||[]).includes(track.id)) s+=5;
+  if((d.badTracks||[]).includes(track.id)) s-=5;
+  s+=((d.mental||7)-5)*0.4;
+  return s;
+}
+function calcF2QualBase(d,team,track){
+  const sm=getStyleMods(d);
+  return calcF2Base(d,team,track)+(sm.qualBonus||0)*0.65;
+}
+
+// F2 Qualifying — single 30-min session, all 20 drivers, top-10 reversed for sprint
+function runF2Qual(drivers,teams,track){
+  const form={};
+  drivers.forEach(d=>{form[d.id]=(Math.random()-0.5)*2*7;});
+  const positions=drivers.map(d=>{
+    const team=teams.find(t=>t.id===d.teamId)||teams[teams.length-1];
+    const score=calcF2QualBase(d,team,track)+form[d.id]+1.5*(0.7+Math.random()*0.6)+(Math.random()-0.5)*2*4;
+    return {driver:d,team,score};
+  }).sort((a,b)=>b.score-a.score).map((e,i)=>({...e,pos:i+1}));
+  const featureGrid=[...positions];
+  const top10=[...positions.slice(0,10)].reverse();
+  const sprintGrid=[...top10,...positions.slice(10)];
+  const events=genF2QualEvents(positions,track);
+  return {positions,featureGrid,sprintGrid,events};
+}
+
+function aggF2Qual(n,drivers,teams,track){
+  if(n<=1) return runF2Qual(drivers,teams,track);
+  const scoreAcc={};
+  drivers.forEach(d=>{scoreAcc[d.id]=[];});
+  let displayRun=null;
+  for(let i=0;i<n;i++){
+    const q=runF2Qual(drivers,teams,track);
+    if(i===Math.floor(n/2)) displayRun=q;
+    q.positions.forEach(e=>scoreAcc[e.driver.id].push(e.score));
+  }
+  const avg=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:0;
+  const positions=drivers.map(d=>{
+    const team=teams.find(t=>t.id===d.teamId)||teams[teams.length-1];
+    return {driver:d,team,score:avg(scoreAcc[d.id])};
+  }).sort((a,b)=>b.score-a.score).map((e,i)=>({...e,pos:i+1}));
+  const featureGrid=[...positions];
+  const sprintGrid=[...[...positions.slice(0,10)].reverse(),...positions.slice(10)];
+  const events=displayRun?displayRun.events:genF2QualEvents(positions,track);
+  return {positions,featureGrid,sprintGrid,events,runsUsed:n};
+}
+
+function genF2QualEvents(positions,track){
+  const evts=[];
+  const fast=positions[0],second=positions[1];
+  const gap=second?((fast.score-second.score)*0.011).toFixed(3):"0.000";
+  const SECTORS=["the first chicane","Turn "+Math.ceil((track.corners||16)/3),"the hairpin","the final complex","a high-speed sweeper"];
+  if(Math.random()<0.45){
+    const victim=_pick(positions.slice(4,18));
+    evts.push({type:"yellow",icon:"🟡",text:`⚠️ YELLOW FLAG — ${victim.driver.name} (${victim.team.name}) loses the car at ${_pick(SECTORS)}. Session briefly neutralised — ${_pick(["several runners on hot laps have to abort","the session restarts with 6 minutes remaining","timing screens frozen; frustration in several garages"])}.`});
+  }
+  if(Math.random()<0.25){
+    const m=_pick(positions.slice(3,17));
+    evts.push({type:"mechanical",icon:"🔧",text:`🔧 ${m.driver.name} (${m.team.name}) reports a ${_pick(["brake issue","hydraulics warning","DRS fault","gearbox hesitation","water temperature alarm"])} over the radio and aborts the session. Time is running out for the mechanics.`});
+  }
+  evts.push({type:"pole",icon:"🏁",text:`${fast.driver.name} takes F2 pole at ${track.circuit}. ${gap}s over ${_optionalChain([second, 'optionalAccess', _107 => _107.driver, 'access', _108 => _108.name])||"P2"} in a single-session format where every tenth counts. Sprint grid: top-10 REVERSED, so ${_optionalChain([positions, 'access', _109 => _109[9], 'optionalAccess', _110 => _110.driver, 'access', _111 => _111.name])||"P10"} starts the sprint from pole position.`});
+  if(positions[9]){
+    evts.push({type:"info",icon:"🔄",text:`REVERSED GRID: ${positions[9].driver.name} (P10 in qualifying) starts the Sprint from pole. ${fast.driver.name} — fastest qualifier — drops to P10 and must fight through the field in ${track.laps?Math.round(track.laps*0.45):22} laps. F2 at its most dramatic.`});
+  }
+  return evts;
+}
+
+// F2 FP (45-min session)
+function runF2FP(drivers,teams,track){
+  const form={};
+  drivers.forEach(d=>{form[d.id]=(Math.random()-0.5)*2*11;});
+  const raw=drivers.map(d=>{
+    const team=teams.find(t=>t.id===d.teamId)||teams[teams.length-1];
+    const score=calcF2Base(d,team,track)+form[d.id]+(Math.random()-0.5)*2*6-(Math.random()*3+1);
+    const laps=Math.floor(Math.random()*10+15);
+    return {driver:d,team,score,laps};
+  }).sort((a,b)=>b.score-a.score);
+  const best=_optionalChain([raw, 'access', _112 => _112[0], 'optionalAccess', _113 => _113.score])||0;
+  return raw.map((e,i)=>({...e,pos:i+1,gap:i===0?null:((best-e.score)*0.011).toFixed(3)}));
+}
+
+// F2 Testing (3 days × 2 sessions)
+function runF2Testing(drivers,teams,track){
+  const form={};
+  drivers.forEach(d=>{form[d.id]=(Math.random()-0.5)*2*15;});
+  const raw=drivers.map(d=>{
+    const team=teams.find(t=>t.id===d.teamId)||teams[teams.length-1];
+    const score=calcF2Base(d,team,track)+form[d.id]+(Math.random()-0.5)*2*9;
+    const laps=Math.floor(Math.random()*28+30);
+    return {driver:d,team,score,laps};
+  }).sort((a,b)=>b.score-a.score);
+  const best=_optionalChain([raw, 'access', _114 => _114[0], 'optionalAccess', _115 => _115.score])||0;
+  return raw.map((e,i)=>({...e,pos:i+1,gap:i===0?null:((best-e.score)*0.011).toFixed(3)}));
+}
+
+// F2 Sprint race (~21 laps, no pit stops, reverse-top-10 grid)
+function runF2Sprint(grid,teams,track){
+  const laps=Math.max(16,track.lapLen?Math.round(105/track.lapLen):22);
+  const isWet=Math.random()*100<track.wr;
+  const hasSC=Math.random()<0.42;
+  const scLap=hasSC?Math.floor(Math.random()*Math.max(1,laps-4))+2:0;
+  const entries=grid.map((e,gp)=>{
+    const {driver:d,team}=e;
+    const ts=getF2TeamStats(team);
+    const sm=getStyleMods(d);
+    let pace=isWet?ts.carPace*0.22+d.pace*0.18+d.wet*0.60+(ts.wetBonus||0)*0.3:ts.carPace*0.28+d.pace*0.42+d.consistency*0.30;
+    pace-=gp*0.09*(track.od/100);
+    if(d.style==="charger"&&gp>8) pace+=4;
+    if(d.style==="aggressive"&&gp>5) pace+=2.5;
+    pace+=sm.pace*0.4+sm.consistency*0.3;
+    if(_optionalChain([ts, 'access', _116 => _116.aeroCircuitBonus, 'optionalAccess', _117 => _117[track.type]])) pace+=ts.aeroCircuitBonus[track.type]*0.3;
+    if(hasSC&&(d.style==="aggressive"||d.style==="charger")) pace+=1.5;
+    pace+=(Math.random()-0.5)*7;
+    const dnfRisk=Math.max(0.01,0.045+(sm.dnfRisk||0)+(d.style==="aggressive"?0.025:0));
+    const dnf=Math.random()<dnfRisk;
+    return {driver:d,team,gridPos:gp+1,pace,dnf,dnfLap:dnf?Math.floor(Math.random()*laps)+1:null};
+  });
+  const finished=entries.filter(e=>!e.dnf).sort((a,b)=>b.pace-a.pace);
+  const dnfs=entries.filter(e=>e.dnf);
+  const all=[...finished,...dnfs];
+  let cg=0;
+  all.forEach((e,i)=>{
+    e.finalPos=i+1;
+    e.points=(!e.dnf&&i<8)?F2_PTS_SPRINT[i]:0;
+    if(i===0)e.gap=0; else if(e.dnf)e.gap=null; else{cg=parseFloat((cg+Math.random()*1.5+0.2).toFixed(3));e.gap=cg;}
+  });
+  return {positions:all,events:genF2RaceEvents(all,laps,track,isWet,hasSC,scLap,"sprint"),isWet,hasSC,scLap,totalLaps:laps};
+}
+
+function aggF2Sprint(n,grid,teams,track){
+  if(n<=1) return runF2Sprint(grid,teams,track);
+  const posAcc={},dnfCount={},dnfLaps={};
+  let repRace=null,wetCnt=0,scCnt=0,scLapSum=0;
+  grid.forEach(({driver})=>{posAcc[driver.id]=[];dnfCount[driver.id]=0;dnfLaps[driver.id]=[];});
+  for(let i=0;i<n;i++){
+    const r=runF2Sprint(grid,teams,track);
+    if(i===Math.floor(n/2)) repRace=r;
+    if(r.isWet) wetCnt++;
+    if(r.hasSC){scCnt++;scLapSum+=r.scLap;}
+    r.positions.forEach((e,idx)=>{posAcc[e.driver.id].push(idx+1);if(e.dnf){dnfCount[e.driver.id]++;if(e.dnfLap)dnfLaps[e.driver.id].push(e.dnfLap);}});
+  }
+  const avg=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:0;
+  const canon=grid.map(({driver,team})=>{
+    const dnfR=dnfCount[driver.id]/n;
+    const isDNF=dnfR>=0.5;
+    const ap=avg(posAcc[driver.id]);
+    return {driver,team,gridPos:grid.findIndex(e=>e.driver.id===driver.id)+1,avgPos:ap,isDNF,dnfLap:isDNF&&dnfLaps[driver.id].length?Math.round(avg(dnfLaps[driver.id])):null,dnfRate:dnfR};
+  }).sort((a,b)=>a.isDNF!==b.isDNF?(a.isDNF?1:-1):a.avgPos-b.avgPos);
+  let cg=0;
+  canon.forEach((e,i)=>{e.finalPos=i+1;e.dnf=e.isDNF;e.points=(!e.isDNF&&i<8)?F2_PTS_SPRINT[i]:0;if(i===0)e.gap=0;else if(e.isDNF)e.gap=null;else{cg=parseFloat((cg+Math.max(0.2,(e.avgPos-canon[0].avgPos)*0.9)).toFixed(3));e.gap=cg;}});
+  return {positions:canon,events:_optionalChain([repRace, 'optionalAccess', _118 => _118.events])||[],isWet:wetCnt>=n/2,hasSC:scCnt>=n/2,scLap:scCnt?Math.round(scLapSum/scCnt):0,totalLaps:_optionalChain([repRace, 'optionalAccess', _119 => _119.totalLaps])||22,runsUsed:n};
+}
+
+// F2 Feature race (~42 laps, mandatory pit stop, Option+Prime compounds)
+function runF2Feature(grid,teams,track){
+  const laps=Math.max(30,track.lapLen?Math.round(190/track.lapLen):42);
+  const isWet=Math.random()*100<track.wr;
+  const hasSC=Math.random()<0.50;
+  const scLap=hasSC?Math.floor(Math.random()*Math.max(1,laps-8))+4:0;
+  const vsc=!hasSC&&Math.random()<0.28;
+  const vscLap=vsc?Math.floor(Math.random()*Math.max(1,laps-8))+5:0;
+  const STRATS=["Option→Prime","Option→Prime","Option→Prime","Prime→Option","Prime→Option"];
+  const entries=grid.map((e,gp)=>{
+    const {driver:d,team}=e;
+    const ts=getF2TeamStats(team);
+    const sm=getStyleMods(d);
+    const strategy=TEAM_STRATEGIES.find(s=>s.id===team.strategy)||TEAM_STRATEGIES[0];
+    const stMods=strategy.mods||{};
+    let pace=isWet?ts.carPace*0.22+d.pace*0.18+d.wet*0.60+(ts.wetBonus||0)*0.28:ts.carPace*0.28+d.pace*0.36+d.consistency*0.36;
+    const tyreStrat=_pick(STRATS);
+    const onOpt=tyreStrat.startsWith("Option");
+    const pitLap=isWet?0:hasSC&&scLap>8?scLap-1:Math.floor(laps*(onOpt?0.37:0.55))+(Math.floor(Math.random()*6)-3);
+    if(onOpt) pace+=2.5;
+    pace*=(stMods.overallPace||1.0);
+    if(hasSC&&stMods.scBonus) pace*=(stMods.scBonus*0.25+0.75);
+    if(stMods.lateBoost) pace+=(stMods.lateBoost-1)*5;
+    pace+=sm.pace*0.4+sm.consistency*0.3+sm.racePace*0.2;
+    if(_optionalChain([ts, 'access', _120 => _120.aeroCircuitBonus, 'optionalAccess', _121 => _121[track.type]])) pace+=ts.aeroCircuitBonus[track.type]*0.3;
+    pace-=gp*0.055*(track.od/100);
+    if(d.style==="charger"&&gp>10) pace+=3;
+    if(d.style==="strategist") pace+=1.5;
+    pace-=(100-(ts.tyreLife||60))/100*2.5;
+    pace+=(Math.random()-0.5)*7;
+    const dnfRisk=Math.max(0.01,0.055+(sm.dnfRisk||0)+(stMods.dnfRisk||0));
+    const dnf=Math.random()<dnfRisk;
+    return {driver:d,team,gridPos:gp+1,pace,dnf,dnfLap:dnf?Math.floor(Math.random()*laps)+1:null,tyreStrat,pitLap};
+  });
+  const finished=entries.filter(e=>!e.dnf).sort((a,b)=>b.pace-a.pace);
+  const dnfs=entries.filter(e=>e.dnf);
+  const all=[...finished,...dnfs];
+  let cg=0;
+  all.forEach((e,i)=>{
+    e.finalPos=i+1;
+    e.points=(!e.dnf&&i<10)?F2_PTS_FEATURE[i]:0;
+    if(i===0)e.gap=0; else if(e.dnf)e.gap=null; else{cg=parseFloat((cg+Math.random()*2.3+0.4).toFixed(3));e.gap=cg;}
+  });
+  const fastestLap=!isWet&&finished.length?_optionalChain([_pick, 'call', _122 => _122(finished.slice(0,Math.min(8,finished.length))), 'optionalAccess', _123 => _123.driver]):null;
+  if(fastestLap){const fe=all.find(e=>e.driver.id===fastestLap.id);if(fe&&!fe.dnf&&fe.finalPos<=10)fe.points+=1;}
+  return {positions:all,events:genF2RaceEvents(all,laps,track,isWet,hasSC,scLap,"feature",vsc,vscLap),isWet,hasSC,scLap,vsc,vscLap,totalLaps:laps,fastestLap,fastestLapName:_optionalChain([fastestLap, 'optionalAccess', _124 => _124.name])};
+}
+
+function aggF2Feature(n,grid,teams,track){
+  if(n<=1) return runF2Feature(grid,teams,track);
+  const posAcc={},dnfCount={},dnfLaps={},flCount={};
+  let repRace=null,wetCnt=0,scCnt=0,scLapSum=0;
+  grid.forEach(({driver})=>{posAcc[driver.id]=[];dnfCount[driver.id]=0;dnfLaps[driver.id]=[];});
+  for(let i=0;i<n;i++){
+    const r=runF2Feature(grid,teams,track);
+    if(i===Math.floor(n/2)) repRace=r;
+    if(r.isWet) wetCnt++;
+    if(r.hasSC){scCnt++;scLapSum+=r.scLap;}
+    if(r.fastestLap) flCount[r.fastestLap.id]=(flCount[r.fastestLap.id]||0)+1;
+    r.positions.forEach((e,idx)=>{posAcc[e.driver.id].push(idx+1);if(e.dnf){dnfCount[e.driver.id]++;if(e.dnfLap)dnfLaps[e.driver.id].push(e.dnfLap);}});
+  }
+  const avg=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:0;
+  const canon=grid.map(({driver,team})=>{
+    const dnfR=dnfCount[driver.id]/n;
+    const isDNF=dnfR>=0.5;
+    const ap=avg(posAcc[driver.id]);
+    return {driver,team,gridPos:grid.findIndex(e=>e.driver.id===driver.id)+1,avgPos:ap,isDNF,dnfLap:isDNF&&dnfLaps[driver.id].length?Math.round(avg(dnfLaps[driver.id])):null};
+  }).sort((a,b)=>a.isDNF!==b.isDNF?(a.isDNF?1:-1):a.avgPos-b.avgPos);
+  let cg=0;
+  canon.forEach((e,i)=>{e.finalPos=i+1;e.dnf=e.isDNF;e.points=(!e.isDNF&&i<10)?F2_PTS_FEATURE[i]:0;if(i===0)e.gap=0;else if(e.isDNF)e.gap=null;else{cg=parseFloat((cg+Math.max(0.3,(e.avgPos-canon[0].avgPos)*0.9)).toFixed(3));e.gap=cg;}});
+  const flId=_optionalChain([Object, 'access', _125 => _125.entries, 'call', _126 => _126(flCount), 'access', _127 => _127.sort, 'call', _128 => _128((a,b)=>b[1]-a[1]), 'access', _129 => _129[0], 'optionalAccess', _130 => _130[0]]);
+  const fastestLap=flId?_optionalChain([grid, 'access', _131 => _131.find, 'call', _132 => _132(e=>e.driver.id===flId), 'optionalAccess', _133 => _133.driver]):null;
+  if(fastestLap){const fe=canon.find(e=>e.driver.id===fastestLap.id);if(fe&&!fe.dnf&&fe.finalPos<=10)fe.points+=1;}
+  return {positions:canon,events:_optionalChain([repRace, 'optionalAccess', _134 => _134.events])||[],isWet:wetCnt>=n/2,hasSC:scCnt>=n/2,scLap:scCnt?Math.round(scLapSum/scCnt):0,totalLaps:_optionalChain([repRace, 'optionalAccess', _135 => _135.totalLaps])||42,fastestLap,fastestLapName:_optionalChain([fastestLap, 'optionalAccess', _136 => _136.name]),runsUsed:n};
+}
+
+function genF2RaceEvents(entries,laps,track,isWet,hasSC,scLap,type,vsc=false,vscLap=0){
+  const evts=[];
+  const leader=entries[0];
+  if(!leader) return evts;
+  // Start
+  if(Math.random()<(track.street?0.52:0.4)){
+    const victim=_pick(entries.slice(2,12));
+    evts.push({lap:1,type:"start",icon:"🚦",text:`FIRST LAP INCIDENT — ${victim.driver.name} (${victim.team.name}) ${_pick(["gets squeezed into the barrier at Turn 1","has contact with a rival and loses several places","locks up and runs wide over the kerbs","is spun around in a first-corner collision"])}. ${track.street?"The barriers are unforgiving here.":"Safety Car potential."}`});
+  }
+  // Weather
+  if(isWet) evts.push({lap:1,type:"weather",icon:"🌧️",text:`RAIN at ${track.circuit}. Intermediates mandatory — drivers reporting very low grip through ${_pick(["the first sector","the hairpin area","the high-speed complex"])}. Wet weather specialists will thrive here.`});
+  // Safety Car
+  if(hasSC){
+    const cause=_pick(entries.slice(Math.floor(entries.length/3))).driver;
+    evts.push({lap:scLap,type:"safetycar",icon:"🚗",text:`SAFETY CAR — Lap ${scLap}. ${cause.name} is stopped with ${_pick(F2_FAIL)}. The field bunches up — ${type==="feature"?"pit window opens for teams yet to stop. Crucial decision time on the pitwall":"sprint restarts in 2 laps with everything to play for"}. ${_pick(["This defines the race.","Every team reacting differently.","The Safety Car periods are where F2 races are won and lost."])}`});
+  }
+  if(vsc&&type==="feature") evts.push({lap:vscLap,type:"safetycar",icon:"🟡",text:`VIRTUAL SAFETY CAR — Lap ${vscLap}. Debris on track. Teams with open pit windows react immediately — a free stop under VSC is the dream scenario for any strategist.`});
+  // Battle for lead
+  if(entries.length>=2&&Math.random()<0.65){
+    const d2=entries[1];
+    evts.push({lap:Math.floor(laps*0.4),type:"battle",icon:"⚔️",text:`${leader.driver.name} vs ${d2.driver.name} — wheel-to-wheel at ${track.circuit}. ${_pick(["DRS closes the gap every straight.","Side by side through the braking zone.","The crowd on their feet.","This is the F2 rivalry that has defined the season so far."])}`});
+  }
+  // DNF drama
+  entries.filter(e=>e.dnf).slice(0,2).forEach(e=>{
+    evts.push({lap:e.dnfLap||Math.floor(laps*0.5),type:"dnf",icon:"❌",text:`RETIREMENT — ${e.driver.name} (${e.team.name}) stops on Lap ${e.dnfLap||"?"} with ${_pick(F2_FAIL)}. ${_pick(["Huge blow to championship hopes.","The team review it overnight.","Mechanical failure at the worst possible moment.","Championship points gone."])}`});
+  });
+  // Pit stop story (feature)
+  if(type==="feature"&&!isWet){
+    const pitters=entries.filter(e=>!e.dnf&&e.pitLap>0).slice(0,2);
+    pitters.forEach(e=>{
+      evts.push({lap:e.pitLap,type:"pitstop",icon:"🔧",text:`PIT STOP — ${e.driver.name} (${e.team.name}) boxes on Lap ${e.pitLap} switching ${e.tyreStrat||"compounds"}. ${_pick(["Clean stop.","Crew needs to improve on that.","Fast pit — track position maintained.","They come out just behind their rival — the race is back on."])}`});
+    });
+  }
+  // Charge through field
+  const chargers=entries.filter(e=>!e.dnf&&e.gridPos>e.finalPos+4);
+  if(chargers.length){
+    const ch=chargers[0];
+    evts.push({lap:Math.floor(laps*0.6),type:"charge",icon:"🚀",text:`${ch.driver.name} is FLYING — started P${ch.gridPos}, now running P${ch.finalPos}. ${_pick(["Fastest sector times in the field.","Using DRS to full effect on every straight.","The ${ch.team.name} setup is working perfectly on race tyres.","A masterclass in racecraft."])}`});
+  }
+  // Fastest lap
+  if(type==="feature"&&!isWet){
+    const flDriver=_pick(entries.filter(e=>!e.dnf&&e.finalPos<=10));
+    if(flDriver) evts.push({lap:laps-2,type:"fastestlap",icon:"💜",text:`FASTEST LAP — ${flDriver.driver.name} (${flDriver.team.name}) sets the fastest lap of the race on Lap ${laps-2}. ${flDriver.finalPos<=10?"The bonus championship point is theirs.":"Just outside the top-10 — the fastest lap point goes unclaimed."}`});
+  }
+  // Race conclusion
+  evts.push({lap:laps,type:"start",icon:"🏁",text:`${type==="feature"?"FEATURE RACE":"SPRINT RACE"} ENDS — ${leader.driver.name} (${leader.team.name}) wins at ${track.circuit}! ${entries[1]&&!entries[1].dnf?`${entries[1].driver.name} P2.`:""} ${entries[2]&&!entries[2].dnf?`${entries[2].driver.name} P3.`:""}`});
+  return evts.sort((a,b)=>(a.lap||0)-(b.lap||0));
+}
+
 function F2EditModal({type,data,teams,drivers,onSave,onClose}){
   const [f,setF]=useState({...data,goodTracks:data.goodTracks||[],badTracks:data.badTracks||[],mental:data.mental||7,rivals:data.rivals||[]});
   const isD=type==="driver";
@@ -20223,39 +20523,85 @@ function F2EditModal({type,data,teams,drivers,onSave,onClose}){
 }
 
 function F2Sim({onBack}){
-  const [drivers,setDrivers]=useState(()=>{
-    try{const s=localStorage.getItem('f2sim_drivers');return s?JSON.parse(s):F2_DRIVERS;}catch (e2){return F2_DRIVERS;}
-  });
-  const [teams,setTeams]=useState(()=>{
-    try{const s=localStorage.getItem('f2sim_teams');return s?JSON.parse(s):F2_TEAMS;}catch (e3){return F2_TEAMS;}
-  });
+  const [drivers,setDrivers]=useState(()=>{try{const s=localStorage.getItem('f2sim_drivers');return s?JSON.parse(s):F2_DRIVERS;}catch (e2){return F2_DRIVERS;}});
+  const [teams,setTeams]=useState(()=>{try{const s=localStorage.getItem('f2sim_teams');return s?JSON.parse(s):F2_TEAMS;}catch (e3){return F2_TEAMS;}});
   const [track,setTrack]=useState(F2_TRACKS[0]);
   const [view,setView]=useState("garage");
   const [gTab,setGTab]=useState("drivers");
   const [modal,setModal]=useState(null);
+  const [fp,setFp]=useState(null);
+  const [qual,setQual]=useState(null);
+  const [sprint,setSprint]=useState(null);
+  const [race,setRace]=useState(null);
+  const [testing,setTesting]=useState(null);
+  const [testDay,setTestDay]=useState(1);
+  const [testSession,setTestSession]=useState("AM");
+  const [championship,setChampionship]=useState(()=>{try{const s=localStorage.getItem('f2sim_champ');return s?JSON.parse(s):[];}catch (e4){return [];}});
+  const [f2ChampTab,setF2ChampTab]=useState("drivers");
+  const [isGen,setIsGen]=useState(false);
+  const [genMsg,setGenMsg]=useState("");
+  const [runAccuracy,setRunAccuracy]=useState(5);
+  const [raceSaved,setRaceSaved]=useState(false);
 
   React.useEffect(()=>{try{localStorage.setItem('f2sim_drivers',JSON.stringify(drivers));}catch(e){}},[drivers]);
   React.useEffect(()=>{try{localStorage.setItem('f2sim_teams',JSON.stringify(teams));}catch(e){}},[teams]);
+  React.useEffect(()=>{try{localStorage.setItem('f2sim_champ',JSON.stringify(championship));}catch(e){}},[championship]);
 
   const teamDrivers=id=>drivers.filter(d=>d.teamId===id);
   const saveDriver=d=>setDrivers(prev=>prev.map(x=>x.id===d.id?d:x));
   const saveTeam=t=>setTeams(prev=>prev.some(x=>x.id===t.id)?prev.map(x=>x.id===t.id?t:x):[...prev,t]);
 
+  // Reset sessions when track changes
+  React.useEffect(()=>{setFp(null);setQual(null);setSprint(null);setRace(null);setRaceSaved(false);},[track.id]);
+
+  const doFP=()=>{
+    setIsGen(true);setGenMsg("Running free practice…");
+    setTimeout(()=>{setFp(runF2FP(drivers,teams,track));setIsGen(false);setView("fp");},(200));
+  };
+  const doQual=()=>{
+    setIsGen(true);setGenMsg("Running qualifying…");
+    setTimeout(()=>{setQual(aggF2Qual(runAccuracy,drivers,teams,track));setIsGen(false);setView("qualifying");},(200));
+  };
+  const doSprint=()=>{
+    if(!qual) return;
+    setIsGen(true);setGenMsg("Running sprint race…");
+    setTimeout(()=>{setSprint(aggF2Sprint(runAccuracy,qual.sprintGrid,teams,track));setIsGen(false);setView("sprint");},(200));
+  };
+  const doRace=()=>{
+    if(!qual) return;
+    setIsGen(true);setGenMsg("Running feature race…");
+    setTimeout(()=>{setRace(aggF2Feature(runAccuracy,qual.featureGrid,teams,track));setIsGen(false);setView("race");},(200));
+  };
+  const doTesting=()=>{
+    setIsGen(true);setGenMsg(`Running Day ${testDay} ${testSession} session…`);
+    setTimeout(()=>{setTesting(runF2Testing(drivers,teams,_pick(F2_TRACKS)));setIsGen(false);},150);
+  };
+  const saveToChampionship=()=>{
+    if(!qual||!race) return;
+    const round={
+      id:Date.now(),round:championship.length+1,
+      trackName:track.name,trackFlag:track.flag,trackCircuit:track.circuit,
+      trackId:track.id,
+      qual:{positions:qual.positions.map(e=>({driverId:e.driver.id,driverName:e.driver.name,driverFlag:e.driver.flag,teamId:e.team.id,teamName:e.team.name,teamColor:e.team.color,pos:e.pos,score:e.score}))},
+      sprint:sprint?{positions:sprint.positions.map(e=>({driverId:e.driver.id,driverName:e.driver.name,driverFlag:e.driver.flag,teamId:e.team.id,teamName:e.team.name,teamColor:e.team.color,finalPos:e.finalPos,points:e.points,dnf:e.dnf,gap:e.gap,gridPos:e.gridPos}))}:null,
+      race:{positions:race.positions.map(e=>({driverId:e.driver.id,driverName:e.driver.name,driverFlag:e.driver.flag,teamId:e.team.id,teamName:e.team.name,teamColor:e.team.color,finalPos:e.finalPos,points:e.points,dnf:e.dnf,gap:e.gap,gridPos:e.gridPos,tyreStrat:e.tyreStrat})),isWet:race.isWet,hasSC:race.hasSC,fastestLapName:race.fastestLapName,totalLaps:race.totalLaps},
+    };
+    setChampionship(prev=>[...prev,round]);
+    setRaceSaved(true);
+  };
+
   const F2C="#0067FF";
-  const nb=(active)=>({
+  const sprintLocked=!qual;
+  const raceLocked=!qual;
+  const nb=(active,locked=false)=>({
     background:active?`${F2C}18`:"transparent",
-    color:active?F2C:"#667",
+    color:locked?"#333":active?F2C:"#667",
     border:`1px solid ${active?F2C+"44":"transparent"}`,
     borderBottom:`2px solid ${active?F2C:"transparent"}`,
     padding:"6px 14px",
-    cursor:"pointer",
-    fontFamily:"inherit",
-    fontSize:13,
-    fontWeight:700,
-    letterSpacing:1.5,
-    height:58,
-    transition:"all 0.15s",
-    whiteSpace:"nowrap",
+    cursor:locked?"default":"pointer",
+    fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1.5,
+    height:58,transition:"all 0.15s",whiteSpace:"nowrap",opacity:locked?0.4:1,
   });
 
   return(
@@ -20274,8 +20620,31 @@ function F2Sim({onBack}){
         , React.createElement('div', { style: {fontSize:18,fontWeight:700,letterSpacing:4,color:F2C,marginRight:16,flexShrink:0},}, "F2 ▶ SIM"  )
         , React.createElement('button', { onClick: ()=>setView("garage"), style: nb(view==="garage"),}, "GARAGE")
         , React.createElement('button', { onClick: ()=>setView("tracks"), style: nb(view==="tracks"),}, "TRACKS")
+        , React.createElement('button', { onClick: ()=>setView("testing"), style: nb(view==="testing"),}, "TESTING")
+        , React.createElement('button', { onClick: ()=>setView("fp"), style: nb(view==="fp"),}, "FP")
+        , React.createElement('button', { onClick: ()=>!sprintLocked&&setView("qualifying"), style: nb(view==="qualifying"), disabled: false,}, "QUALIFYING")
+        , React.createElement('button', { onClick: ()=>!sprintLocked&&setView("sprint"), style: nb(view==="sprint",sprintLocked),}, "SPRINT")
+        , React.createElement('button', { onClick: ()=>!raceLocked&&setView("race"), style: nb(view==="race",raceLocked),}, "FEATURE RACE" )
+        , React.createElement('button', { onClick: ()=>setView("championship"), style: nb(view==="championship"),}, "🏆 CHAMPIONSHIP" )
         , React.createElement('div', { style: {marginLeft:"auto",display:"flex",alignItems:"center",gap:8,paddingRight:14,flexShrink:0},}
-          , React.createElement('button', { onClick: onBack, style: {background:"transparent",color:"#444",border:"1px solid #1E2040",padding:"3px 9px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1,borderRadius:2,whiteSpace:"nowrap"},}, "⏏ MENU" )
+          , React.createElement('span', { style: {fontSize:11,color:"#556",letterSpacing:1,whiteSpace:"nowrap"},}, "ACCURACY")
+          , [1,5,10,20].map(n=>(
+            React.createElement('button', { key: n, onClick: ()=>setRunAccuracy(n), style: {background:runAccuracy===n?`${F2C}22`:"transparent",color:runAccuracy===n?F2C:"#556",border:`1px solid ${runAccuracy===n?F2C+"44":"#1E2040"}`,padding:"3px 8px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1,borderRadius:2,transition:"all 0.15s"},}, "×", n)
+          ))
+          , React.createElement('div', { style: {width:1,height:20,background:"#1E2040"},})
+          , React.createElement('button', { onClick: onBack,
+            style: {background:"#080A1A",color:F2C,border:`1px solid ${F2C}55`,padding:"5px 14px",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:700,letterSpacing:1.5,borderRadius:3,whiteSpace:"nowrap",transition:"all 0.15s"},
+            onMouseEnter: e=>{e.currentTarget.style.background=`${F2C}22`;e.currentTarget.style.borderColor=`${F2C}99`;},
+            onMouseLeave: e=>{e.currentTarget.style.background="#080A1A";e.currentTarget.style.borderColor=`${F2C}55`;},}, "⏏ HOME"
+
+          )
+        )
+      )
+
+      , isGen&&(
+        React.createElement('div', { style: {position:"fixed",inset:0,background:"rgba(8,10,24,0.92)",zIndex:8000,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16},}
+          , React.createElement('div', { style: {display:"flex",gap:8},}, [0,1,2].map(i=>React.createElement('div', { key: i, style: {width:10,height:10,background:F2C,borderRadius:"50%",animation:"pulse 1.2s ease-in-out infinite",animationDelay:`${i*0.15}s`},})))
+          , React.createElement('div', { style: {fontSize:16,color:F2C,fontWeight:700,letterSpacing:3},}, genMsg)
         )
       )
 
@@ -20293,7 +20662,7 @@ function F2Sim({onBack}){
                 , [["DRIVERS","drivers"],["TEAMS","teams"]].map(([l,t])=>(
                   React.createElement('button', { key: t, onClick: ()=>setGTab(t), style: {background:gTab===t?"#1A1A30":"transparent",color:gTab===t?"#F0F0F0":"#667",border:"1px solid #1A1A30",padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,borderRadius:3},}, l)
                 ))
-                , React.createElement('button', { onClick: ()=>setModal({type:"driver",data:{name:"",abbr:"",num:21,teamId:_optionalChain([teams, 'access', _107 => _107[0], 'optionalAccess', _108 => _108.id])||"",pace:75,consistency:75,wet:73,overtaking:74,defense:73,experience:45,mental:7,flag:"🏁",goodTracks:[],badTracks:[],style:"balanced",rivals:[]}}),
+                , React.createElement('button', { onClick: ()=>setModal({type:"driver",data:{name:"",abbr:"",num:21,teamId:_optionalChain([teams, 'access', _137 => _137[0], 'optionalAccess', _138 => _138.id])||"",pace:75,consistency:75,wet:73,overtaking:74,defense:73,experience:45,mental:7,flag:"🏁",goodTracks:[],badTracks:[],style:"balanced",rivals:[]}}),
                   style: {background:F2C,color:"#fff",border:"none",padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,borderRadius:3},}, "+ DRIVER" )
                 , React.createElement('button', { onClick: ()=>setModal({type:"team",data:{name:"",abbr:"",color:"#555",tc:"#fff",basePitSpeed:78,engine:"Mechachrome",strategy:"one_stop",parts:{...F2_TEAM_DEFAULT_SETUPS.dams}}}),
                   style: {background:"#1A1A30",color:"#ccc",border:"none",padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,borderRadius:3},}, "+ TEAM" )
@@ -20304,8 +20673,8 @@ function F2Sim({onBack}){
             , gTab==="drivers"&&(
               React.createElement('div', { style: {display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:10},}
                 , teams.map(team=>teamDrivers(team.id).map(d=>{
-                  const goodNames=_optionalChain([d, 'access', _109 => _109.goodTracks, 'optionalAccess', _110 => _110.map, 'call', _111 => _111(id=>_optionalChain([TRACKS, 'access', _112 => _112.find, 'call', _113 => _113(t=>t.id===id), 'optionalAccess', _114 => _114.flag])||""), 'access', _115 => _115.filter, 'call', _116 => _116(Boolean)])||[];
-                  const badNames=_optionalChain([d, 'access', _117 => _117.badTracks, 'optionalAccess', _118 => _118.map, 'call', _119 => _119(id=>_optionalChain([TRACKS, 'access', _120 => _120.find, 'call', _121 => _121(t=>t.id===id), 'optionalAccess', _122 => _122.flag])||""), 'access', _123 => _123.filter, 'call', _124 => _124(Boolean)])||[];
+                  const goodNames=_optionalChain([d, 'access', _139 => _139.goodTracks, 'optionalAccess', _140 => _140.map, 'call', _141 => _141(id=>_optionalChain([TRACKS, 'access', _142 => _142.find, 'call', _143 => _143(t=>t.id===id), 'optionalAccess', _144 => _144.flag])||""), 'access', _145 => _145.filter, 'call', _146 => _146(Boolean)])||[];
+                  const badNames=_optionalChain([d, 'access', _147 => _147.badTracks, 'optionalAccess', _148 => _148.map, 'call', _149 => _149(id=>_optionalChain([TRACKS, 'access', _150 => _150.find, 'call', _151 => _151(t=>t.id===id), 'optionalAccess', _152 => _152.flag])||""), 'access', _153 => _153.filter, 'call', _154 => _154(Boolean)])||[];
                   return(
                     React.createElement('div', { key: d.id, className: "f2hov", onClick: ()=>setModal({type:"driver",data:d}),
                       style: {background:"#0E0E1E",border:`1px solid ${team.color}18`,borderLeft:`3px solid ${team.color}`,borderRadius:4,padding:"13px 15px",cursor:"pointer",transition:"background 0.15s"},}
@@ -20361,11 +20730,11 @@ function F2Sim({onBack}){
                       /* Setup configuration badges */
                       , React.createElement('div', { style: {marginTop:10,marginBottom:8,display:"flex",flexWrap:"wrap",gap:4},}
                         , [
-                          ["⚡",_optionalChain([st, 'access', _125 => _125.em, 'optionalAccess', _126 => _126.name])],
-                          ["🏎",_optionalChain([st, 'access', _127 => _127.ae, 'optionalAccess', _128 => _128.name])],
-                          ["🔧",_optionalChain([st, 'access', _129 => _129.sus, 'optionalAccess', _130 => _130.name])],
-                          ["⚙️",_optionalChain([st, 'access', _131 => _131.df, 'optionalAccess', _132 => _132.name])],
-                          ["🛑",_optionalChain([st, 'access', _133 => _133.bk, 'optionalAccess', _134 => _134.name])],
+                          ["⚡",_optionalChain([st, 'access', _155 => _155.em, 'optionalAccess', _156 => _156.name])],
+                          ["🏎",_optionalChain([st, 'access', _157 => _157.ae, 'optionalAccess', _158 => _158.name])],
+                          ["🔧",_optionalChain([st, 'access', _159 => _159.sus, 'optionalAccess', _160 => _160.name])],
+                          ["⚙️",_optionalChain([st, 'access', _161 => _161.df, 'optionalAccess', _162 => _162.name])],
+                          ["🛑",_optionalChain([st, 'access', _163 => _163.bk, 'optionalAccess', _164 => _164.name])],
                         ].map(([icon,name])=>name&&(
                           React.createElement('span', { key: name, style: {fontSize:9,color:"#667",background:"#111120",border:"1px solid #1A1A30",padding:"2px 6px",borderRadius:2,letterSpacing:0.5},}, icon, " " , name.split(" ")[0])
                         ))
@@ -20431,13 +20800,407 @@ function F2Sim({onBack}){
             )
             , React.createElement('div', { style: {marginTop:18,display:"flex",justifyContent:"space-between",alignItems:"center"},}
               , React.createElement('button', { onClick: ()=>setView("garage"), style: {background:"transparent",color:"#667",border:"1px solid #1A1A30",padding:"11px 28px",cursor:"pointer",fontFamily:"inherit",fontSize:16,fontWeight:700,letterSpacing:3,borderRadius:3},}, "← GARAGE" )
-              , React.createElement('div', { style: {fontSize:14,color:"#556",letterSpacing:1},}
-                , track.name, " — "  , track.circuit
-                , React.createElement('span', { style: {marginLeft:12,color:F2C,fontWeight:700},}, track.flag)
+              , React.createElement('div', { style: {display:"flex",gap:8,alignItems:"center"},}
+                , React.createElement('div', { style: {fontSize:14,color:"#556"},}, track.name, " — "  , track.circuit, " " , track.flag)
+                , React.createElement('button', { onClick: doFP, style: {background:"#111120",color:"#4488FF",border:"1px solid #4488FF44",padding:"10px 18px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:2,borderRadius:3},}, "▶ FP" )
+                , React.createElement('button', { onClick: doQual, style: {background:`${F2C}18`,color:F2C,border:`1px solid ${F2C}66`,padding:"10px 22px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:2,borderRadius:3},}, "▶ QUALIFYING" )
               )
             )
           )
         )
+
+        /* TESTING VIEW */
+        , view==="testing"&&(
+          React.createElement('div', { style: {animation:"fadeIn 0.2s ease"},}
+            , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16},}
+              , React.createElement('div', null
+                , React.createElement('div', { style: {fontSize:26,fontWeight:700,letterSpacing:3},}, "PRE-SEASON TESTING" )
+                , React.createElement('div', { style: {fontSize:14,color:"#556",letterSpacing:1.5,marginTop:2},}, "BAHRAIN INTERNATIONAL CIRCUIT · 3 DAYS · MECHACHROME SPEC"        )
+              )
+              , React.createElement('div', { style: {display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"},}
+                , React.createElement('div', { style: {display:"flex",gap:4},}
+                  , [1,2,3].map(d=>React.createElement('button', { key: d, onClick: ()=>setTestDay(d), style: {background:testDay===d?`${F2C}22`:"#111120",color:testDay===d?F2C:"#556",border:`1px solid ${testDay===d?F2C+"55":"#1A1A30"}`,padding:"5px 10px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,borderRadius:3},}, "Day " , d))
+                )
+                , React.createElement('div', { style: {display:"flex",gap:4},}
+                  , ["AM","PM"].map(s=>React.createElement('button', { key: s, onClick: ()=>setTestSession(s), style: {background:testSession===s?`${F2C}22`:"#111120",color:testSession===s?F2C:"#556",border:`1px solid ${testSession===s?F2C+"55":"#1A1A30"}`,padding:"5px 10px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,borderRadius:3},}, s))
+                )
+                , React.createElement('button', { onClick: doTesting, style: {background:F2C,color:"#fff",border:"none",padding:"6px 18px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:2,borderRadius:3},}, "▶ RUN SESSION"  )
+              )
+            )
+            , !testing&&(
+              React.createElement('div', { style: {textAlign:"center",padding:"60px 0",color:"#334"},}
+                , React.createElement('div', { style: {fontSize:32,marginBottom:12},}, "🔬")
+                , React.createElement('div', { style: {fontSize:18,fontWeight:700,letterSpacing:2,marginBottom:8},}, "NO SESSION DATA"  )
+                , React.createElement('div', { style: {fontSize:14,color:"#445"},}, "Select a day and session, then hit RUN SESSION to begin testing."           )
+              )
+            )
+            , testing&&(
+              React.createElement('div', null
+                , React.createElement('div', { style: {fontSize:13,color:"#556",letterSpacing:2,marginBottom:10},}, "DAY " , testDay, " · "  , testSession, " SESSION · PROVISIONAL TIMES"    )
+                , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"1fr 1fr",gap:6},}
+                  , testing.map((e,i)=>(
+                    React.createElement('div', { key: e.driver.id, style: {display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"#0E0E1E",border:`1px solid ${i<3?"#1A2540":"#1A1A30"}`,borderLeft:`3px solid ${e.team.color}`,borderRadius:3},}
+                      , React.createElement('div', { style: {width:28,textAlign:"center",fontSize:13,fontWeight:700,color:i<3?"#FFC906":"#445"},}, i+1)
+                      , React.createElement('div', { style: {flex:1},}
+                        , React.createElement('div', { style: {fontSize:14,fontWeight:700},}, e.driver.flag, " " , e.driver.name)
+                        , React.createElement('div', { style: {fontSize:12,color:e.team.color,letterSpacing:1},}, e.team.name)
+                      )
+                      , React.createElement('div', { style: {textAlign:"right"},}
+                        , React.createElement('div', { style: {fontSize:13,fontFamily:"monospace",color:i===0?F2C:"#aaa"},}, i===0?"FASTEST":`+${e.gap}s`)
+                        , React.createElement('div', { style: {fontSize:11,color:"#445"},}, e.laps, " laps" )
+                      )
+                    )
+                  ))
+                )
+                , React.createElement('div', { style: {marginTop:12,padding:"10px 14px",background:"#0A0A18",border:`1px solid ${F2C}22`,borderRadius:4,fontSize:13,color:"#556",lineHeight:1.7},}, "⚠️ Testing times are indicative only — different fuel loads, tyre compounds, and setup programmes mean the real competitive order will only emerge in qualifying."
+
+                )
+              )
+            )
+          )
+        )
+
+        /* FP VIEW */
+        , view==="fp"&&(
+          React.createElement('div', { style: {animation:"fadeIn 0.2s ease"},}
+            , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16},}
+              , React.createElement('div', null
+                , React.createElement('div', { style: {fontSize:26,fontWeight:700,letterSpacing:3},}, "FREE PRACTICE" )
+                , React.createElement('div', { style: {fontSize:14,color:"#556",letterSpacing:1.5,marginTop:2},}, track.flag, " " , track.circuit, " · 45 MINUTES"   )
+              )
+              , React.createElement('div', { style: {display:"flex",gap:8},}
+                , React.createElement('button', { onClick: doFP, style: {background:"#111120",color:"#4488FF",border:"1px solid #4488FF44",padding:"6px 16px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1.5,borderRadius:3},}, "↺ RE-RUN FP"  )
+                , React.createElement('button', { onClick: doQual, style: {background:`${F2C}18`,color:F2C,border:`1px solid ${F2C}55`,padding:"6px 16px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1.5,borderRadius:3},}, "▶ QUALIFYING →"  )
+              )
+            )
+            , !fp&&(
+              React.createElement('div', { style: {textAlign:"center",padding:"60px 0",color:"#334"},}
+                , React.createElement('div', { style: {fontSize:32,marginBottom:12},}, "🔬")
+                , React.createElement('div', { style: {fontSize:16,fontWeight:700},}, "No FP data — go to TRACKS and run FP or click RE-RUN FP above."              )
+              )
+            )
+            , fp&&(
+              React.createElement('div', { style: {display:"grid",gridTemplateColumns:"1fr 1fr",gap:6},}
+                , fp.map((e,i)=>(
+                  React.createElement('div', { key: e.driver.id, style: {display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"#0E0E1E",border:`1px solid ${i<3?"#1A2030":"#1A1A30"}`,borderLeft:`3px solid ${e.team.color}`,borderRadius:3},}
+                    , React.createElement('div', { style: {width:28,textAlign:"center",fontSize:13,fontWeight:700,color:i<3?"#FFC906":"#445"},}, i+1)
+                    , React.createElement('div', { style: {flex:1},}
+                      , React.createElement('div', { style: {fontSize:14,fontWeight:700},}, e.driver.flag, " " , e.driver.name)
+                      , React.createElement('div', { style: {fontSize:12,color:e.team.color,letterSpacing:1},}, e.team.name)
+                    )
+                    , React.createElement('div', { style: {textAlign:"right"},}
+                      , React.createElement('div', { style: {fontSize:13,fontFamily:"monospace",color:i===0?F2C:"#aaa"},}, i===0?"BEST":`+${e.gap}s`)
+                      , React.createElement('div', { style: {fontSize:11,color:"#445"},}, e.laps, " laps" )
+                    )
+                  )
+                ))
+              )
+            )
+          )
+        )
+
+        /* QUALIFYING VIEW */
+        , view==="qualifying"&&(
+          React.createElement('div', { style: {animation:"fadeIn 0.2s ease"},}
+            , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16},}
+              , React.createElement('div', null
+                , React.createElement('div', { style: {fontSize:26,fontWeight:700,letterSpacing:3},}, "QUALIFYING")
+                , React.createElement('div', { style: {fontSize:14,color:"#556",letterSpacing:1.5,marginTop:2},}, track.flag, " " , track.circuit, " · 30 MIN SINGLE SESSION · TOP-10 REVERSED FOR SPRINT"          , _optionalChain([qual, 'optionalAccess', _165 => _165.runsUsed])>1?` · ×${qual.runsUsed} AVERAGED`:"")
+              )
+              , React.createElement('div', { style: {display:"flex",gap:8},}
+                , React.createElement('button', { onClick: doQual, style: {background:"#111120",color:"#667",border:"1px solid #1A1A30",padding:"6px 14px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,borderRadius:3},}, "↺ RE-RUN" )
+                , React.createElement('button', { onClick: doSprint, style: {background:`${F2C}18`,color:F2C,border:`1px solid ${F2C}55`,padding:"6px 16px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,borderRadius:3},}, "▶ SPRINT →"  )
+                , React.createElement('button', { onClick: doRace, style: {background:"#44CC8818",color:"#44CC88",border:"1px solid #44CC8855",padding:"6px 16px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,borderRadius:3},}, "▶ FEATURE →"  )
+              )
+            )
+            , qual&&(()=>{
+              const [qTab,setQTab]=React.useState("quali");
+              return(
+                React.createElement(React.Fragment, null
+                  , React.createElement('div', { style: {display:"flex",gap:3,marginBottom:14,background:"#0A0A18",padding:4,borderRadius:5,border:`1px solid #1A1A30`},}
+                    , [["quali","QUALIFYING ORDER",F2C],["sprint","SPRINT GRID (REV TOP-10)","#FFC906"],["feature","FEATURE GRID","#44CC88"]].map(([k,l,c])=>(
+                      React.createElement('button', { key: k, onClick: ()=>setQTab(k), style: {flex:1,background:qTab===k?`${c}18`:"transparent",color:qTab===k?c:"#556",border:`1px solid ${qTab===k?c+"44":"transparent"}`,padding:"7px 0",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1,borderRadius:3},}
+                        , l
+                      )
+                    ))
+                  )
+                  , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:14},}
+                    , (qTab==="quali"?qual.positions:qTab==="sprint"?qual.sprintGrid:qual.featureGrid).map((e,i)=>{
+                      const best=qual.positions[0].score;
+                      const gapS=i===0?null:((best-e.score)*0.011).toFixed(3);
+                      const noteColor=qTab==="sprint"?(i<10?"#FFC906":"#556"):qTab==="feature"?(i<10?"#44CC88":"#556"):F2C;
+                      return(
+                        React.createElement('div', { key: e.driver.id, style: {display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:i<3?"#0D0D1C":"#0E0E1E",border:`1px solid ${i<3?`${noteColor}22`:"#1A1A30"}`,borderLeft:`3px solid ${e.team.color}`,borderRadius:3},}
+                          , React.createElement('div', { style: {width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?"#FFC906":i===1?"#aaa":i===2?"#CD7F32":"transparent",color:i<3?"#000":"#556",fontSize:12,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #1A1A30":"none",flexShrink:0},}, i+1)
+                          , React.createElement('div', { style: {flex:1,minWidth:0},}
+                            , React.createElement('div', { style: {fontSize:14,fontWeight:700},}, e.driver.flag, " " , e.driver.name)
+                            , React.createElement('div', { style: {fontSize:11,color:e.team.color,letterSpacing:1},}, e.team.name)
+                          )
+                          , React.createElement('div', { style: {textAlign:"right",flexShrink:0},}
+                            , React.createElement('div', { style: {fontSize:12,fontFamily:"monospace",color:i===0?noteColor:"#aaa"},}, i===0?(qTab==="quali"?"POLE":"P1"):gapS?`+${gapS}s`:"")
+                          )
+                        )
+                      );
+                    })
+                  )
+                  , qual.events&&qual.events.length>0&&(
+                    React.createElement('div', { style: {background:"#0A0A18",border:`1px solid ${F2C}22`,borderRadius:6,padding:14},}
+                      , React.createElement('div', { style: {fontSize:11,color:F2C,fontWeight:700,letterSpacing:2,marginBottom:10},}, "QUALIFYING REPORT" )
+                      , qual.events.map((ev,i)=>(
+                        React.createElement('div', { key: i, style: {borderLeft:`3px solid ${EVT_C[ev.type]||F2C}`,padding:"7px 12px",marginBottom:5,background:"#0D0D1C",borderRadius:"0 3px 3px 0"},}
+                          , React.createElement('div', { style: {fontSize:13,lineHeight:1.6},}, ev.icon, " " , ev.text)
+                        )
+                      ))
+                    )
+                  )
+                )
+              );
+            })()
+            , !qual&&React.createElement('div', { style: {textAlign:"center",padding:"60px 0",color:"#334",fontSize:16},}, "No qualifying data — select a track and run qualifying."         )
+          )
+        )
+
+        /* SPRINT VIEW */
+        , view==="sprint"&&(
+          React.createElement('div', { style: {animation:"fadeIn 0.2s ease"},}
+            , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16},}
+              , React.createElement('div', null
+                , React.createElement('div', { style: {fontSize:26,fontWeight:700,letterSpacing:3},}, "SPRINT RACE" )
+                , React.createElement('div', { style: {fontSize:14,color:"#556",letterSpacing:1.5,marginTop:2},}, track.flag, " " , track.circuit, " · REVERSE TOP-10 GRID · "      , _optionalChain([sprint, 'optionalAccess', _166 => _166.totalLaps])||"—", " LAPS" , _optionalChain([sprint, 'optionalAccess', _167 => _167.runsUsed])>1?` · ×${sprint.runsUsed} AVERAGED`:"")
+              )
+              , React.createElement('div', { style: {display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"},}
+                , _optionalChain([sprint, 'optionalAccess', _168 => _168.isWet])&&React.createElement('span', { style: {background:"#4488FF18",color:"#4488FF",fontSize:12,fontWeight:700,padding:"3px 8px",borderRadius:2},}, "🌧️ WET" )
+                , _optionalChain([sprint, 'optionalAccess', _169 => _169.hasSC])&&React.createElement('span', { style: {background:"#FFC90618",color:"#FFC906",fontSize:12,fontWeight:700,padding:"3px 8px",borderRadius:2},}, "🚗 SC L"  , sprint.scLap)
+                , sprintLocked?React.createElement('span', { style: {fontSize:13,color:"#445"},}, "Run qualifying first"  ):React.createElement('button', { onClick: doSprint, style: {background:"#111120",color:"#667",border:"1px solid #1A1A30",padding:"6px 14px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,borderRadius:3},}, "↺ RE-RUN" )
+                , React.createElement('button', { onClick: doRace, style: {background:"#44CC8818",color:"#44CC88",border:"1px solid #44CC8855",padding:"6px 16px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,borderRadius:3},}, "▶ FEATURE RACE →"   )
+              )
+            )
+            , sprint?(
+              React.createElement('div', { style: {display:"grid",gridTemplateColumns:"1fr 340px",gap:16,alignItems:"start"},}
+                , React.createElement('div', null
+                  , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"1fr 1fr",gap:6},}
+                    , sprint.positions.map((e,i)=>(
+                      React.createElement('div', { key: e.driver.id, style: {display:"flex",alignItems:"center",gap:9,padding:"9px 13px",background:e.dnf?"#150A0A":i<3?"#0D0D1C":"#0E0E1E",border:`1px solid ${e.dnf?"#FF444422":i<3?"#FFC90618":"#1A1A30"}`,borderLeft:`3px solid ${e.dnf?"#FF4444":e.team.color}`,borderRadius:3,opacity:e.dnf?0.7:1},}
+                        , React.createElement('div', { style: {width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?"#FFC906":i===1?"#aaa":i===2?"#CD7F32":"transparent",color:i<3?"#000":"#556",fontSize:11,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #1A1A30":"none",flexShrink:0},}, e.dnf?"DNF":i+1)
+                        , React.createElement('div', { style: {flex:1,minWidth:0},}
+                          , React.createElement('div', { style: {fontSize:13,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"},}, e.driver.flag, " " , e.driver.name)
+                          , React.createElement('div', { style: {fontSize:11,color:e.team.color,letterSpacing:1},}, e.team.name)
+                        )
+                        , React.createElement('div', { style: {textAlign:"right",flexShrink:0},}
+                          , e.dnf?React.createElement('div', { style: {fontSize:11,color:"#FF4444"},}, "L", e.dnfLap||"?"):React.createElement(React.Fragment, null
+                            , React.createElement('div', { style: {fontSize:12,fontFamily:"monospace",color:i===0?"#FFC906":"#aaa"},}, i===0?"🏁 WIN":`+${e.gap}s`)
+                            , e.points>0&&React.createElement('div', { style: {fontSize:11,color:F2C,fontWeight:700},}, "+", e.points, "pts")
+                          )
+                        )
+                        , React.createElement('div', { style: {fontSize:9,color:"#334",flexShrink:0},}, "P", e.gridPos, "→")
+                      )
+                    ))
+                  )
+                )
+                , React.createElement('div', null
+                  , React.createElement('div', { style: {background:"#0A0A18",border:`1px solid ${F2C}22`,borderRadius:6,padding:14,position:"sticky",top:16},}
+                    , React.createElement('div', { style: {fontSize:11,color:F2C,fontWeight:700,letterSpacing:2,marginBottom:10},}, "SPRINT RACE EVENTS"  )
+                    , sprint.events.map((ev,i)=>(
+                      React.createElement('div', { key: i, style: {borderLeft:`3px solid ${EVT_C[ev.type]||F2C}`,padding:"7px 10px",marginBottom:4,background:"#0D0D1C",borderRadius:"0 3px 3px 0"},}
+                        , ev.lap>0&&React.createElement('div', { style: {fontSize:10,color:"#445",marginBottom:1},}, "LAP " , ev.lap)
+                        , React.createElement('div', { style: {fontSize:12,lineHeight:1.55},}, ev.icon, " " , ev.text)
+                      )
+                    ))
+                  )
+                )
+              )
+            ):(
+              React.createElement('div', { style: {textAlign:"center",padding:"60px 0",color:"#334",fontSize:16},}, sprintLocked?"Run qualifying first to generate the sprint grid.":"No sprint data yet.")
+            )
+          )
+        )
+
+        /* FEATURE RACE VIEW */
+        , view==="race"&&(
+          React.createElement('div', { style: {animation:"fadeIn 0.2s ease"},}
+            , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16},}
+              , React.createElement('div', null
+                , React.createElement('div', { style: {fontSize:26,fontWeight:700,letterSpacing:3},}, "FEATURE RACE" )
+                , React.createElement('div', { style: {fontSize:14,color:"#556",letterSpacing:1.5,marginTop:2},}, track.flag, " " , track.circuit, " · "  , _optionalChain([race, 'optionalAccess', _170 => _170.totalLaps])||"—", " LAPS · MANDATORY PIT STOP"     , _optionalChain([race, 'optionalAccess', _171 => _171.runsUsed])>1?` · ×${race.runsUsed} AVERAGED`:"")
+              )
+              , React.createElement('div', { style: {display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"},}
+                , _optionalChain([race, 'optionalAccess', _172 => _172.isWet])&&React.createElement('span', { style: {background:"#4488FF18",color:"#4488FF",fontSize:12,fontWeight:700,padding:"3px 8px",borderRadius:2},}, "🌧️ WET" )
+                , _optionalChain([race, 'optionalAccess', _173 => _173.hasSC])&&React.createElement('span', { style: {background:"#FFC90618",color:"#FFC906",fontSize:12,fontWeight:700,padding:"3px 8px",borderRadius:2},}, "🚗 SC L"  , race.scLap)
+                , _optionalChain([race, 'optionalAccess', _174 => _174.fastestLapName])&&React.createElement('span', { style: {background:"#BB66FF18",color:"#BB66FF",fontSize:12,fontWeight:700,padding:"3px 8px",borderRadius:2},}, "💜 FL: "  , race.fastestLapName)
+                , raceLocked?React.createElement('span', { style: {fontSize:13,color:"#445"},}, "Run qualifying first"  ):React.createElement('button', { onClick: doRace, style: {background:"#111120",color:"#667",border:"1px solid #1A1A30",padding:"6px 14px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,borderRadius:3},}, "↺ RE-RUN" )
+                , race&&!raceSaved&&qual&&React.createElement('button', { onClick: saveToChampionship, style: {background:"#44CC8818",color:"#44CC88",border:"1px solid #44CC8855",padding:"6px 16px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,borderRadius:3},}, "💾 SAVE TO CHAMPIONSHIP"   )
+                , raceSaved&&React.createElement('span', { style: {fontSize:12,color:"#44CC88",fontWeight:700},}, "✓ SAVED" )
+              )
+            )
+            , race?(
+              React.createElement('div', { style: {display:"grid",gridTemplateColumns:"1fr 340px",gap:16,alignItems:"start"},}
+                , React.createElement('div', null
+                  , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"1fr 1fr",gap:6},}
+                    , race.positions.map((e,i)=>(
+                      React.createElement('div', { key: e.driver.id, style: {display:"flex",alignItems:"center",gap:9,padding:"9px 13px",background:e.dnf?"#150A0A":i<3?"#0D0D1C":"#0E0E1E",border:`1px solid ${e.dnf?"#FF444422":i<3?"#FFC90618":"#1A1A30"}`,borderLeft:`3px solid ${e.dnf?"#FF4444":e.team.color}`,borderRadius:3,opacity:e.dnf?0.7:1},}
+                        , React.createElement('div', { style: {width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?"#FFC906":i===1?"#aaa":i===2?"#CD7F32":"transparent",color:i<3?"#000":"#556",fontSize:11,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #1A1A30":"none",flexShrink:0},}, e.dnf?"DNF":i+1)
+                        , React.createElement('div', { style: {flex:1,minWidth:0},}
+                          , React.createElement('div', { style: {fontSize:13,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"},}, e.driver.flag, " " , e.driver.name)
+                          , React.createElement('div', { style: {fontSize:11,color:e.team.color,letterSpacing:1},}, e.team.name, " " , e.tyreStrat&&React.createElement('span', { style: {color:"#445",fontSize:9},}, "· " , e.tyreStrat))
+                        )
+                        , React.createElement('div', { style: {textAlign:"right",flexShrink:0},}
+                          , e.dnf?React.createElement('div', { style: {fontSize:11,color:"#FF4444"},}, "L", e.dnfLap||"?"):React.createElement(React.Fragment, null
+                            , React.createElement('div', { style: {fontSize:12,fontFamily:"monospace",color:i===0?"#FFC906":"#aaa"},}, i===0?"🏁 WIN":`+${e.gap}s`)
+                            , e.points>0&&React.createElement('div', { style: {fontSize:11,color:"#44CC88",fontWeight:700},}, "+", e.points, "pts")
+                          )
+                        )
+                      )
+                    ))
+                  )
+                )
+                , React.createElement('div', null
+                  , React.createElement('div', { style: {background:"#0A0A18",border:`1px solid #44CC8822`,borderRadius:6,padding:14,position:"sticky",top:16},}
+                    , React.createElement('div', { style: {fontSize:11,color:"#44CC88",fontWeight:700,letterSpacing:2,marginBottom:10},}, "FEATURE RACE EVENTS"  )
+                    , race.events.map((ev,i)=>(
+                      React.createElement('div', { key: i, style: {borderLeft:`3px solid ${EVT_C[ev.type]||"#44CC88"}`,padding:"7px 10px",marginBottom:4,background:"#0D0D1C",borderRadius:"0 3px 3px 0"},}
+                        , ev.lap>0&&React.createElement('div', { style: {fontSize:10,color:"#445",marginBottom:1},}, "LAP " , ev.lap)
+                        , React.createElement('div', { style: {fontSize:12,lineHeight:1.55},}, ev.icon, " " , ev.text)
+                      )
+                    ))
+                  )
+                )
+              )
+            ):(
+              React.createElement('div', { style: {textAlign:"center",padding:"60px 0",color:"#334",fontSize:16},}, raceLocked?"Run qualifying first to generate the feature race grid.":"No feature race data yet.")
+            )
+          )
+        )
+
+        /* CHAMPIONSHIP VIEW */
+        , view==="championship"&&(()=>{
+          // Aggregate driver & constructor standings
+          const driverPts={}, teamPts={};
+          const driverWins={}, teamWins={}, driverPodiums={};
+          championship.forEach(round=>{
+            // Sprint points
+            (_optionalChain([round, 'access', _175 => _175.sprint, 'optionalAccess', _176 => _176.positions])||[]).forEach(e=>{
+              if(!driverPts[e.driverId]) driverPts[e.driverId]={name:e.driverName,flag:e.driverFlag,teamName:e.teamName,teamColor:e.teamColor,pts:0};
+              if(!teamPts[e.teamId]) teamPts[e.teamId]={name:e.teamName,color:e.teamColor,pts:0};
+              driverPts[e.driverId].pts+=e.points||0;
+              teamPts[e.teamId].pts+=e.points||0;
+            });
+            // Feature race points
+            (_optionalChain([round, 'access', _177 => _177.race, 'optionalAccess', _178 => _178.positions])||[]).forEach(e=>{
+              if(!driverPts[e.driverId]) driverPts[e.driverId]={name:e.driverName,flag:e.driverFlag,teamName:e.teamName,teamColor:e.teamColor,pts:0};
+              if(!teamPts[e.teamId]) teamPts[e.teamId]={name:e.teamName,color:e.teamColor,pts:0};
+              driverPts[e.driverId].pts+=e.points||0;
+              teamPts[e.teamId].pts+=e.points||0;
+              if(e.finalPos===1&&!e.dnf){driverWins[e.driverId]=(driverWins[e.driverId]||0)+1;teamWins[e.teamId]=(teamWins[e.teamId]||0)+1;}
+              if(e.finalPos<=3&&!e.dnf) driverPodiums[e.driverId]=(driverPodiums[e.driverId]||0)+1;
+            });
+          });
+          const driverStandings=Object.entries(driverPts).map(([id,d])=>({id,...d,wins:driverWins[id]||0,podiums:driverPodiums[id]||0})).sort((a,b)=>b.pts-a.pts);
+          const teamStandings=Object.entries(teamPts).map(([id,t])=>({id,...t,wins:teamWins[id]||0})).sort((a,b)=>b.pts-a.pts);
+          const maxPts=_optionalChain([driverStandings, 'access', _179 => _179[0], 'optionalAccess', _180 => _180.pts])||1;
+          return(
+            React.createElement('div', { style: {animation:"fadeIn 0.2s ease"},}
+              , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16},}
+                , React.createElement('div', null
+                  , React.createElement('div', { style: {fontSize:26,fontWeight:700,letterSpacing:3},}, "F2 CHAMPIONSHIP" )
+                  , React.createElement('div', { style: {fontSize:14,color:"#556",letterSpacing:1.5,marginTop:2},}, championship.length, " ROUNDS · FEATURE + SPRINT POINTS"      )
+                )
+                , React.createElement('div', { style: {display:"flex",gap:6},}
+                  , [["DRIVERS","drivers"],["TEAMS","teams"],["ROUNDS","rounds"]].map(([l,t])=>(
+                    React.createElement('button', { key: t, onClick: ()=>setF2ChampTab(t), style: {background:f2ChampTab===t?`${F2C}18`:"#111120",color:f2ChampTab===t?F2C:"#556",border:`1px solid ${f2ChampTab===t?F2C+"44":"#1A1A30"}`,padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1.5,borderRadius:3},}, l)
+                  ))
+                  , championship.length>0&&React.createElement('button', { onClick: ()=>{if(window.confirm("Clear all championship data?"))setChampionship([]);}, style: {background:"#1A0808",color:"#FF4444",border:"1px solid #FF444433",padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,borderRadius:3},}, "RESET")
+                )
+              )
+
+              , championship.length===0&&React.createElement('div', { style: {textAlign:"center",padding:"60px 0",color:"#334"},}, React.createElement('div', { style: {fontSize:32,marginBottom:12},}, "🏆"), React.createElement('div', { style: {fontSize:16,fontWeight:700,color:"#445"},}, "No rounds saved yet — run a full weekend and hit 💾 SAVE TO CHAMPIONSHIP."              ))
+
+              , f2ChampTab==="drivers"&&driverStandings.length>0&&(
+                React.createElement('div', { style: {display:"grid",gap:6},}
+                  , driverStandings.map((d,i)=>(
+                    React.createElement('div', { key: d.id, style: {display:"flex",alignItems:"center",gap:12,padding:"11px 16px",background:i===0?"#0D0D1C":"#0E0E1E",border:`1px solid ${i===0?F2C+"33":"#1A1A30"}`,borderLeft:`3px solid ${d.teamColor||F2C}`,borderRadius:4},}
+                      , React.createElement('div', { style: {width:32,textAlign:"center",fontSize:16,fontWeight:900,color:i===0?F2C:i<3?"#FFC906":"#445"},}, i+1)
+                      , React.createElement('div', { style: {flex:1},}
+                        , React.createElement('div', { style: {fontSize:16,fontWeight:700},}, d.flag, " " , d.name)
+                        , React.createElement('div', { style: {fontSize:12,color:d.teamColor,letterSpacing:1},}, d.teamName)
+                      )
+                      , React.createElement('div', { style: {display:"flex",gap:16,alignItems:"center"},}
+                        , React.createElement('div', { style: {textAlign:"center"},}, React.createElement('div', { style: {fontSize:11,color:"#445",letterSpacing:1},}, "WINS"), React.createElement('div', { style: {fontSize:15,fontWeight:700,color:"#FFC906"},}, d.wins))
+                        , React.createElement('div', { style: {textAlign:"center"},}, React.createElement('div', { style: {fontSize:11,color:"#445",letterSpacing:1},}, "PDMS"), React.createElement('div', { style: {fontSize:15,fontWeight:700,color:"#aaa"},}, d.podiums))
+                        , React.createElement('div', { style: {textAlign:"right",minWidth:60},}
+                          , React.createElement('div', { style: {fontSize:22,fontWeight:900,color:i===0?F2C:"#F0F0F0"},}, d.pts)
+                          , React.createElement('div', { style: {fontSize:9,color:"#445",letterSpacing:1},}, "POINTS")
+                        )
+                      )
+                      , React.createElement('div', { style: {width:100},}
+                        , React.createElement('div', { style: {height:6,background:"#111120",borderRadius:3},}, React.createElement('div', { style: {height:6,width:`${(d.pts/maxPts)*100}%`,background:d.teamColor||F2C,borderRadius:3},}))
+                      )
+                    )
+                  ))
+                )
+              )
+
+              , f2ChampTab==="teams"&&teamStandings.length>0&&(
+                React.createElement('div', { style: {display:"grid",gap:6},}
+                  , teamStandings.map((t,i)=>(
+                    React.createElement('div', { key: t.id, style: {display:"flex",alignItems:"center",gap:12,padding:"11px 16px",background:"#0E0E1E",border:`1px solid ${i===0?t.color+"33":"#1A1A30"}`,borderTop:`3px solid ${t.color}`,borderRadius:4},}
+                      , React.createElement('div', { style: {width:32,textAlign:"center",fontSize:16,fontWeight:900,color:i===0?t.color:"#445"},}, i+1)
+                      , React.createElement('div', { style: {flex:1},}
+                        , React.createElement('div', { style: {fontSize:17,fontWeight:700},}, t.name)
+                        , React.createElement('div', { style: {fontSize:12,color:"#556",letterSpacing:1},}, t.wins, " wins" )
+                      )
+                      , React.createElement('div', { style: {fontSize:24,fontWeight:900,color:i===0?t.color:"#F0F0F0"},}, t.pts)
+                      , React.createElement('div', { style: {width:100},}, React.createElement('div', { style: {height:6,background:"#111120",borderRadius:3},}, React.createElement('div', { style: {height:6,width:`${(t.pts/(_optionalChain([teamStandings, 'access', _181 => _181[0], 'optionalAccess', _182 => _182.pts])||1))*100}%`,background:t.color,borderRadius:3},})))
+                    )
+                  ))
+                )
+              )
+
+              , f2ChampTab==="rounds"&&championship.length>0&&(
+                React.createElement('div', { style: {display:"grid",gap:8},}
+                  , [...championship].reverse().map(r=>(
+                    React.createElement('div', { key: r.id, style: {background:"#0E0E1E",border:"1px solid #1A1A30",borderLeft:`3px solid ${F2C}`,borderRadius:4,padding:14},}
+                      , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10},}
+                        , React.createElement('div', null
+                          , React.createElement('div', { style: {fontSize:16,fontWeight:700},}, r.trackFlag, " Round "  , r.round, " — "  , r.trackName)
+                          , React.createElement('div', { style: {fontSize:12,color:"#556",marginTop:2},}, r.trackCircuit)
+                        )
+                        , React.createElement('div', { style: {display:"flex",gap:6},}
+                          , _optionalChain([r, 'access', _183 => _183.race, 'optionalAccess', _184 => _184.isWet])&&React.createElement('span', { style: {background:"#4488FF18",color:"#4488FF",fontSize:11,fontWeight:700,padding:"2px 6px",borderRadius:2},}, "🌧️ WET" )
+                          , _optionalChain([r, 'access', _185 => _185.race, 'optionalAccess', _186 => _186.hasSC])&&React.createElement('span', { style: {background:"#FFC90618",color:"#FFC906",fontSize:11,fontWeight:700,padding:"2px 6px",borderRadius:2},}, "🚗 SC" )
+                        )
+                      )
+                      , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"1fr 1fr",gap:8},}
+                        , r.sprint&&(
+                          React.createElement('div', null
+                            , React.createElement('div', { style: {fontSize:11,color:"#FFC906",fontWeight:700,letterSpacing:1.5,marginBottom:6},}, "⚡ SPRINT" )
+                            , r.sprint.positions.slice(0,3).map((e,i)=>(
+                              React.createElement('div', { key: e.driverId, style: {display:"flex",alignItems:"center",gap:8,marginBottom:3},}
+                                , React.createElement('span', { style: {fontSize:11,color:i===0?"#FFC906":"#445",fontWeight:700,width:16},}, i+1)
+                                , React.createElement('span', { style: {fontSize:12,fontWeight:700},}, e.driverFlag, " " , e.driverName)
+                                , e.points>0&&React.createElement('span', { style: {fontSize:11,color:F2C,marginLeft:"auto"},}, "+", e.points, "pts")
+                              )
+                            ))
+                          )
+                        )
+                        , React.createElement('div', null
+                          , React.createElement('div', { style: {fontSize:11,color:"#44CC88",fontWeight:700,letterSpacing:1.5,marginBottom:6},}, "🏁 FEATURE" )
+                          , (_optionalChain([r, 'access', _187 => _187.race, 'optionalAccess', _188 => _188.positions])||[]).slice(0,3).map((e,i)=>(
+                            React.createElement('div', { key: e.driverId, style: {display:"flex",alignItems:"center",gap:8,marginBottom:3},}
+                              , React.createElement('span', { style: {fontSize:11,color:i===0?"#FFC906":"#445",fontWeight:700,width:16},}, i+1)
+                              , React.createElement('span', { style: {fontSize:12,fontWeight:700},}, e.driverFlag, " " , e.driverName)
+                              , e.points>0&&React.createElement('span', { style: {fontSize:11,color:"#44CC88",marginLeft:"auto"},}, "+", e.points, "pts")
+                            )
+                          ))
+                          , _optionalChain([r, 'access', _189 => _189.race, 'optionalAccess', _190 => _190.fastestLapName])&&React.createElement('div', { style: {fontSize:10,color:"#BB66FF",marginTop:4},}, "💜 FL: "  , r.race.fastestLapName)
+                        )
+                      )
+                    )
+                  ))
+                )
+              )
+            )
+          );
+        })()
 
       )
 
@@ -20616,16 +21379,16 @@ class ErrorBoundary extends React.Component {
 
 function F1Sim(){
   const [showMenu,setShowMenu]=React.useState(()=>{
-    try{const s=localStorage.getItem('f1sim_series');return s!=='f1'&&s!=='f2';}catch (e4){return true;}
+    try{const s=localStorage.getItem('f1sim_series');return s!=='f1'&&s!=='f2';}catch (e5){return true;}
   });
   const [selectedSeries,setSelectedSeries]=React.useState(()=>{
-    try{return localStorage.getItem('f1sim_series')||'f1';}catch (e5){return 'f1';}
+    try{return localStorage.getItem('f1sim_series')||'f1';}catch (e6){return 'f1';}
   });
   const [drivers,setDrivers]=useState(()=>{
-    try{const s=localStorage.getItem('f1sim_drivers');return s?JSON.parse(s):DRIVERS;}catch (e6){return DRIVERS;}
+    try{const s=localStorage.getItem('f1sim_drivers');return s?JSON.parse(s):DRIVERS;}catch (e7){return DRIVERS;}
   });
   const [teams,setTeams]=useState(()=>{
-    try{const s=localStorage.getItem('f1sim_teams');return s?JSON.parse(s):TEAMS;}catch (e7){return TEAMS;}
+    try{const s=localStorage.getItem('f1sim_teams');return s?JSON.parse(s):TEAMS;}catch (e8){return TEAMS;}
   });
   const [track,setTrack]=useState(TRACKS[0]);
   const [view,setView]=useState("garage");
@@ -20643,12 +21406,12 @@ function F1Sim(){
   const [modal,setModal]=useState(null);
   const [activeS,setActiveS]=useState(0);
   const [championship,setChampionship]=useState(()=>{
-    try{const s=localStorage.getItem('f1sim_champ');return s?JSON.parse(s):[];}catch (e8){return [];}
+    try{const s=localStorage.getItem('f1sim_champ');return s?JSON.parse(s):[];}catch (e9){return [];}
   });
   const [raceSaved,setRaceSaved]=useState(false);
   const [dbSaving,setDbSaving]=useState(false);
   const [selectedRound,setSelectedRound]=useState(null);
-  const [teamBudgets,setTeamBudgets]=useState(()=>{try{const s=localStorage.getItem('f1sim_budgets');return s?JSON.parse(s):initBudgets();}catch (e9){return initBudgets();}});
+  const [teamBudgets,setTeamBudgets]=useState(()=>{try{const s=localStorage.getItem('f1sim_budgets');return s?JSON.parse(s):initBudgets();}catch (e10){return initBudgets();}});
   // auto-save
   React.useEffect(()=>{
     try{localStorage.setItem('f1sim_drivers',JSON.stringify(drivers));}catch(e){}
@@ -20692,7 +21455,7 @@ function F1Sim(){
         if(save.teams)   setTeams(save.teams);
         if(save.championship) setChampionship(save.championship);
         setSelectedRound(null);
-        alert(`Save loaded! ${_optionalChain([save, 'access', _135 => _135.championship, 'optionalAccess', _136 => _136.length])||0} championship rounds restored.`);
+        alert(`Save loaded! ${_optionalChain([save, 'access', _191 => _191.championship, 'optionalAccess', _192 => _192.length])||0} championship rounds restored.`);
       }catch(err){alert('Could not load save file — invalid format.');}
     };
     reader.readAsText(file);
@@ -20712,14 +21475,14 @@ function F1Sim(){
   const [liveError,setLiveError]=useState("");
   const [pendingUpdates,setPendingUpdates]=useState([]);
   const [updatesApplied,setUpdatesApplied]=useState(false);
-  const [simHistory,setSimHistory]=useState(()=>{try{const s=localStorage.getItem('f1sim_simhist');return s?JSON.parse(s):[];}catch (e10){return [];}});
+  const [simHistory,setSimHistory]=useState(()=>{try{const s=localStorage.getItem('f1sim_simhist');return s?JSON.parse(s):[];}catch (e11){return [];}});
 
 
   const [communityEnabled,setCommunityEnabled]=useState(()=>{
     try{
       const stored=localStorage.getItem('f1sim_community');
       return stored===null ? COMMUNITY_ENABLED_BY_DEFAULT : stored==='1';
-    }catch (e11){return COMMUNITY_ENABLED_BY_DEFAULT;}
+    }catch (e12){return COMMUNITY_ENABLED_BY_DEFAULT;}
   });
   const [communityData,setCommunityData]=useState(null);   // fetched per-circuit
   const [communityStats,setCommunityStats]=useState(null); // global aggregate
@@ -20762,7 +21525,7 @@ function F1Sim(){
       sim_accuracy:simCount,
       // Predicted top-5 (what the model thinks)
       predicted_top5:results.slice(0,5).map(r=>({
-        driver_id:_optionalChain([r, 'access', _137 => _137.driver, 'optionalAccess', _138 => _138.id]), win_pct:r.winPct, podium_pct:r.podiumPct, avg_pos:r.avgPos,
+        driver_id:_optionalChain([r, 'access', _193 => _193.driver, 'optionalAccess', _194 => _194.id]), win_pct:r.winPct, podium_pct:r.podiumPct, avg_pos:r.avgPos,
       })),
       // Anonymised driver stats as the user has them configured
       // This lets us see how people tune stats and whether those tunes predict better
@@ -20774,7 +21537,7 @@ function F1Sim(){
       team_paces:teams.map(t=>({id:t.id,pace:t.carPace})),
       // Actual result (if saving to championship — enables accuracy tracking)
       actual_winner_id:actualWinner||null,
-      prediction_correct:actualWinner&&_optionalChain([results, 'access', _139 => _139[0], 'optionalAccess', _140 => _140.driver, 'optionalAccess', _141 => _141.id])===actualWinner||null,
+      prediction_correct:actualWinner&&_optionalChain([results, 'access', _195 => _195[0], 'optionalAccess', _196 => _196.driver, 'optionalAccess', _197 => _197.id])===actualWinner||null,
       series:'f1',
     };
     const result = await sbInsert('race_sims',payload);
@@ -20798,10 +21561,10 @@ function F1Sim(){
   const [testResults,setTestResults]=useState(null);
   const [testTab,setTestTab]=useState("barcelona_test");
   const [testDay,setTestDay]=useState(0); // 0 = overall, 1/2/3 = day
-  const [apiKey,setApiKey]=useState(()=>{try{return localStorage.getItem("f1sim_ak")||"";}catch (e12){return "";}});
+  const [apiKey,setApiKey]=useState(()=>{try{return localStorage.getItem("f1sim_ak")||"";}catch (e13){return "";}});
   const [apiKeyInput,setApiKeyInput]=useState("");
-  const saveApiKey=()=>{if(apiKeyInput.startsWith("sk-")){try{localStorage.setItem("f1sim_ak",apiKeyInput);}catch (e13){}setApiKey(apiKeyInput);setApiKeyInput("");}};
-  const clearApiKey=()=>{try{localStorage.removeItem("f1sim_ak");}catch (e14){}setApiKey("");setApiKeyInput("");};
+  const saveApiKey=()=>{if(apiKeyInput.startsWith("sk-")){try{localStorage.setItem("f1sim_ak",apiKeyInput);}catch (e14){}setApiKey(apiKeyInput);setApiKeyInput("");}};
+  const clearApiKey=()=>{try{localStorage.removeItem("f1sim_ak");}catch (e15){}setApiKey("");setApiKeyInput("");};
 
   const teamDrivers=id=>drivers.filter(d=>d.teamId===id);
 
@@ -20840,11 +21603,11 @@ function F1Sim(){
       trackFlag:track.flag,
       trackCircuit:track.circuit,
       hasSprint:!!sprint,
-      winner:_optionalChain([race, 'access', _142 => _142.positions, 'access', _143 => _143[0], 'optionalAccess', _144 => _144.driver, 'access', _145 => _145.name])||"—",
+      winner:_optionalChain([race, 'access', _198 => _198.positions, 'access', _199 => _199[0], 'optionalAccess', _200 => _200.driver, 'access', _201 => _201.name])||"—",
       podium:race.positions.slice(0,3).map(e=>e.driver.name),
       raceResults:race.positions.reduce((a,e)=>({...a,[e.driver.id]:e.points}),{}),
       sprintResults:sprint?sprint.positions.reduce((a,e)=>({...a,[e.driver.id]:e.points}),{}):null,
-      sprintWinner:sprint?_optionalChain([sprint, 'access', _146 => _146.positions, 'access', _147 => _147.find, 'call', _148 => _148(e=>!e.dnf), 'optionalAccess', _149 => _149.driver, 'access', _150 => _150.name])||null:null,
+      sprintWinner:sprint?_optionalChain([sprint, 'access', _202 => _202.positions, 'access', _203 => _203.find, 'call', _204 => _204(e=>!e.dnf), 'optionalAccess', _205 => _205.driver, 'access', _206 => _206.name])||null:null,
       sprintTop8:sprint?sprint.positions.filter(e=>!e.dnf&&e.points>0).map(e=>({name:e.driver.name,pts:e.points})):null,
       // Full frozen snapshots (read-only after save)
       snapshot:{
@@ -20883,7 +21646,7 @@ function F1Sim(){
           hasSC: race.hasSC,
           scLap: race.scLap,
           totalLaps: race.totalLaps,
-          fastestLapName: _optionalChain([race, 'access', _151 => _151.fastestLap, 'optionalAccess', _152 => _152.name])||null,
+          fastestLapName: _optionalChain([race, 'access', _207 => _207.fastestLap, 'optionalAccess', _208 => _208.name])||null,
         },
       },
     };
@@ -20898,7 +21661,7 @@ function F1Sim(){
 
     // submit + refresh community model
     if(communityEnabled && !SUPABASE_URL.includes('YOUR_PROJECT')) {
-      const actualWinnerId = _optionalChain([race, 'access', _153 => _153.positions, 'access', _154 => _154[0], 'optionalAccess', _155 => _155.driver, 'optionalAccess', _156 => _156.id])||null;
+      const actualWinnerId = _optionalChain([race, 'access', _209 => _209.positions, 'access', _210 => _210[0], 'optionalAccess', _211 => _211.driver, 'optionalAccess', _212 => _212.id])||null;
       setDbSaving(true);
       (async()=>{
         // 1. Submit sim data with actual winner (labelled training example)
@@ -20952,9 +21715,9 @@ function F1Sim(){
         accuracy:simCount,
         winnerCorrect:correct,
         podiumHits:podiumPredHit,
-        predictedWinner:_optionalChain([pred, 'optionalAccess', _157 => _157.driver, 'optionalAccess', _158 => _158.name])||"—",
-        actualWinner:_optionalChain([winner, 'optionalAccess', _159 => _159.driver, 'optionalAccess', _160 => _160.name])||"—",
-        predWinPct:_optionalChain([pred, 'optionalAccess', _161 => _161.winPct])||0,
+        predictedWinner:_optionalChain([pred, 'optionalAccess', _213 => _213.driver, 'optionalAccess', _214 => _214.name])||"—",
+        actualWinner:_optionalChain([winner, 'optionalAccess', _215 => _215.driver, 'optionalAccess', _216 => _216.name])||"—",
+        predWinPct:_optionalChain([pred, 'optionalAccess', _217 => _217.winPct])||0,
         savedAt:Date.now(),
       }]);
     }
@@ -20964,8 +21727,8 @@ function F1Sim(){
     return drivers.map(d=>{
       let pts=0,wins=0,racePts=0,sprintPts=0;
       championship.forEach(r=>{
-        const rp=_optionalChain([r, 'access', _162 => _162.raceResults, 'optionalAccess', _163 => _163[d.id]])||0;
-        const sp=_optionalChain([r, 'access', _164 => _164.sprintResults, 'optionalAccess', _165 => _165[d.id]])||0;
+        const rp=_optionalChain([r, 'access', _218 => _218.raceResults, 'optionalAccess', _219 => _219[d.id]])||0;
+        const sp=_optionalChain([r, 'access', _220 => _220.sprintResults, 'optionalAccess', _221 => _221[d.id]])||0;
         racePts+=rp; sprintPts+=sp; pts+=rp+sp;
         if(r.winner===d.name) wins++;
       });
@@ -20979,8 +21742,8 @@ function F1Sim(){
       let pts=0,racePts=0,sprintPts=0,wins=0;
       championship.forEach(r=>{
         tds.forEach(d=>{
-          const rp=_optionalChain([r, 'access', _166 => _166.raceResults, 'optionalAccess', _167 => _167[d.id]])||0;
-          const sp=_optionalChain([r, 'access', _168 => _168.sprintResults, 'optionalAccess', _169 => _169[d.id]])||0;
+          const rp=_optionalChain([r, 'access', _222 => _222.raceResults, 'optionalAccess', _223 => _223[d.id]])||0;
+          const sp=_optionalChain([r, 'access', _224 => _224.sprintResults, 'optionalAccess', _225 => _225[d.id]])||0;
           racePts+=rp; sprintPts+=sp; pts+=rp+sp;
         });
         if(tds.some(d=>d.name===r.winner)) wins++;
@@ -21027,7 +21790,7 @@ RACE DATA — ${track.name}
 ${trackMeta}
 CONDITIONS: ${race.isWet?"WET RACE — intermediates/wets in play":"Dry race"}
 SAFETY CAR: ${race.hasSC?`Yes — deployed lap ${race.scLap}, cleared lap ${race.scLap+4}`:"No safety car"}
-FASTEST LAP: ${_optionalChain([race, 'access', _170 => _170.fastestLap, 'optionalAccess', _171 => _171.name])||"N/A"}
+FASTEST LAP: ${_optionalChain([race, 'access', _226 => _226.fastestLap, 'optionalAccess', _227 => _227.name])||"N/A"}
 DNFs: ${dnfList}
 POSITION GAINERS: ${chargeList}
 
@@ -21087,7 +21850,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
     try{
       const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:4500,messages:[{role:"user",content:prompt}]})});
       const data=await res.json();
-      const raw=_optionalChain([data, 'access', _172 => _172.content, 'optionalAccess', _173 => _173.map, 'call', _174 => _174(c=>c.text||""), 'access', _175 => _175.join, 'call', _176 => _176("")])||"";
+      const raw=_optionalChain([data, 'access', _228 => _228.content, 'optionalAccess', _229 => _229.map, 'call', _230 => _230(c=>c.text||""), 'access', _231 => _231.join, 'call', _232 => _232("")])||"";
       setGenMsg("Feeding broadcast to the studio…");
       try{
         const clean=raw.replace(/```json|```/g,"").trim();
@@ -21095,11 +21858,11 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
         if(parsed.stages&&Array.isArray(parsed.stages)){
           setStages(parsed.stages.map(s=>s.lines&&Array.isArray(s.lines)?s:{...s,lines:[{speaker:"CROFT",text:s.text||""}]}));
         } else setStages([{key:"start",lines:[{speaker:"CROFT",text:raw}]}]);
-      }catch (e15){
+      }catch (e16){
         const paras=raw.split("\n\n").filter(Boolean);
         setStages(STAGE_DEFS.map((s,i)=>({key:s.key,lines:[{speaker:"CROFT",text:paras[i]||paras[0]||"Commentary unavailable."}]})));
       }
-    }catch (e16){setStages([{key:"start",lines:[{speaker:"CROFT",text:"Unable to generate commentary — please check connection and try again."}]}]);}
+    }catch (e17){setStages([{key:"start",lines:[{speaker:"CROFT",text:"Unable to generate commentary — please check connection and try again."}]}]);}
     finally{setIsGen(false);setGenMsg("");}
   };
 
@@ -21213,7 +21976,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
     const updates=[];
     drivers.forEach(d=>{
       // Find matching driver number
-      const num=parseInt(_optionalChain([Object, 'access', _177 => _177.entries, 'call', _178 => _178(OF1_DRIVER_MAP), 'access', _179 => _179.find, 'call', _180 => _180(([n,id])=>id===d.id), 'optionalAccess', _181 => _181[0]]))||null;
+      const num=parseInt(_optionalChain([Object, 'access', _233 => _233.entries, 'call', _234 => _234(OF1_DRIVER_MAP), 'access', _235 => _235.find, 'call', _236 => _236(([n,id])=>id===d.id), 'optionalAccess', _237 => _237[0]]))||null;
       if(!num||!bestLaps[num]) return;
       const gap=bestLaps[num]-pole;
       const newPace=Math.round(Math.max(72,Math.min(99,97-(gap/refMax)*25)));
@@ -21291,7 +22054,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
         series: "f1",
         sim_accuracy: 20,
         predicted_top5: (simResults||[]).slice(0,5).map(r=>({
-          driver_id:_optionalChain([r, 'access', _182 => _182.driver, 'optionalAccess', _183 => _183.id]), win_pct:r.winPct||0,
+          driver_id:_optionalChain([r, 'access', _238 => _238.driver, 'optionalAccess', _239 => _239.id]), win_pct:r.winPct||0,
           podium_pct:r.podiumPct||0, avg_pos:r.avgPos||11,
         })),
         driver_stats: enrichedStats,
@@ -21331,12 +22094,12 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
   const nb=(a,lk)=>({background:a?"#E8002D":"transparent",color:a?"#fff":lk?"#2A2A2A":"#bbb",border:"none",padding:"0 12px",height:58,cursor:lk?"default":"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,transition:"all 0.15s",borderRight:"1px solid #1A1A1E",pointerEvents:lk?"none":"auto"});
 
   if(showMenu) return React.createElement(EntryMenu, { onSelect: id=>{
-    try{localStorage.setItem('f1sim_series',id);}catch (e17){}
+    try{localStorage.setItem('f1sim_series',id);}catch (e18){}
     setSelectedSeries(id);
     setShowMenu(false);
   },});
 
-  if(selectedSeries==='f2') return React.createElement(F2Sim, { onBack: ()=>{try{localStorage.removeItem('f1sim_series');}catch (e18){}setShowMenu(true);},});
+  if(selectedSeries==='f2') return React.createElement(F2Sim, { onBack: ()=>{try{localStorage.removeItem('f1sim_series');}catch (e19){}setShowMenu(true);},});
 
   return(
     React.createElement(ErrorBoundary, null
@@ -21374,7 +22137,12 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
           ))
           , React.createElement('div', { style: {width:1,height:20,background:"#2A2A30"},})
           /* Back to menu */
-          , React.createElement('button', { onClick: ()=>setShowMenu(true), title: "Back to series select"   , style: {background:"transparent",color:"#444",border:"1px solid #2A2A30",padding:"3px 9px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1,borderRadius:2,whiteSpace:"nowrap"},}, "⏏ MENU" )
+          , React.createElement('button', { onClick: ()=>setShowMenu(true), title: "Back to series select"   ,
+            style: {background:"#1A0A0A",color:"#E8002D",border:"1px solid #E8002D55",padding:"5px 14px",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:700,letterSpacing:1.5,borderRadius:3,whiteSpace:"nowrap",transition:"all 0.15s",display:"flex",alignItems:"center",gap:5},
+            onMouseEnter: e=>{e.currentTarget.style.background="#E8002D22";e.currentTarget.style.borderColor="#E8002D99";},
+            onMouseLeave: e=>{e.currentTarget.style.background="#1A0A0A";e.currentTarget.style.borderColor="#E8002D55";},}, "⏏ HOME"
+
+          )
           , React.createElement('button', {
             onClick: ()=>{setCommunityEnabled(p=>!p);setDbError(false);setDbSubmitCount(0);},
             title: communityEnabled?"Community model ON — sharing anonymous data":"Community model OFF — click to enable",
@@ -21404,7 +22172,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                 , [["DRIVERS","drivers"],["TEAMS","teams"]].map(([l,t])=>(
                   React.createElement('button', { key: t, onClick: ()=>setGTab(t), style: {background:gTab===t?"#2A2A30":"transparent",color:gTab===t?"#F0F0F0":"#899",border:"1px solid #2A2A30",padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,borderRadius:3},}, l)
                 ))
-                , React.createElement('button', { onClick: ()=>setModal({type:"driver",data:{name:"",abbr:"",num:99,teamId:_optionalChain([teams, 'access', _184 => _184[0], 'optionalAccess', _185 => _185.id])||"",pace:78,consistency:78,wet:75,overtaking:75,defense:75,experience:65,mental:7,flag:"🏁",goodTracks:[],badTracks:[]}}), style: {background:"#E8002D",color:"#fff",border:"none",padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,borderRadius:3},}, "+ DRIVER" )
+                , React.createElement('button', { onClick: ()=>setModal({type:"driver",data:{name:"",abbr:"",num:99,teamId:_optionalChain([teams, 'access', _240 => _240[0], 'optionalAccess', _241 => _241.id])||"",pace:78,consistency:78,wet:75,overtaking:75,defense:75,experience:65,mental:7,flag:"🏁",goodTracks:[],badTracks:[]}}), style: {background:"#E8002D",color:"#fff",border:"none",padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,borderRadius:3},}, "+ DRIVER" )
                 , React.createElement('button', { onClick: ()=>setModal({type:"team",data:{name:"",abbr:"",color:"#aaa",tc:"#fff",basePitSpeed:78,engine:"Customer",strategy:"one_stop",parts:{...TEAM_DEFAULT_PARTS.cadillac}}}), style: {background:"#2A2A30",color:"#ccc",border:"none",padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,borderRadius:3},}, "+ TEAM" )
               )
             )
@@ -21412,8 +22180,8 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
             , gTab==="drivers"&&(
               React.createElement('div', { style: {display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:10},}
                 , teams.map(team=>teamDrivers(team.id).map(d=>{
-                  const goodNames=_optionalChain([d, 'access', _186 => _186.goodTracks, 'optionalAccess', _187 => _187.map, 'call', _188 => _188(id=>_optionalChain([TRACKS, 'access', _189 => _189.find, 'call', _190 => _190(t=>t.id===id), 'optionalAccess', _191 => _191.flag])||""), 'access', _192 => _192.filter, 'call', _193 => _193(Boolean)])||[];
-                  const badNames=_optionalChain([d, 'access', _194 => _194.badTracks, 'optionalAccess', _195 => _195.map, 'call', _196 => _196(id=>_optionalChain([TRACKS, 'access', _197 => _197.find, 'call', _198 => _198(t=>t.id===id), 'optionalAccess', _199 => _199.flag])||""), 'access', _200 => _200.filter, 'call', _201 => _201(Boolean)])||[];
+                  const goodNames=_optionalChain([d, 'access', _242 => _242.goodTracks, 'optionalAccess', _243 => _243.map, 'call', _244 => _244(id=>_optionalChain([TRACKS, 'access', _245 => _245.find, 'call', _246 => _246(t=>t.id===id), 'optionalAccess', _247 => _247.flag])||""), 'access', _248 => _248.filter, 'call', _249 => _249(Boolean)])||[];
+                  const badNames=_optionalChain([d, 'access', _250 => _250.badTracks, 'optionalAccess', _251 => _251.map, 'call', _252 => _252(id=>_optionalChain([TRACKS, 'access', _253 => _253.find, 'call', _254 => _254(t=>t.id===id), 'optionalAccess', _255 => _255.flag])||""), 'access', _256 => _256.filter, 'call', _257 => _257(Boolean)])||[];
                   return(
                     React.createElement('div', { key: d.id, className: "hov", onClick: ()=>setModal({type:"driver",data:d}), style: {background:"#161618",border:`1px solid ${team.color}18`,borderLeft:`3px solid ${team.color}`,borderRadius:4,padding:"13px 15px",cursor:"pointer",transition:"background 0.15s"},}
                       , React.createElement('div', { style: {display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8},}
@@ -21830,7 +22598,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
             , stages&&!isGen&&(()=>{
               const s=STAGE_DEFS[activeS];
               const sd=stages.find(x=>x.key===s.key);
-              const lines=_optionalChain([sd, 'optionalAccess', _202 => _202.lines])||[];
+              const lines=_optionalChain([sd, 'optionalAccess', _258 => _258.lines])||[];
               return(
                 React.createElement(React.Fragment, null
                   , React.createElement('div', { style: {display:"flex",gap:3,marginBottom:16,flexWrap:"wrap",background:"#111115",border:"1px solid #1E1E22",borderRadius:5,padding:5},}
@@ -21839,7 +22607,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                       if(!sd2) return null;
                       return(
                         React.createElement('button', { key: st.key, onClick: ()=>setActiveS(i), style: {flex:"0 0 auto",background:activeS===i?`${st.color}20`:"transparent",color:activeS===i?st.color:"#899",border:`1px solid ${activeS===i?st.color+"55":"transparent"}`,padding:"6px 10px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1.5,borderRadius:3,transition:"all 0.15s",whiteSpace:"nowrap"},}
-                          , st.emoji, " " , st.title, " " , React.createElement('span', { style: {opacity:0.5,fontSize:12},}, _optionalChain([sd2, 'access', _203 => _203.lines, 'optionalAccess', _204 => _204.length])||0)
+                          , st.emoji, " " , st.title, " " , React.createElement('span', { style: {opacity:0.5,fontSize:12},}, _optionalChain([sd2, 'access', _259 => _259.lines, 'optionalAccess', _260 => _260.length])||0)
                         )
                       );
                     })
@@ -21899,7 +22667,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                     , React.createElement('div', { style: {fontSize:28,marginBottom:14},}, "🎙️")
                     , React.createElement('div', { style: {fontSize:18,fontWeight:700,letterSpacing:2,marginBottom:8},}, "READY TO BROADCAST"  )
                     , React.createElement('div', { style: {fontSize:14,color:"#778",marginBottom:22,letterSpacing:1},}
-                      , track.flag, " " , track.name, " · "  , _optionalChain([race, 'access', _205 => _205.positions, 'access', _206 => _206[0], 'optionalAccess', _207 => _207.driver, 'access', _208 => _208.name]), " wins · "   , race.totalLaps, " laps"
+                      , track.flag, " " , track.name, " · "  , _optionalChain([race, 'access', _261 => _261.positions, 'access', _262 => _262[0], 'optionalAccess', _263 => _263.driver, 'access', _264 => _264.name]), " wins · "   , race.totalLaps, " laps"
                     )
                     , React.createElement('button', { onClick: doCommentary, style: {background:"#CC44FF",color:"#fff",border:"none",padding:"13px 36px",cursor:"pointer",fontFamily:"inherit",fontSize:16,fontWeight:700,letterSpacing:2.5,borderRadius:4},}, "▶ GENERATE CROFT & BRUNDLE"
 
@@ -21966,7 +22734,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                   /* Caption panel */
                   , React.createElement('div', { style: {background:"#0D0D14",border:"1px solid #2A2A40",borderLeft:`4px solid ${testDay===0?"#44CC88":"#4466FF"}`,borderRadius:"0 6px 6px 0",padding:"18px 22px",marginBottom:18},}
                     , React.createElement('div', { style: {fontSize:12,color:testDay===0?"#44CC88":"#6688FF",fontWeight:700,letterSpacing:2,marginBottom:12},}
-                      , testDay===0?`🔬 ${testSession.days}-DAY TEST — OVERALL SUMMARY`:`🔬 DAY ${testDay} REPORT — ${_optionalChain([activeDay, 'optionalAccess', _209 => _209.conditions, 'access', _210 => _210.icon])} ${_optionalChain([activeDay, 'optionalAccess', _211 => _211.conditions, 'access', _212 => _212.label, 'access', _213 => _213.toUpperCase, 'call', _214 => _214()])}`
+                      , testDay===0?`🔬 ${testSession.days}-DAY TEST — OVERALL SUMMARY`:`🔬 DAY ${testDay} REPORT — ${_optionalChain([activeDay, 'optionalAccess', _265 => _265.conditions, 'access', _266 => _266.icon])} ${_optionalChain([activeDay, 'optionalAccess', _267 => _267.conditions, 'access', _268 => _268.label, 'access', _269 => _269.toUpperCase, 'call', _270 => _270()])}`
                     )
                     , dayCaps.map((c,i)=>(
                       React.createElement('p', { key: i, style: {fontSize:14,color:i===0?"#F0F0F0":"#aaa",lineHeight:1.85,marginBottom:i<dayCaps.length-1?12:0,whiteSpace:"pre-line"},}, c)
@@ -22005,7 +22773,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                       const prog = activeDay
                         ? [r.didQualiRun?"🏎 Q-sim":"",r.didLongRun?"📏 Long run":"",!r.didQualiRun&&!r.didLongRun?"🔧 Install/setup":""].filter(Boolean).join("  ")
                         : null;
-                      const issuesDisplay = !activeDay && _optionalChain([r, 'access', _215 => _215.issues, 'optionalAccess', _216 => _216.length])
+                      const issuesDisplay = !activeDay && _optionalChain([r, 'access', _271 => _271.issues, 'optionalAccess', _272 => _272.length])
                         ? r.issues.map((iss,j)=>(
                             React.createElement('span', { key: j, style: {display:"inline-block",background:"#FF884420",color:"#FF8844",padding:"2px 6px",borderRadius:2,marginRight:3,fontSize:10},}, "D", iss.day, ": " , iss.type)
                           ))
@@ -22111,7 +22879,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
           // Per-driver prediction accuracy from championship rounds
           const driverPredAcc={};
           championship.forEach(r=>{
-            if(!_optionalChain([r, 'access', _217 => _217.snapshot, 'optionalAccess', _218 => _218.race])) return;
+            if(!_optionalChain([r, 'access', _273 => _273.snapshot, 'optionalAccess', _274 => _274.race])) return;
             r.snapshot.race.positions.slice(0,3).forEach((e,i)=>{
               if(!driverPredAcc[e.driverName]) driverPredAcc[e.driverName]={actual:0,predicted:0,name:e.driverName};
               driverPredAcc[e.driverName].actual++;
@@ -22128,7 +22896,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
             ((winAcc||0.5)*40 + (podAcc||0.5)*30 + Math.min(1,simmed.length/20)*30)
           ));
           const avgRuns=simmed.length?Math.round(simmed.reduce((a,h)=>a+h.accuracy,0)/simmed.length):0;
-          const dominantStyle=_optionalChain([Object, 'access', _219 => _219.entries, 'call', _220 => _220(drivers.reduce((a,d)=>{a[d.style||"unknown"]=(a[d.style||"unknown"]||0)+1;return a},{})), 'access', _221 => _221.sort, 'call', _222 => _222((a,b)=>b[1]-a[1]), 'access', _223 => _223[0], 'optionalAccess', _224 => _224[0]]);
+          const dominantStyle=_optionalChain([Object, 'access', _275 => _275.entries, 'call', _276 => _276(drivers.reduce((a,d)=>{a[d.style||"unknown"]=(a[d.style||"unknown"]||0)+1;return a},{})), 'access', _277 => _277.sort, 'call', _278 => _278((a,b)=>b[1]-a[1]), 'access', _279 => _279[0], 'optionalAccess', _280 => _280[0]]);
 
           return(
           React.createElement('div', { style: {animation:"fadeIn 0.2s ease"},}
@@ -22516,10 +23284,10 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                 /* Community data bar chart if available */
                 , (communityData||[]).length>0&&(()=>{
                   const rows=(communityData||[]).slice(0,10).map(r=>({
-                    id:(_optionalChain([drivers, 'access', _225 => _225.find, 'call', _226 => _226(d=>d.id===r.driver_id), 'optionalAccess', _227 => _227.name])||r.driver_id||"").split(" ").pop(),
+                    id:(_optionalChain([drivers, 'access', _281 => _281.find, 'call', _282 => _282(d=>d.id===r.driver_id), 'optionalAccess', _283 => _283.name])||r.driver_id||"").split(" ").pop(),
                     winPct:(r.avg_win_pct||0)*100,
                     n:r.sample_count||0,
-                    col:_optionalChain([drivers, 'access', _228 => _228.find, 'call', _229 => _229(d=>d.id===r.driver_id), 'optionalAccess', _230 => _230.color])||"4488FF",
+                    col:_optionalChain([drivers, 'access', _284 => _284.find, 'call', _285 => _285(d=>d.id===r.driver_id), 'optionalAccess', _286 => _286.color])||"4488FF",
                   })).sort((a,b)=>b.winPct-a.winPct);
                   const maxW=Math.max(...rows.map(r=>r.winPct),5);
                   const BW=820,BH=100,BP={t:18,r:16,b:28,l:50};
@@ -22571,11 +23339,11 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                   circuitMap[r.circuit_id].top_win_pct=r.avg_win_pct||0;
               });
               const circuits = Object.values(circuitMap).sort((a,b)=>b.total_samples-a.total_samples);
-              const totalSims   = _optionalChain([global, 'optionalAccess', _231 => _231.total_sims])||0;
-              const withResult  = _optionalChain([global, 'optionalAccess', _232 => _232.total_with_result])||0;
-              const winAcc      = _optionalChain([global, 'optionalAccess', _233 => _233.win_accuracy])||0;
-              const podAcc      = _optionalChain([global, 'optionalAccess', _234 => _234.podium_accuracy])||0;
-              const topCircuit  = _optionalChain([global, 'optionalAccess', _235 => _235.most_active_circuit])||"—";
+              const totalSims   = _optionalChain([global, 'optionalAccess', _287 => _287.total_sims])||0;
+              const withResult  = _optionalChain([global, 'optionalAccess', _288 => _288.total_with_result])||0;
+              const winAcc      = _optionalChain([global, 'optionalAccess', _289 => _289.win_accuracy])||0;
+              const podAcc      = _optionalChain([global, 'optionalAccess', _290 => _290.podium_accuracy])||0;
+              const topCircuit  = _optionalChain([global, 'optionalAccess', _291 => _291.most_active_circuit])||"—";
               const modelReady  = totalSims>=50;
               const hasData     = allData.length>0||totalSims>0;
 
@@ -22847,8 +23615,8 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
             )
 
             , simResults&&!simRunning&&(()=>{
-              const maxPts=_optionalChain([simResults, 'access', _236 => _236[0], 'optionalAccess', _237 => _237.totalPts])||1;
-              const maxAvgPts=_optionalChain([simResults, 'access', _238 => _238[0], 'optionalAccess', _239 => _239.avgRacePts])||1;
+              const maxPts=_optionalChain([simResults, 'access', _292 => _292[0], 'optionalAccess', _293 => _293.totalPts])||1;
+              const maxAvgPts=_optionalChain([simResults, 'access', _294 => _294[0], 'optionalAccess', _295 => _295.avgRacePts])||1;
               return(
                 React.createElement(React.Fragment, null
                   /* Summary podium */
@@ -22861,7 +23629,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                         React.createElement('div', { key: r.driver.id, style: {background:bgs[i],border:`1px solid ${borders[i]}44`,borderTop:`3px solid ${borders[i]}`,borderRadius:4,padding:"16px 18px",textAlign:"center"},}
                           , React.createElement('div', { style: {fontSize:28},}, medals[i])
                           , React.createElement('div', { style: {fontSize:18,fontWeight:700,marginTop:6,color:borders[i]},}, r.driver.name)
-                          , React.createElement('div', { style: {fontSize:13,color:_optionalChain([r, 'access', _240 => _240.team, 'optionalAccess', _241 => _241.color])||"#aaa",letterSpacing:1.5,marginTop:2},}, _optionalChain([r, 'access', _242 => _242.team, 'optionalAccess', _243 => _243.name]))
+                          , React.createElement('div', { style: {fontSize:13,color:_optionalChain([r, 'access', _296 => _296.team, 'optionalAccess', _297 => _297.color])||"#aaa",letterSpacing:1.5,marginTop:2},}, _optionalChain([r, 'access', _298 => _298.team, 'optionalAccess', _299 => _299.name]))
                           , React.createElement('div', { style: {display:"flex",justifyContent:"center",gap:14,marginTop:10,flexWrap:"wrap"},}
                             , React.createElement('div', { style: {textAlign:"center"},}
                               , React.createElement('div', { style: {fontSize:22,fontWeight:900,color:borders[i]},}, (r.winPct*100).toFixed(0), "%")
@@ -22899,10 +23667,10 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                           /* Driver */
                           , React.createElement('div', null
                             , React.createElement('div', { style: {display:"flex",alignItems:"center",gap:8},}
-                              , React.createElement('div', { style: {width:3,height:28,background:_optionalChain([r, 'access', _244 => _244.team, 'optionalAccess', _245 => _245.color])||"#555",borderRadius:2,flexShrink:0},})
+                              , React.createElement('div', { style: {width:3,height:28,background:_optionalChain([r, 'access', _300 => _300.team, 'optionalAccess', _301 => _301.color])||"#555",borderRadius:2,flexShrink:0},})
                               , React.createElement('div', null
                                 , React.createElement('div', { style: {fontSize:14,fontWeight:700},}, r.driver.flag, " " , r.driver.name)
-                                , React.createElement('div', { style: {fontSize:12,color:_optionalChain([r, 'access', _246 => _246.team, 'optionalAccess', _247 => _247.color])||"#aaa"},}, _optionalChain([r, 'access', _248 => _248.team, 'optionalAccess', _249 => _249.name]))
+                                , React.createElement('div', { style: {fontSize:12,color:_optionalChain([r, 'access', _302 => _302.team, 'optionalAccess', _303 => _303.color])||"#aaa"},}, _optionalChain([r, 'access', _304 => _304.team, 'optionalAccess', _305 => _305.name]))
                               )
                             )
                           )
@@ -22930,7 +23698,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                           , React.createElement('div', { style: {textAlign:"right"},}
                             , React.createElement('div', { style: {fontSize:14,fontWeight:700,color:"#F0F0F0"},}, r.totalPts)
                             , React.createElement('div', { style: {height:4,background:"#1A1A1A",borderRadius:2,marginTop:3},}
-                              , React.createElement('div', { style: {height:4,width:`${(r.totalPts/maxPts)*100}%`,background:_optionalChain([r, 'access', _250 => _250.team, 'optionalAccess', _251 => _251.color])||"#E8002D",borderRadius:2},})
+                              , React.createElement('div', { style: {height:4,width:`${(r.totalPts/maxPts)*100}%`,background:_optionalChain([r, 'access', _306 => _306.team, 'optionalAccess', _307 => _307.color])||"#E8002D",borderRadius:2},})
                             )
                           )
                           /* DNF% */
@@ -22949,7 +23717,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                       , React.createElement('div', { style: {fontSize:13,color:"#FFC906",letterSpacing:2.5,marginBottom:8,fontWeight:700},}, "⚡ SPRINT SUMMARY"  )
                       , React.createElement('div', { style: {display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:6},}
                         , simResults.filter(r=>r.avgSprintPts>0).slice(0,8).map(r=>(
-                          React.createElement('div', { key: r.driver.id, style: {display:"flex",alignItems:"center",gap:10,padding:"9px 12px",background:"#161618",border:"1px solid #FFC90622",borderLeft:`3px solid ${_optionalChain([r, 'access', _252 => _252.team, 'optionalAccess', _253 => _253.color])||"#555"}`,borderRadius:3},}
+                          React.createElement('div', { key: r.driver.id, style: {display:"flex",alignItems:"center",gap:10,padding:"9px 12px",background:"#161618",border:"1px solid #FFC90622",borderLeft:`3px solid ${_optionalChain([r, 'access', _308 => _308.team, 'optionalAccess', _309 => _309.color])||"#555"}`,borderRadius:3},}
                             , React.createElement('div', { style: {flex:1},}
                               , React.createElement('div', { style: {fontSize:14,fontWeight:700},}, r.driver.name.split(" ").pop())
                               , React.createElement('div', { style: {fontSize:12,color:"#778"},}
@@ -23012,11 +23780,11 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                     , getStandings().map((s,i)=>{
                       const team=teams.find(t=>t.id===s.driver.teamId);
                       return(
-                        React.createElement('div', { key: s.driver.id, style: {display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:i<3&&s.pts>0?"#181810":"#161618",border:`1px solid ${i<3&&s.pts>0?"#FFC90622":"#1E1E22"}`,borderLeft:`3px solid ${_optionalChain([team, 'optionalAccess', _254 => _254.color])||"#899"}`,borderRadius:3,opacity:s.pts===0?0.45:1},}
+                        React.createElement('div', { key: s.driver.id, style: {display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:i<3&&s.pts>0?"#181810":"#161618",border:`1px solid ${i<3&&s.pts>0?"#FFC90622":"#1E1E22"}`,borderLeft:`3px solid ${_optionalChain([team, 'optionalAccess', _310 => _310.color])||"#899"}`,borderRadius:3,opacity:s.pts===0?0.45:1},}
                           , React.createElement('div', { style: {width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",background:i===0&&s.pts>0?"#FFC906":i===1&&s.pts>0?"#aaa":i===2&&s.pts>0?"#CD7F32":"transparent",color:i<3&&s.pts>0?"#000":"#bbb",fontSize:13,fontWeight:700,borderRadius:2,border:!(i<3&&s.pts>0)?"1px solid #2A2A30":"none",flexShrink:0},}, i+1)
                           , React.createElement('div', { style: {flex:1,minWidth:0},}
                             , React.createElement('div', { style: {fontSize:16,fontWeight:700},}, s.driver.flag, " " , s.driver.name)
-                            , React.createElement('div', { style: {fontSize:12,color:_optionalChain([team, 'optionalAccess', _255 => _255.color])||"#aaa",letterSpacing:1.5},}, _optionalChain([team, 'optionalAccess', _256 => _256.name])||"", s.wins>0?` · ${s.wins} WIN${s.wins>1?"S":""}`:"")
+                            , React.createElement('div', { style: {fontSize:12,color:_optionalChain([team, 'optionalAccess', _311 => _311.color])||"#aaa",letterSpacing:1.5},}, _optionalChain([team, 'optionalAccess', _312 => _312.name])||"", s.wins>0?` · ${s.wins} WIN${s.wins>1?"S":""}`:"")
                             , s.sprintPts>0&&React.createElement('div', { style: {fontSize:12,color:"#899",marginTop:1},}, "🏁 " , s.racePts, " · ⚡ "   , s.sprintPts)
                           )
                           , React.createElement('div', { style: {textAlign:"right",flexShrink:0},}
@@ -23049,13 +23817,13 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                         )
                         , React.createElement('div', { style: {display:"flex",gap:6,flexWrap:"wrap",marginBottom:6},}
                           , s.drivers.map(d=>{
-                            let dPts=0; championship.forEach(r=>{dPts+=(_optionalChain([r, 'access', _257 => _257.raceResults, 'optionalAccess', _258 => _258[d.id]])||0)+(_optionalChain([r, 'access', _259 => _259.sprintResults, 'optionalAccess', _260 => _260[d.id]])||0);});
+                            let dPts=0; championship.forEach(r=>{dPts+=(_optionalChain([r, 'access', _313 => _313.raceResults, 'optionalAccess', _314 => _314[d.id]])||0)+(_optionalChain([r, 'access', _315 => _315.sprintResults, 'optionalAccess', _316 => _316[d.id]])||0);});
                             return React.createElement('span', { key: d.id, style: {fontSize:13,color:dPts>0?"#ccc":"#778"},}, d.flag, " " , d.name.split(" ").pop(), " " , React.createElement('span', { style: {color:s.team.color,fontWeight:700},}, dPts));
                           })
                         )
                         , s.sprintPts>0&&React.createElement('div', { style: {fontSize:12,color:"#899"},}, "🏁 " , s.racePts, " race · ⚡ "    , s.sprintPts, " sprint" )
                         , React.createElement('div', { style: {marginTop:6,height:3,background:"#1A1A1A",borderRadius:2},}
-                          , React.createElement('div', { style: {height:3,width:`${_optionalChain([getConstructorStandings, 'call', _261 => _261(), 'access', _262 => _262[0], 'optionalAccess', _263 => _263.pts])>0?(s.pts/getConstructorStandings()[0].pts)*100:0}%`,background:s.team.color,borderRadius:2},})
+                          , React.createElement('div', { style: {height:3,width:`${_optionalChain([getConstructorStandings, 'call', _317 => _317(), 'access', _318 => _318[0], 'optionalAccess', _319 => _319.pts])>0?(s.pts/getConstructorStandings()[0].pts)*100:0}%`,background:s.team.color,borderRadius:2},})
                         )
                       )
                     ))
@@ -23087,7 +23855,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                             React.createElement('div', { style: {marginTop:6,padding:"5px 8px",background:"#FFC90610",border:"1px solid #FFC90622",borderLeft:"3px solid #FFC906",borderRadius:"0 3px 3px 0"},}
                               , React.createElement('div', { style: {fontSize:11,color:"#FFC906",fontWeight:700,letterSpacing:1.5,marginBottom:2},}, "⚡ SPRINT WINNER"  )
                               , React.createElement('div', { style: {display:"flex",gap:4,flexWrap:"wrap"},}
-                                , _optionalChain([r, 'access', _264 => _264.sprintTop8, 'optionalAccess', _265 => _265.slice, 'call', _266 => _266(0,4), 'access', _267 => _267.map, 'call', _268 => _268((x,xi)=>(
+                                , _optionalChain([r, 'access', _320 => _320.sprintTop8, 'optionalAccess', _321 => _321.slice, 'call', _322 => _322(0,4), 'access', _323 => _323.map, 'call', _324 => _324((x,xi)=>(
                                   React.createElement('span', { key: xi, style: {fontSize:12,color:xi===0?"#FFC906":"#bbb",fontWeight:xi===0?700:400},}
                                     , xi===0?"🏆":"", x.name, " " , React.createElement('span', { style: {color:"#FFC906",opacity:0.7},}, "+", x.pts), xi<3?" ·":""
                                   )
@@ -23096,7 +23864,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                             )
                           )
                           , React.createElement('div', { style: {display:"flex",gap:6,marginTop:6,flexWrap:"wrap"},}
-                            , _optionalChain([r, 'access', _269 => _269.podium, 'optionalAccess', _270 => _270.map, 'call', _271 => _271((n,pi)=>(
+                            , _optionalChain([r, 'access', _325 => _325.podium, 'optionalAccess', _326 => _326.map, 'call', _327 => _327((n,pi)=>(
                               React.createElement('span', { key: pi, style: {fontSize:13,background:pi===0?"#FFC90620":pi===1?"#88888820":"#CD7F3220",color:pi===0?"#FFC906":pi===1?"#aaa":"#CD7F32",padding:"2px 7px",borderRadius:2,fontWeight:700},}
                                 , pi===0?"🥇":pi===1?"🥈":"🥉", " " , n
                               )
