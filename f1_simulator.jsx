@@ -941,22 +941,43 @@ function runRace(grid, teams, track) {
     const [x,y]=pickN(grp,2);
     if(x&&y) events.push({lap,type:"battle",icon:"🔥",text:`Lap ${lap}: ${x.driver.name} and ${y.driver.name} nose-to-tail in ${lbl}.`});
   });
-  // ── Pit stop helper: normal, slow, or disaster (wet-aware) ──
+  // ── Penalty & event-DNF trackers (fed by events, applied after gap calc) ──
+  const timePenalties={};  // driverId -> seconds
+  const eventDNFs={};      // driverId -> {lap, reason}
+  const addPenalty=(driver,secs)=>{ timePenalties[driver.id]=(timePenalties[driver.id]||0)+secs; };
+  const addEventDNF=(driver,lap,reason)=>{ if(!eventDNFs[driver.id]) eventDNFs[driver.id]={lap,reason}; };
+
+  // ── Pit stop helper: normal, slow, or disaster (wet-aware, penalty-aware) ──
   const pitEvent=(e,lap,stopNum)=>{
     const strat=getTeamStrategy(e.team);
-    // Wet races: inters/wets more likely; slow stops more common (cold tyres, slippery pitlane)
     const wetPitCpd=isWet?pick(["Intermediates","Wets","Intermediates"]):null;
     const cpd=wetPitCpd||pick(CPDS);
-    // Wet increases slow/disaster probability by ~8pp each
     const r=Math.random();
     const disasterThresh=isWet?0.14:0.10;
     const slowThresh    =isWet?0.36:0.28;
     const gambleThresh  =isWet?0.44:0.38;
     if(r<disasterThresh){
-      const d=pick(PIT_DISASTERS.slice(1,2));
-      const txt=pick(d.texts).replace("{cpd}",cpd);
-      const wetSuffix=isWet?" Pitlane conditions slippery — chaos.":"";
-      return {lap,type:d.type,icon:d.icon,text:`LAP ${lap}: ${e.driver.name} (${e.team.name}) — ${txt}${wetSuffix}`};
+      // Pit disaster — pick specific type with matching penalty
+      const dtype=Math.floor(Math.random()*4);
+      if(dtype===0){
+        // Unsafe release into traffic → 5s penalty
+        addPenalty(e.driver,5);
+        const wetSuffix=isWet?" Pitlane soaking wet — driver nearly loses it.":"";
+        return {lap,type:"pitstop",icon:"🚨",text:`LAP ${lap}: ${e.driver.name} (${e.team.name}) — UNSAFE RELEASE into traffic!${wetSuffix} 5-SECOND TIME PENALTY ISSUED.`};
+      } else if(dtype===1){
+        // Wrong compound → 10s stop-and-go equivalent
+        addPenalty(e.driver,10);
+        return {lap,type:"pitstop",icon:"🚨",text:`LAP ${lap}: ${e.driver.name} (${e.team.name}) — Wrong compound fitted! Back to the box — 10-SECOND TIME PENALTY applied.`};
+      } else if(dtype===2){
+        // Front wing not secured → 5s penalty + slow stop
+        addPenalty(e.driver,5);
+        return {lap,type:"slowstop",icon:"🚨",text:`LAP ${lap}: ${e.driver.name} — Front wing not secured! Pits again next lap. 5-SECOND TIME PENALTY.`};
+      } else {
+        // Lollipop / jack error → 5s penalty
+        addPenalty(e.driver,5);
+        const wetSuffix=isWet?" Chaos in the wet pit lane.":"";
+        return {lap,type:"pitstop",icon:"🚨",text:`LAP ${lap}: ${e.driver.name} (${e.team.name}) — Lollipop error!${wetSuffix} Released too early — 5-SECOND TIME PENALTY.`};
+      }
     } else if(r<slowThresh){
       const secs=(isWet?5.5+Math.random()*5:4+Math.random()*6).toFixed(1);
       const txt=pick(PIT_DISASTERS[0].texts).replace("{t}",secs);
@@ -1026,10 +1047,25 @@ function runRace(grid, teams, track) {
       } else {
         events.push({lap:rfResumeLap,type:"start",icon:"🚦",text:`RESTART LAP ${rfResumeLap}: ${restartVic.driver.name} leads into turn 1. Frantic racing resumes — ${TL-rfResumeLap} laps remaining.`});
       }
-      // Restart incidents common
+      // Restart incidents common — some cause DNF, some cause time penalty
       if(Math.random()<0.40){
-        const incD=pick(finishers.slice(3,12)||finishers);
-        events.push({lap:rfResumeLap,type:"incident",icon:"⚠️",text:`Lap ${rfResumeLap}: ${incD.driver.name} locked up under braking at the restart — contact!`});
+        const incD=pick(finishers.slice(3,Math.min(14,finishers.length)));
+        if(incD){
+          const crashR=Math.random();
+          if(crashR<0.30){
+            // Serious crash → DNF
+            addEventDNF(incD.driver,rfResumeLap,"restart collision");
+            events.push({lap:rfResumeLap,type:"dnf",icon:"💥",text:`RESTART LAP ${rfResumeLap}: ${incD.driver.name} INTO THE BARRIER! Massive crash — CAR DESTROYED. DNF.`});
+          } else if(crashR<0.60){
+            // Contact → 5s penalty
+            const incD2=pick(finishers.slice(1,10).filter(x=>x!==incD));
+            addPenalty(incD.driver,5);
+            events.push({lap:rfResumeLap,type:"incident",icon:"⚠️",text:`Lap ${rfResumeLap}: ${incD.driver.name} makes contact with ${incD2?incD2.driver.name:"P2"} under braking — 5-SECOND TIME PENALTY for causing a collision.`});
+          } else {
+            // Close call — no penalty
+            events.push({lap:rfResumeLap,type:"incident",icon:"⚠️",text:`Lap ${rfResumeLap}: ${incD.driver.name} locked up at the restart — both cars continue, stewards investigating.`});
+          }
+        }
       }
     } else {
       events.push({lap:rfLap+1,type:"redflag",icon:"🔴",text:`RACE DECLARED. Results taken at the end of lap ${rfLap-1}. Insufficient laps remaining to restart.`});
@@ -1059,16 +1095,50 @@ function runRace(grid, teams, track) {
     if(bk1&&bk2) events.push({lap:Lf(TL,0.65),type:"battle",icon:"🔥",text:`Lap ${Lf(TL,0.65)}: ${bk1.driver.name} and ${bk2.driver.name} — their own battle at the back.`});
   }
 
+  // ── Apply event-driven DNFs ───────────────────────────────────────────────
+  Object.keys(eventDNFs).forEach(function(dId){
+    const e=final.find(function(x){return x.driver.id===dId;});
+    if(e&&!e.dnf){
+      e.dnf=true;
+      e.dnfLap=eventDNFs[dId].lap;
+      e.dnfReason=eventDNFs[dId].reason;
+    }
+  });
+  // Re-sort: finishers by pace, then dnf by lap retired desc
+  const newFinishers=final.filter(function(e){return !e.dnf;}).sort(function(a,b){return b.pace-a.pace;});
+  const newDNFs=final.filter(function(e){return e.dnf;}).sort(function(a,b){return (b.dnfLap||0)-(a.dnfLap||0);});
+  final.length=0;
+  newFinishers.forEach(function(e){final.push(e);});
+  newDNFs.forEach(function(e){final.push(e);});
+
+  // ── Compute gaps ─────────────────────────────────────────────────────────
   let cumGap=0;
   final.forEach((e,i)=>{
-    e.finalPos=i+1;
     if(i===0){e.gap=0;return;}
     if(e.dnf){e.gap=null;return;}
     const diff=(final[0].pace-e.pace)*0.55;
     cumGap=Math.max(cumGap+Math.random()*2.2,diff>0?diff:cumGap+0.5);
     e.gap=parseFloat(cumGap.toFixed(3));
   });
+
+  // ── Apply time penalties and re-sort finishers by effective time ──────────
+  const penFinishers=final.filter(function(e){return !e.dnf;});
+  penFinishers.forEach(function(e){
+    const pen=timePenalties[e.driver.id]||0;
+    if(pen>0){
+      e.timePenalty=pen;
+      e.gap=parseFloat(((e.gap||0)+pen).toFixed(3));
+    }
+  });
+  // Re-sort by effective gap (leader stays P1 if gap=0, others sort ascending)
+  penFinishers.sort(function(a,b){return (a.gap||0)-(b.gap||0);});
+  // Rebuild final with penalised order
+  final.length=0;
+  penFinishers.forEach(function(e){final.push(e);});
+  newDNFs.forEach(function(e){final.push(e);});
+
   final.forEach((e,i)=>{
+    e.finalPos=i+1;
     e.points=(!e.dnf&&i<10)?PTS[i]:0;
     if(flD&&e.driver.id===flD.driver.id&&!e.dnf&&i<10) e.points+=1;
   });
@@ -5240,9 +5310,13 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                         <div style={{fontSize:11,color:tColor,letterSpacing:1}}>{tName}</div>
                       </div>
                       <div style={{textAlign:"right",flexShrink:0}}>
-                        {isDNF?<div style={{fontSize:11,color:"#FF4444"}}>L{e.dnfLap||"?"}</div>
+                        {isDNF?<>
+                            <div style={{fontSize:11,color:"#FF4444"}}>L{e.dnfLap||"?"}</div>
+                            {e.dnfReason&&<div style={{fontSize:10,color:"#FF6644",maxWidth:90,textAlign:"right",lineHeight:1.3}}>{e.dnfReason}</div>}
+                          </>
                           :<>
                             <div style={{fontSize:12,fontFamily:"monospace",color:i===0?q.color:"#aaa"}}>{i===0?(isFinal?"🏁 WIN":"P1"):`+${e.gap}s`}</div>
+                            {e.timePenalty&&<div style={{fontSize:10,color:"#FF8800",fontWeight:700}}>+{e.timePenalty}s PEN</div>}
                             {isFinal&&e.points>0&&<div style={{fontSize:11,color:"#E8002D",fontWeight:700}}>+{e.points}pts</div>}
                             {isFinal&&posChg!==null&&posChg!==0&&<div style={{fontSize:10,color:posChg>0?"#44CC88":"#FF6644"}}>{posChg>0?`▲${posChg}`:`▼${Math.abs(posChg)}`}</div>}
                           </>}
