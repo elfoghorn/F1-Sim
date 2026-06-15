@@ -1151,10 +1151,12 @@ function runRace(grid, teams, track) {
     }
   }
 
-  // Crashes (0–2 per race; more on street circuits and in wet)
+  // Crashes (0–3 in wet, 0–2 dry; more on street circuits)
   const crashBase=track.type==="street"?0.65:0.40;
-  const crashProb=isWet?Math.min(0.88,crashBase+0.25):crashBase;
-  const numCrashes=Math.random()<crashProb?(Math.random()<0.35?2:1):0;
+  const crashProb=isWet?Math.min(0.95,crashBase+0.30):crashBase;
+  const numCrashes=isWet
+    ?(Math.random()<0.50?3:Math.random()<0.70?2:1)
+    :(Math.random()<crashProb?(Math.random()<0.35?2:1):0);
   for(let ci=0;ci<numCrashes;ci++){
     const crashD=pick(entries.filter(e=>!e.fl1));
     if(!crashD) continue;
