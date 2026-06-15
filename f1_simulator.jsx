@@ -1950,7 +1950,13 @@ function aggQual(n, drivers, teams, track) {
   const q3Avg=q3All.slice(0,10).map((e,i)=>({...e, q3Pos:i+1}));
   const q2Elim=q2Avg.filter(e=>e.elim2).sort((a,b)=>a.q2Pos-b.q2Pos);
   const q1Elim=q1Avg.filter(e=>e.elim1).sort((a,b)=>a.q1Pos-b.q1Pos);
-  const grid=[...q3Avg,...q2Elim,...q1Elim];
+  // Deduplicate by driver id (independent sorts can place same driver in multiple groups)
+  const gridSeen=new Set();
+  const grid=[...q3Avg,...q2Elim,...q1Elim].filter(e=>{
+    if(gridSeen.has(e.driver.id)) return false;
+    gridSeen.add(e.driver.id);
+    return true;
+  });
   const avgElim1=new Set(q1Elim.map(e=>e.driver.id));
   const avgElim2=new Set(q2Elim.map(e=>e.driver.id));
   const q1Display=displayRun?displayRun.q1.map(e=>({...e, elim1:avgElim1.has(e.driver.id)})):q1Avg;
@@ -1962,41 +1968,36 @@ function aggQual(n, drivers, teams, track) {
 // Aggregated race: run N times, average finish positions → canonical race
 function aggRace(n, grid, teams, track) {
   if(n<=1) return runRace(grid,teams,track);
-  const posAcc={}, dnfCount={}, dnfLaps={}, flCount={};
+  // Run n times to determine consensus weather/SC/FL, but use repRace positions
+  // directly so event-driven DNFs, time penalties and crashes are all preserved.
   let wetCount=0, scCount=0, scLapSum=0;
+  const flCount={};
   let repRace=null;
-  grid.forEach(({driver})=>{posAcc[driver.id]=[];dnfCount[driver.id]=0;dnfLaps[driver.id]=[];});
   for(let i=0;i<n;i++){
     const r=runRace(grid,teams,track);
     if(i===Math.floor(n/2)) repRace=r;
     if(r.isWet) wetCount++;
     if(r.hasSC){scCount++;scLapSum+=r.scLap;}
     if(r.fastestLap) flCount[r.fastestLap.id]=(flCount[r.fastestLap.id]||0)+1;
-    r.positions.forEach((e,idx)=>{
-      posAcc[e.driver.id].push(idx+1);
-      if(e.dnf){dnfCount[e.driver.id]++;if(e.dnfLap) dnfLaps[e.driver.id].push(e.dnfLap);}
-    });
   }
-  const avg=arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:0;
-  const canon=grid.map(({driver,team})=>{
-    const dnfR=dnfCount[driver.id]/n;
-    const isDNF=dnfR>=0.5;
-    const ap=avg(posAcc[driver.id]);
-    return {driver,team,gridPos:grid.findIndex(e=>e.driver.id===driver.id)+1,avgPos:ap,isDNF,dnfLap:isDNF&&dnfLaps[driver.id].length?Math.round(avg(dnfLaps[driver.id])):null,dnfRate:dnfR};
-  }).sort((a,b)=>a.isDNF!==b.isDNF?(a.isDNF?1:-1):a.avgPos-b.avgPos);
-  let cg=0;
-  canon.forEach((e,i)=>{
-    e.finalPos=i+1; e.dnf=e.isDNF;
-    e.points=(!e.isDNF&&i<10)?PTS[i]:0;
-    if(i===0){e.gap=0;}else if(e.isDNF){e.gap=null;}
-    else{cg=parseFloat((cg+Math.max(0.3,(e.avgPos-canon[0].avgPos)*0.9)).toFixed(3));e.gap=cg;}
+  // Use repRace positions as canonical — already has correct DNFs, penalties, gaps
+  const canon = repRace ? repRace.positions : runRace(grid,teams,track).positions;
+  // Deduplicate by driver id (safety net)
+  const canonSeen=new Set();
+  const dedupCanon=canon.filter(e=>{
+    if(canonSeen.has(e.driver.id)) return false;
+    canonSeen.add(e.driver.id);
+    return true;
+  });
+  dedupCanon.forEach((e,i)=>{
+    e.finalPos=i+1;
+    e.points=(!e.dnf&&i<10)?PTS[i]:0;
   });
   const flId=Object.entries(flCount).sort((a,b)=>b[1]-a[1])[0]?.[0];
   const fastestLap=flId?grid.find(e=>e.driver.id===flId)?.driver:null;
-  if(fastestLap){const fe=canon.find(e=>e.driver.id===fastestLap.id);if(fe&&!fe.isDNF&&fe.finalPos<=10)fe.points+=1;}
-
+  if(fastestLap){const fe=dedupCanon.find(e=>e.driver.id===fastestLap.id);if(fe&&!fe.dnf&&fe.finalPos<=10)fe.points+=1;}
   const qw=repRace?repRace.quarterWeather:null;
-  return {positions:canon,events:repRace?repRace.events:[],fastestLap,isWet:wetCount>=n/2,hasSC:scCount>=n/2,scLap:scCount?Math.round(scLapSum/scCount):0,totalLaps:track.laps,runsUsed:n,quarterStandings:buildQuarterStandings(canon,track.laps,qw),quarterWeather:qw,dryingLap:repRace?repRace.dryingLap:0,hasRF:repRace?repRace.hasRF:false,rfLap:repRace?repRace.rfLap:0,rfResumeLap:repRace?repRace.rfResumeLap:0};
+  return {positions:dedupCanon,events:repRace?repRace.events:[],fastestLap,isWet:wetCount>=n/2,hasSC:scCount>=n/2,scLap:scCount?Math.round(scLapSum/scCount):0,totalLaps:track.laps,runsUsed:n,quarterStandings:buildQuarterStandings(dedupCanon,track.laps,qw),quarterWeather:qw,dryingLap:repRace?repRace.dryingLap:0,hasRF:repRace?repRace.hasRF:false,rfLap:repRace?repRace.rfLap:0,rfResumeLap:repRace?repRace.rfResumeLap:0};
 }
 
 // Aggregated sprint: run N times, average positions → canonical sprint
