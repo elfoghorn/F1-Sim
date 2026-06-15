@@ -916,7 +916,7 @@ function runRace(grid, teams, track) {
   const paceRange = paceMax - paceMin || 1;
   // Pre-generate stable per-driver per-quarter noise (called once, not at render time)
   // Q0=start, Q1=25%, Q2=50%, Q3=75% — noise shrinks as race settles
-  const noiseScale = [0.55, 0.38, 0.20, 0.0]; // fraction of the 0-1 range
+  const noiseScale = [0.70, 0.45, 0.22, 0.0]; // Q1 very chaotic, settles by FINAL
   const driverNoise = entries.map(function() {
     return [0,1,2,3].map(function(qi){ return (Math.random()-0.5)*2*noiseScale[qi]; });
   });
@@ -1643,7 +1643,42 @@ function aggRace(n, grid, teams, track) {
   const flId=Object.entries(flCount).sort((a,b)=>b[1]-a[1])[0]?.[0];
   const fastestLap=flId?grid.find(e=>e.driver.id===flId)?.driver:null;
   if(fastestLap){const fe=canon.find(e=>e.driver.id===fastestLap.id);if(fe&&!fe.isDNF&&fe.finalPos<=10)fe.points+=1;}
-  return {positions:canon,events:repRace?.events||[],fastestLap,isWet:wetCount>=n/2,hasSC:scCount>=n/2,scLap:scCount?Math.round(scLapSum/scCount):0,totalLaps:track.laps,runsUsed:n};
+
+  // Build quarter standings from averaged positions so multi-run mode still
+  // shows genuinely different leaders per quarter.
+  const nDrivers = canon.length || 1;
+  const avgPosMin = canon[0]?.avgPos || 1;
+  const avgPosMax = canon[nDrivers-1]?.avgPos || nDrivers;
+  const avgPosRange = avgPosMax - avgPosMin || 1;
+  const qNoiseScale = [0.55, 0.38, 0.20, 0.0];
+  const qDriverNoise = canon.map(function(){ return [0,1,2,3].map(function(qi){ return (Math.random()-0.5)*2*qNoiseScale[qi]; }); });
+  const qPitBonus   = [0,1,2].map(function(){ return Math.floor(Math.random()*Math.min(10,nDrivers)); });
+  const qBlends     = [0.18, 0.42, 0.70, 1.0];
+  const qFracs      = [0.25, 0.50, 0.75, 1.0];
+  const aggQuarterStandings = qBlends.map(function(blend, qi){
+    var frac = qFracs[qi];
+    var scored = canon.map(function(e, ei){
+      // gridNorm: 1=pole, 0=last; avgPosNorm: 1=best average, 0=worst
+      var gridNorm = (nDrivers - e.gridPos) / (nDrivers - 1);
+      var avgNorm  = 1 - (e.avgPos - avgPosMin) / avgPosRange;
+      var noise    = qDriverNoise[ei][qi];
+      var pitBoost = (qi < 3 && qPitBonus[qi] === ei) ? 0.20 : 0;
+      var score    = gridNorm*(1-blend) + avgNorm*blend + noise + pitBoost;
+      var dnfLapQ  = e.dnf ? (e.dnfLap || 1) : null;
+      var retired  = dnfLapQ !== null && dnfLapQ <= Math.floor(track.laps * frac);
+      return { e: e, score: retired ? -9999 : score, retired: retired };
+    });
+    scored.sort(function(a,b){ return b.score - a.score; });
+    var qg = 0;
+    return scored.map(function(s, i){
+      var e = s.e;
+      if(i===0) qg=0;
+      else if(!s.retired){ var diff=(scored[0].score-s.score)*28; qg=Math.max(qg+Math.random()*1.5,diff>0?diff:qg+0.4); }
+      return { driver:e.driver, team:e.team, pos:i+1, gap:s.retired?null:(i===0?0:parseFloat(qg.toFixed(2))), dnf:s.retired, dnfLap:s.retired?e.dnfLap:null, gridPos:e.gridPos };
+    });
+  });
+
+  return {positions:canon,events:repRace?.events||[],fastestLap,isWet:wetCount>=n/2,hasSC:scCount>=n/2,scLap:scCount?Math.round(scLapSum/scCount):0,totalLaps:track.laps,runsUsed:n,quarterStandings:aggQuarterStandings};
 }
 
 // Aggregated sprint: run N times, average positions → canonical sprint
