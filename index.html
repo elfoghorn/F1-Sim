@@ -18054,28 +18054,42 @@ function runSprint(grid, teams, track) {
 // swap chaos and widen gaps (rain causes unpredictability).
 function buildQuarterStandings(finalPositions, totalLaps, quarterWeather) {
   var qw = quarterWeather || [{wet:false,sc:false},{wet:false,sc:false},{wet:false,sc:false},{wet:false,sc:false}];
-  // Base swap windows — wet weather adds extra positions of chaos
   var baseSwap  = [7, 4, 2, 0];
-  // Gap scale [min, max] seconds — wider when wet
   var gapScales = [[0.3,2.2],[0.8,4.5],[1.5,7.0],[null,null]];
+
+  // Deduplicate by driver id and cap at 22 — prevents any upstream duplication showing in standings
+  var seenQ={};
+  var uniquePositions = finalPositions.filter(function(e){
+    var id=e.driver&&e.driver.id;
+    if(!id||seenQ[id]) return false;
+    seenQ[id]=true;
+    return true;
+  }).slice(0,22);
 
   return [0,1,2,3].map(function(qi) {
     var TLq    = Math.floor(totalLaps * [0.25,0.50,0.75,1.0][qi]);
     var isWetQ = qw[qi] && qw[qi].wet;
     var hasSCQ = qw[qi] && qw[qi].sc;
     var hasRFQ = qw[qi] && qw[qi].rf;
-    // Red flag causes standing restart — big position shuffle possible, like a new race start
     var window = baseSwap[qi] + (isWetQ ? 4 : 0) + (hasSCQ ? 2 : 0) + (hasRFQ ? 5 : 0);
 
-    // Q4 = exact final positions with real gaps
+    // Q4 = exact final positions — DNFs already sorted to the back, one entry per driver
     if(qi === 3) {
-      return finalPositions.map(function(e,i){
-        return {driver:e.driver,team:e.team,pos:i+1,gap:e.gap,dnf:e.dnf,dnfLap:e.dnfLap,gridPos:e.gridPos,weather:qw[qi]};
+      return uniquePositions.map(function(e,i){
+        return {driver:e.driver,team:e.team,pos:i+1,gap:e.dnf?null:e.gap,dnf:!!e.dnf,dnfLap:e.dnfLap||null,dnfReason:e.dnfReason||null,gridPos:e.gridPos,timePenalty:e.timePenalty||null,points:e.points||0,weather:qw[qi]};
       });
     }
 
-    // Copy and shuffle within window
-    var order = finalPositions.slice();
+    // Split into active (not yet DNF'd at this quarter) and already-retired
+    // A driver is retired at this quarter if they have a dnf and dnfLap <= this quarter's last lap
+    var preDNF=[], stillRacing=[];
+    uniquePositions.forEach(function(e){
+      if(e.dnf && e.dnfLap && e.dnfLap <= TLq) preDNF.push(e);
+      else stillRacing.push(e);
+    });
+
+    // Shuffle only the still-racing drivers within the swap window
+    var order = stillRacing.slice();
     var swapCount = window * 3;
     for(var s = 0; s < swapCount; s++) {
       var idx    = Math.floor(Math.random() * order.length);
@@ -18084,30 +18098,30 @@ function buildQuarterStandings(finalPositions, totalLaps, quarterWeather) {
       if(idx !== target) { var tmp=order[idx]; order[idx]=order[target]; order[target]=tmp; }
     }
 
-    // Drivers who DNF'd before this lap go to the back
-    var active=[], retired=[];
-    order.forEach(function(e){
-      var dnfLap=e.dnf?(e.dnfLap||1):null;
-      if(dnfLap!==null&&dnfLap<=TLq) retired.push(e);
-      else active.push(e);
-    });
-    var sorted=active.concat(retired);
+    // DNF drivers sorted by dnfLap desc (retired latest first), appended at back
+    preDNF.sort(function(a,b){ return (b.dnfLap||0)-(a.dnfLap||0); });
+    var sorted = order.concat(preDNF);
 
-    // Fresh gap values — wet widens, SC/RF bunch the field
+    // Fresh gap values for still-racing drivers only
     var gs=gapScales[qi];
     var wetMult=isWetQ?1.4:1.0;
     var scMult =hasSCQ?0.6:1.0;
-    var rfMult =hasRFQ?0.4:1.0; // Red flag restart: field bunched tightest of all
+    var rfMult =hasRFQ?0.4:1.0;
     var qg=0;
     return sorted.map(function(e,i){
-      var isDNF=retired.indexOf(e)!==-1;
-      if(i>0&&!isDNF){
+      var isDNF = preDNF.indexOf(e) !== -1;
+      if(i > 0 && !isDNF){
         var step=(gs[0]+Math.random()*(gs[1]-gs[0]))*wetMult*scMult*rfMult;
         if(i<=2) step*=0.45;
         else if(i>=10) step*=1.5;
         qg=parseFloat((qg+step).toFixed(2));
       }
-      return {driver:e.driver,team:e.team,pos:i+1,gap:isDNF?null:(i===0?0:qg),dnf:isDNF,dnfLap:isDNF?e.dnfLap:null,gridPos:e.gridPos,weather:qw[qi]};
+      return {
+        driver:e.driver, team:e.team, pos:i+1,
+        gap:isDNF?null:(i===0?0:qg),
+        dnf:isDNF, dnfLap:isDNF?e.dnfLap:null, dnfReason:isDNF?(e.dnfReason||null):null,
+        gridPos:e.gridPos, weather:qw[qi]
+      };
     });
   });
 }
