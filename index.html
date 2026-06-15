@@ -17477,7 +17477,36 @@ const PIT_DISASTERS = [
   {icon:"💥",type:"pitstop",label:"PIT NIGHTMARE",texts:["Lollipop error — released into traffic!","Wrong compound fitted — back to the box!","Unsafe release — five-second penalty incoming!","Front wing not secured — pit again next lap!"]},
   {icon:"⚠️",type:"strategy",label:"TYRE GAMBLE",texts:["Radical call — {cpd} tyres on? Bold.","Staying out on worn rubber — risky!","They're gambling on rain! Inters going on dry tyres.","Boxing early — going for the undercut on everyone!"]},
 ];
-const EVT_C      = {incident:"#FF4444",dnf:"#FF6644",safetycar:"#FFC906",weather:"#4488FF",charge:"#44CC88",fastestlap:"#CC44FF",battle:"#FF8844",pitstop:"#44AAFF",slowstop:"#FF8800",drop:"#FF8844",start:"#E8002D",strategy:"#BB66FF",redflag:"#FF0000"};
+const EVT_C      = {incident:"#FF4444",dnf:"#FF6644",safetycar:"#FFC906",vsc:"#FFDD44",weather:"#4488FF",charge:"#44CC88",fastestlap:"#CC44FF",battle:"#FF8844",pitstop:"#44AAFF",slowstop:"#FF8800",drop:"#FF8844",start:"#E8002D",strategy:"#BB66FF",redflag:"#FF0000",damage:"#FF6600"};
+
+const OFF_TRACK_MSGS = [
+  "{d} runs wide through turn {t} — four wheels over the white line! Gravel scattered across the racing line.",
+  "{d} locks up under braking and goes off at the chicane! Car bounces through the gravel trap.",
+  "{d} loses the rear and spins — slides backwards into the gravel! Marshals on standby.",
+  "{d} pushed wide by a rival and loses the car over the kerbs — gravel everywhere.",
+  "{d} misjudges the entry and spears off into the gravel. Extraordinary save to keep it going.",
+  "{d} half-pirouettes at the exit — tyres shredded by gravel, flat-spotted badly.",
+];
+const GRAVEL_MSGS = [
+  "🪨 Gravel deposited at turn {t} from {d}'s excursion — VIRTUAL SAFETY CAR DEPLOYED.",
+  "🪨 Debris and gravel scattered across the racing line — stewards request a VSC period.",
+  "🪨 Gravel brought onto the circuit. Track limits compromised — VSC called immediately.",
+  "🪨 Significant gravel on the apex of turn {t}. Marshals cannot clear without a VSC.",
+];
+const ENGINE_FAIL_MSGS = [
+  "{d} has catastrophic ENGINE FAILURE — plume of white smoke from the rear! Car stops on track.",
+  "{d} reports a sudden power loss — 'ENGINE, ENGINE!' on the radio. Car coasting to a halt.",
+  "RETIREMENT: {d} — engine let go spectacularly on the main straight. Fire extinguisher deployed.",
+  "{d} pulls over at turn {t} — 'I've lost all power.' Engine gone. Race over for {abbr}.",
+];
+const DAMAGE_MSGS = [
+  "{d} pits with significant front wing damage — something picked up from a kerb strike.",
+  "{d} reports a PUNCTURE! Limping back to the pits on a destroyed tyre.",
+  "{d}'s floor badly damaged after riding a kerb. Handling described as 'undriveable' on the radio.",
+  "{d} has lost a rear wing endplate — must pit immediately. Aero balance destroyed.",
+  "{d} reports brake-by-wire failure. Pitting for investigation — race effectively over.",
+  "{d} with massive floor damage — generating sparks on every straight. Pace destroyed.",
+];
 
 const pick  = a => a[Math.floor(Math.random()*a.length)];
 const pickN = (a,n) => [...a].sort(()=>Math.random()-0.5).slice(0,n);
@@ -18344,6 +18373,117 @@ function runRace(grid, teams, track) {
   if(finishers.length>=20){
     const[bk1,bk2]=finishers.slice(-4);
     if(bk1&&bk2) events.push({lap:Lf(TL,0.65),type:"battle",icon:"🔥",text:`Lap ${Lf(TL,0.65)}: ${bk1.driver.name} and ${bk2.driver.name} — their own battle at the back.`});
+  }
+
+  // ── Mid-race incidents: off-track, gravel, crashes, engine failures, damage ─
+  const _turn=()=>Math.floor(Math.random()*16)+1;
+  const _fmt=(s,d)=>s.replace(/{d}/g,d.driver.name).replace(/{t}/g,_turn()).replace(/{abbr}/g,d.team.abbr||d.team.name);
+
+  // Off-track excursions (1–3 per race, more in wet)
+  const offTrackCount=isWet?Math.floor(Math.random()*3)+1:Math.floor(Math.random()*2)+(Math.random()<0.55?1:0);
+  for(let oi=0;oi<offTrackCount;oi++){
+    const offD=pick(entries.filter(e=>!e.dnf||e.dnfLap>Lf(TL,0.15)));
+    if(!offD) continue;
+    const offLap=Lf(TL,0.08)+Math.floor(Math.random()*Lf(TL,0.78));
+    const offMsg=_fmt(pick(OFF_TRACK_MSGS),offD);
+    events.push({lap:offLap,type:"incident",icon:"🪨",text:`Lap ${offLap}: ${offMsg}`});
+    // Gravel deposited — 70% chance of VSC (higher in wet/street), 15% chance of full SC
+    const gravelR=Math.random();
+    const scThresh=isWet||track.type==="street"?0.22:0.15;
+    const vscThresh=isWet?0.90:0.70;
+    if(gravelR<scThresh){
+      const gscEnd=offLap+Math.floor(Math.random()*3)+2;
+      events.push({lap:offLap,type:"safetycar",icon:"🚗",text:`SAFETY CAR deployed — lap ${offLap}. ${_fmt(pick(GRAVEL_MSGS),offD).replace("VIRTUAL SAFETY CAR DEPLOYED","gravel on the racing line")} Marshals need time to clear.`});
+      events.push({lap:gscEnd,type:"safetycar",icon:"🟢",text:`Green flag lap ${gscEnd}! Gravel cleared — racing resumes.`});
+    } else if(gravelR<vscThresh){
+      const vscEnd=offLap+Math.floor(Math.random()*2)+1;
+      events.push({lap:offLap,type:"vsc",icon:"🟡",text:`VIRTUAL SAFETY CAR — lap ${offLap}. ${_fmt(pick(GRAVEL_MSGS),offD)} Clears lap ${vscEnd}.`});
+      events.push({lap:vscEnd,type:"vsc",icon:"🟢",text:`VSC ENDING — lap ${vscEnd}. Track clear. Gaps frozen during the VSC period.`});
+    }
+  }
+
+  // Crashes (0–3 in wet, 0–2 dry; more on street circuits)
+  const crashBase=track.type==="street"?0.65:0.40;
+  const crashProb=isWet?Math.min(0.95,crashBase+0.30):crashBase;
+  const numCrashes=isWet
+    ?(Math.random()<0.50?3:Math.random()<0.70?2:1)
+    :(Math.random()<crashProb?(Math.random()<0.35?2:1):0);
+  for(let ci=0;ci<numCrashes;ci++){
+    const crashD=pick(entries.filter(e=>!e.fl1));
+    if(!crashD) continue;
+    const crashLap=Lf(TL,0.10)+Math.floor(Math.random()*Lf(TL,0.72));
+    const crashR=Math.random();
+    if(crashR<0.45){
+      // DNF crash — big impact → SC
+      addEventDNF(crashD.driver,crashLap,isWet?"aquaplaned into barrier":"barrier impact");
+      const scEndC=crashLap+Math.floor(Math.random()*4)+2;
+      events.push({lap:crashLap,type:"dnf",icon:"💥",text:`LAP ${crashLap}: CRASH! ${crashD.driver.name} (${crashD.team.name}) HITS THE BARRIER${isWet?" — aquaplaning in the wet":""}! Car is destroyed. DNF.`});
+      events.push({lap:crashLap,type:"safetycar",icon:"🚗",text:`SAFETY CAR — lap ${crashLap}. Wreckage to clear after the ${crashD.driver.name} incident. Gaps erased.`});
+      events.push({lap:scEndC,type:"safetycar",icon:"🟢",text:`Green flag lap ${scEndC}! Debris cleared. Pack sprints into turn 1 — fireworks expected.`});
+    } else if(crashR<0.75){
+      // Significant contact → 5s penalty + VSC or SC
+      const secondD=pick(entries.filter(e=>e!==crashD&&!e.dnf));
+      addPenalty(crashD.driver,5);
+      const scEndC=crashLap+Math.floor(Math.random()*3)+1;
+      const deployType=Math.random()<0.5?"safetycar":"vsc";
+      events.push({lap:crashLap,type:"incident",icon:"💥",text:`LAP ${crashLap}: COLLISION — ${crashD.driver.name} into ${secondD?secondD.driver.name:"the wall"}! Both continue. Stewards investigating.`});
+      events.push({lap:crashLap,type:deployType,icon:deployType==="safetycar"?"🚗":"🟡",text:`${deployType==="safetycar"?"SAFETY CAR":"VIRTUAL SAFETY CAR"} — lap ${crashLap}. Debris from the contact. 5-SECOND TIME PENALTY for ${crashD.driver.name}.`});
+      events.push({lap:scEndC,type:deployType,icon:"🟢",text:`${deployType==="safetycar"?"Green flag":"VSC ending"} lap ${scEndC}. Racing resumes.`});
+    } else {
+      // Close call — minor VSC or nothing
+      const secondD=pick(entries.filter(e=>e!==crashD&&!e.dnf));
+      events.push({lap:crashLap,type:"incident",icon:"⚠️",text:`LAP ${crashLap}: ${crashD.driver.name} and ${secondD?secondD.driver.name:"a backmarker"} make contact — both carry on. Damage possible.`});
+      if(Math.random()<0.40){
+        const vscEndC=crashLap+1;
+        events.push({lap:crashLap,type:"vsc",icon:"🟡",text:`VIRTUAL SAFETY CAR — lap ${crashLap}. Carbon fibre on the racing line from the ${crashD.driver.name} incident.`});
+        events.push({lap:vscEndC,type:"vsc",icon:"🟢",text:`VSC ENDING — lap ${vscEndC}. Track clear.`});
+      }
+    }
+  }
+
+  // Engine failures (0–2 per race based on reliability)
+  const avgReliability=entries.reduce((s,e)=>{const ts=getTeamStats(e.team);return s+(ts.reliability||85);},0)/entries.length;
+  const engineFailProb=Math.max(0.12,Math.min(0.55,(105-avgReliability)/100+(isWet?0.08:0)));
+  const numEngineFailures=Math.random()<engineFailProb?(Math.random()<0.25?2:1):0;
+  for(let ei=0;ei<numEngineFailures;ei++){
+    // Prefer midfield/backmarker for engine failure
+    const failPool=entries.filter(e=>!e.dnf&&!eventDNFs[e.driver.id]);
+    if(failPool.length===0) continue;
+    const failD=pick(failPool.slice(Math.floor(failPool.length*0.2)));
+    const failLap=Lf(TL,0.12)+Math.floor(Math.random()*Lf(TL,0.70));
+    addEventDNF(failD.driver,failLap,pick(["engine failure","power unit failure","hydraulics failure","MGU-K failure"]));
+    const msg=_fmt(pick(ENGINE_FAIL_MSGS),failD);
+    events.push({lap:failLap,type:"dnf",icon:"🔧",text:`LAP ${failLap}: ${msg}`});
+    // Engine fires / spectacular failures may need VSC
+    if(Math.random()<0.45){
+      const vscEndE=failLap+1;
+      events.push({lap:failLap,type:"vsc",icon:"🟡",text:`VIRTUAL SAFETY CAR — lap ${failLap}. ${failD.driver.name}'s stricken car to be recovered from the track.`});
+      events.push({lap:vscEndE,type:"vsc",icon:"🟢",text:`VSC ENDING — lap ${vscEndE}. Car recovered. Racing resumes at full speed.`});
+    }
+  }
+
+  // Car damage (mid-race): 0–2 incidents affecting pace (not always a DNF)
+  const numDamage=Math.random()<(isWet?0.55:0.35)?(Math.random()<0.30?2:1):0;
+  for(let di=0;di<numDamage;di++){
+    const dmgPool=entries.filter(e=>!e.dnf&&!eventDNFs[e.driver.id]);
+    if(dmgPool.length===0) continue;
+    const dmgD=pick(dmgPool);
+    const dmgLap=Lf(TL,0.15)+Math.floor(Math.random()*Lf(TL,0.65));
+    const dmgMsg=_fmt(pick(DAMAGE_MSGS),dmgD);
+    const dmgSeverity=Math.random();
+    if(dmgSeverity<0.30){
+      // Serious — DNF (can't continue)
+      addEventDNF(dmgD.driver,dmgLap,pick(["suspension failure","puncture — barrier impact","brake failure"]));
+      events.push({lap:dmgLap,type:"damage",icon:"💥",text:`LAP ${dmgLap}: ${dmgMsg} TERMINAL — car cannot continue. DNF for ${dmgD.driver.name}.`});
+      if(Math.random()<0.35){
+        const vscEndD=dmgLap+1;
+        events.push({lap:dmgLap,type:"vsc",icon:"🟡",text:`VIRTUAL SAFETY CAR — lap ${dmgLap}. Debris from ${dmgD.driver.name}'s car on the circuit.`});
+        events.push({lap:vscEndD,type:"vsc",icon:"🟢",text:`VSC ENDING — lap ${vscEndD}. Track clear.`});
+      }
+    } else {
+      // Survivable — driver continues but pace is hurt (reflected in commentary)
+      events.push({lap:dmgLap,type:"damage",icon:"🔧",text:`LAP ${dmgLap}: ${dmgMsg} Racing on but losing time every lap.`});
+    }
   }
 
   // ── Apply event-driven DNFs ───────────────────────────────────────────────
