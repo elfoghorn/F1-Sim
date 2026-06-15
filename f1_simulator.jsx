@@ -907,27 +907,47 @@ function runRace(grid, teams, track) {
 
   events.sort((a,b)=>a.lap-b.lap);
 
-  // ── Quarter standings: interpolate grid → final over 4 stages ──
-  const quarterStandings = [0.25, 0.50, 0.75, 1.0].map((frac, qi) => {
-    // blend ratio: how far toward final result we are at this quarter
-    const blend = [0.25, 0.50, 0.78, 1.0][qi];
-    // build a score for each driver: grid-based score blended toward pace-based final
-    const scored = entries.map((e) => {
-      const gridScore = (entries.length - e.gridPos) * (1 - blend);
-      const paceScore = e.pace * blend;
-      // drivers who DNF before this quarter lap show as DNF already
-      const dnfLapThisQ = e.dnf ? (e.dnfLap||1) : null;
-      const alreadyDNF = dnfLapThisQ !== null && dnfLapThisQ <= Math.floor(TL * frac);
-      return { entry: e, score: alreadyDNF ? -9999 : gridScore + paceScore + (Math.random()-0.5)*3*(1-blend)*8, alreadyDNF };
+  // ── Quarter standings: each quarter has genuinely different positions ──
+  // Normalize grid rank (0–1, pole=1) and pace (0–1) to the same scale,
+  // then blend them, plus per-driver per-quarter noise so standings shift.
+  const n = entries.length || 1;
+  const paceMin = Math.min.apply(null, entries.map(function(e){return e.pace;}));
+  const paceMax = Math.max.apply(null, entries.map(function(e){return e.pace;}));
+  const paceRange = paceMax - paceMin || 1;
+  // Pre-generate stable per-driver per-quarter noise (called once, not at render time)
+  // Q0=start, Q1=25%, Q2=50%, Q3=75% — noise shrinks as race settles
+  const noiseScale = [0.55, 0.38, 0.20, 0.0]; // fraction of the 0-1 range
+  const driverNoise = entries.map(function() {
+    return [0,1,2,3].map(function(qi){ return (Math.random()-0.5)*2*noiseScale[qi]; });
+  });
+  // Pit-stop chaos: one random driver per quarter gets a ~0.25 boost (pit window gamble)
+  const pitBeneficiary = [0,1,2].map(function(){
+    return Math.floor(Math.random()*Math.min(10, n));
+  });
+
+  const blends = [0.18, 0.42, 0.70, 1.0]; // Q1 very grid-like, Q3 near-final
+  const fracs  = [0.25, 0.50, 0.75, 1.0];
+
+  const quarterStandings = blends.map(function(blend, qi) {
+    var frac = fracs[qi];
+    var scored = entries.map(function(e, ei) {
+      var gridNorm = (n - e.gridPos) / (n - 1);          // 1.0 = pole, 0.0 = last
+      var paceNorm = (e.pace - paceMin) / paceRange;      // 1.0 = fastest pace
+      var noise    = driverNoise[ei][qi];
+      var pitBoost = (qi < 3 && pitBeneficiary[qi] === ei) ? 0.18 : 0;
+      var score    = gridNorm * (1 - blend) + paceNorm * blend + noise + pitBoost;
+      var dnfLapQ  = e.dnf ? (e.dnfLap || 1) : null;
+      var alreadyDNF = dnfLapQ !== null && dnfLapQ <= Math.floor(TL * frac);
+      return { entry: e, score: alreadyDNF ? -9999 : score, alreadyDNF: alreadyDNF };
     });
-    scored.sort((a,b) => b.score - a.score);
-    let qGap = 0;
-    return scored.map((s, i) => {
-      const e = s.entry;
+    scored.sort(function(a,b){ return b.score - a.score; });
+    var qGap = 0;
+    return scored.map(function(s, i) {
+      var e = s.entry;
       if(i === 0) qGap = 0;
       else if(!s.alreadyDNF) {
-        const diff = (scored[0].score - s.score) * 0.4;
-        qGap = Math.max(qGap + Math.random()*1.8, diff > 0 ? diff : qGap + 0.3);
+        var diff = (scored[0].score - s.score) * 28;
+        qGap = Math.max(qGap + Math.random()*1.5, diff > 0 ? diff : qGap + 0.4);
       }
       return {
         driver: e.driver,
