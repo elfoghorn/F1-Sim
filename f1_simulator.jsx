@@ -221,7 +221,12 @@ const PTS        = [25,18,15,12,10,8,6,4,2,1];
 const SPRINT_PTS = [8,7,6,5,4,3,2,1];
 const CPDS       = ["Softs","Mediums","Hards","Intermediates"];
 const FAIL       = ["engine failure","hydraulics failure","gearbox failure","suspension damage","power unit issue","brake failure","water pressure loss"];
-const EVT_C      = {incident:"#FF4444",dnf:"#FF6644",safetycar:"#FFC906",weather:"#4488FF",charge:"#44CC88",fastestlap:"#CC44FF",battle:"#FF8844",pitstop:"#44AAFF",drop:"#FF8844",start:"#E8002D",strategy:"#BB66FF"};
+const PIT_DISASTERS = [
+  {icon:"⚠️",type:"slowstop",label:"SLOW STOP",texts:["Tyre stuck on — {t}s lost!","Wheel gun issue — {t}s in the box!","Air gun failure — {t}s stationary!","Nut cross-threaded — {t}s lost!"]},
+  {icon:"💥",type:"pitstop",label:"PIT NIGHTMARE",texts:["Lollipop error — released into traffic!","Wrong compound fitted — back to the box!","Unsafe release — five-second penalty incoming!","Front wing not secured — pit again next lap!"]},
+  {icon:"⚠️",type:"strategy",label:"TYRE GAMBLE",texts:["Radical call — {cpd} tyres on? Bold.","Staying out on worn rubber — risky!","They're gambling on rain! Inters going on dry tyres.","Boxing early — going for the undercut on everyone!"]},
+];
+const EVT_C      = {incident:"#FF4444",dnf:"#FF6644",safetycar:"#FFC906",weather:"#4488FF",charge:"#44CC88",fastestlap:"#CC44FF",battle:"#FF8844",pitstop:"#44AAFF",slowstop:"#FF8800",drop:"#FF8844",start:"#E8002D",strategy:"#BB66FF"};
 
 const pick  = a => a[Math.floor(Math.random()*a.length)];
 const pickN = (a,n) => [...a].sort(()=>Math.random()-0.5).slice(0,n);
@@ -815,39 +820,57 @@ function runRace(grid, teams, track) {
     const [x,y]=pickN(grp,2);
     if(x&&y) events.push({lap,type:"battle",icon:"🔥",text:`Lap ${lap}: ${x.driver.name} and ${y.driver.name} nose-to-tail in ${lbl}.`});
   });
-  const p1b=Lf(TL,0.30);
-  pickN(finishers.slice(0,Math.min(10,finishers.length)),5).forEach((e,i)=>{
-    const lap=p1b+i*2;
+  // ── Pit stop helper: normal, slow, or disaster ──
+  const pitEvent=(e,lap,stopNum)=>{
     const strat=getTeamStrategy(e.team);
-    const stratNote=strat?_pick(strat.lapNotes||["Executing team strategy"]):"";
-    const tyreNote=pick(CPDS);
-    const stratContext=_pick([
-      `${strat?.name||"team"} plan in action.`,
-      `${stratNote}.`,
-      `${strat?.icon||"♟️"} ${strat?.name||"Strategy"}: ${stratNote}.`,
-    ]);
-    events.push({lap,type:"pitstop",icon:"🔄",text:`LAP ${lap}: ${e.driver.name} (${e.team.name}) pits for ${tyreNote}. ${stratContext}`});
+    const cpd=pick(CPDS);
+    const r=Math.random();
+    if(r<0.10){
+      // Disaster stop
+      const d=pick(PIT_DISASTERS.slice(1,2));
+      const txt=pick(d.texts).replace("{cpd}",cpd);
+      return {lap,type:d.type,icon:d.icon,text:`LAP ${lap}: ${e.driver.name} (${e.team.name}) — ${txt}`};
+    } else if(r<0.28){
+      // Slow stop
+      const secs=(4+Math.random()*6).toFixed(1);
+      const txt=pick(PIT_DISASTERS[0].texts).replace("{t}",secs);
+      return {lap,type:"slowstop",icon:"⚠️",text:`LAP ${lap}: ${e.driver.name} pits — ${txt} Eventually exits on ${cpd}.`};
+    } else if(r<0.38){
+      // Bold tyre gamble
+      const d=PIT_DISASTERS[2];
+      const txt=pick(d.texts).replace("{cpd}",cpd);
+      return {lap,type:"strategy",icon:"♟️",text:`LAP ${lap}: ${e.driver.name} (${e.team.name}) — ${txt}`};
+    } else {
+      const stratNote=strat?_pick(strat.lapNotes||["Executing team strategy"]):"";
+      const pitTime=(2.0+Math.random()*0.9).toFixed(1);
+      const stopLabel=stopNum===1?"First stop":stopNum===2?"Second stop":"Final stop";
+      return {lap,type:"pitstop",icon:"🔄",text:`LAP ${lap}: ${e.driver.name} (${e.team.name}) pits — ${cpd} fitted in ${pitTime}s. ${stopLabel}. ${stratNote||""}`};
+    }
+  };
+
+  const p1b=Lf(TL,0.25);
+  pickN(finishers.slice(0,Math.min(12,finishers.length)),6).forEach((e,i)=>{
+    events.push(pitEvent(e,p1b+i*2,1));
   });
   if(finishers.length>=4){
     const[u1,u2]=finishers.slice(1,5);
-    if(u1&&u2) events.push({lap:p1b+3,type:"strategy",icon:"♟️",text:`LAP ${p1b+3}: ${u1.driver.name} attempts the undercut on ${u2.driver.name}.`});
+    if(u1&&u2) events.push({lap:p1b+4,type:"strategy",icon:"♟️",text:`LAP ${p1b+4}: ${u1.driver.name} attempts the undercut on ${u2.driver.name} — will it work?`});
   }
   [[0,1],[2,3],[5,6],[8,9],[11,12],[14,15],[17,18]].forEach(([a,b],idx)=>{
     if(!finishers[a]||!finishers[b]) return;
-    const lap=Lf(TL,0.42)+idx*Math.floor(TL*0.025);
+    const lap=Lf(TL,0.38)+idx*Math.floor(TL*0.025);
     events.push({lap,type:"battle",icon:"🔥",text:`Lap ${lap}: ${finishers[a].driver.name} vs ${finishers[b].driver.name} — DRS! Side by side!`});
   });
   if(hasSC){
     events.push({lap:scLap,type:"safetycar",icon:"🚗",text:`SAFETY CAR lap ${scLap}! Field bunches. Strategy chaos across the pitlane.`});
     const scF=finishers.length>3?pick(finishers.slice(3,Math.min(10,finishers.length))):null;
-    if(scF) events.push({lap:scLap+1,type:"pitstop",icon:"🔄",text:`LAP ${scLap+1}: ${scF.driver.name} dives in under the safety car — free stop!`});
+    if(scF) events.push(pitEvent(scF,scLap+1,2));
     events.push({lap:scEnd,type:"safetycar",icon:"🟢",text:`Green flag lap ${scEnd}! Safety car in — gaps erased, racing resumes.`});
   }
   entries.filter(e=>e.dnf&&!e.fl1&&e.dnfLap>1).forEach(e=>events.push({lap:e.dnfLap,type:"dnf",icon:"🔧",text:`LAP ${e.dnfLap}: RETIREMENT — ${e.driver.name} (${e.team.name}) — ${pick(FAIL)}.`}));
-  const p2b=Lf(TL,0.57);
-  pickN(finishers.slice(0,Math.min(10,finishers.length)),4).forEach((e,i)=>{
-    const lap=p2b+i*2;
-    events.push({lap,type:"pitstop",icon:"🔄",text:`LAP ${lap}: ${e.driver.name} pits — ${pick(CPDS)} fitted. ${Math.random()<0.5?"Second stop.":"Final stop."}`});
+  const p2b=Lf(TL,0.55);
+  pickN(finishers.slice(0,Math.min(12,finishers.length)),6).forEach((e,i)=>{
+    events.push(pitEvent(e,p2b+i*2,2));
   });
   final.forEach((e,fi)=>{
     const ch=(e.gridPos-1)-fi;
@@ -883,7 +906,42 @@ function runRace(grid, teams, track) {
   });
 
   events.sort((a,b)=>a.lap-b.lap);
-  return {positions:final,events,fastestLap:flD?.driver||null,isWet,hasSC,scLap,totalLaps:TL};
+
+  // ── Quarter standings: interpolate grid → final over 4 stages ──
+  const quarterStandings = [0.25, 0.50, 0.75, 1.0].map((frac, qi) => {
+    // blend ratio: how far toward final result we are at this quarter
+    const blend = [0.25, 0.50, 0.78, 1.0][qi];
+    // build a score for each driver: grid-based score blended toward pace-based final
+    const scored = entries.map((e) => {
+      const gridScore = (entries.length - e.gridPos) * (1 - blend);
+      const paceScore = e.pace * blend;
+      // drivers who DNF before this quarter lap show as DNF already
+      const dnfLapThisQ = e.dnf ? (e.dnfLap||1) : null;
+      const alreadyDNF = dnfLapThisQ !== null && dnfLapThisQ <= Math.floor(TL * frac);
+      return { entry: e, score: alreadyDNF ? -9999 : gridScore + paceScore + (Math.random()-0.5)*3*(1-blend)*8, alreadyDNF };
+    });
+    scored.sort((a,b) => b.score - a.score);
+    let qGap = 0;
+    return scored.map((s, i) => {
+      const e = s.entry;
+      if(i === 0) qGap = 0;
+      else if(!s.alreadyDNF) {
+        const diff = (scored[0].score - s.score) * 0.4;
+        qGap = Math.max(qGap + Math.random()*1.8, diff > 0 ? diff : qGap + 0.3);
+      }
+      return {
+        driver: e.driver,
+        team: e.team,
+        pos: i + 1,
+        gap: s.alreadyDNF ? null : (i === 0 ? 0 : parseFloat(qGap.toFixed(2))),
+        dnf: s.alreadyDNF,
+        dnfLap: s.alreadyDNF ? e.dnfLap : null,
+        gridPos: e.gridPos,
+      };
+    });
+  });
+
+  return {positions:final,events,fastestLap:flD?.driver||null,isWet,hasSC,scLap,totalLaps:TL,quarterStandings};
 }
 
 // ===================== CANVAS DOWNLOAD =====================
@@ -3863,6 +3921,7 @@ export default function F1Sim(){
   const [sprint,setSprint]=useState(null);
   const [race,setRace]=useState(null);
   const [stages,setStages]=useState(null);
+  const [raceQuarter,setRaceQuarter]=useState(0);
   const [isGen,setIsGen]=useState(false);
   const [genMsg,setGenMsg]=useState("");
   const [modal,setModal]=useState(null);
@@ -4052,7 +4111,7 @@ export default function F1Sim(){
   const doRace=()=>{
     if(!qual) return;
     setRace(aggRace(runAccuracy,qual.grid,teams,track));
-    setRaceSaved(false); setView("race");
+    setRaceSaved(false); setRaceQuarter(0); setView("race");
   };
 
   const saveToChampionship=()=>{
@@ -4943,57 +5002,112 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
         )}
 
         
-        {view==="race"&&race&&(
+        {view==="race"&&race&&(()=>{
+          const TL=race.totalLaps||57;
+          const QUARTERS=[
+            {label:"Q1",sublabel:`Laps 1–${Math.floor(TL*0.25)}`,emoji:"🟢",color:"#44CC88",lapRange:[1,Math.floor(TL*0.25)]},
+            {label:"Q2",sublabel:`Laps ${Math.floor(TL*0.25)+1}–${Math.floor(TL*0.5)}`,emoji:"🟡",color:"#FFC906",lapRange:[Math.floor(TL*0.25)+1,Math.floor(TL*0.5)]},
+            {label:"Q3",sublabel:`Laps ${Math.floor(TL*0.5)+1}–${Math.floor(TL*0.75)}`,emoji:"🟠",color:"#FF8844",lapRange:[Math.floor(TL*0.5)+1,Math.floor(TL*0.75)]},
+            {label:"FINAL",sublabel:`Laps ${Math.floor(TL*0.75)+1}–${TL} · Full Result`,emoji:"🏁",color:"#E8002D",lapRange:[Math.floor(TL*0.75)+1,TL]},
+          ];
+          const q=QUARTERS[raceQuarter];
+          const isFinal=raceQuarter===3;
+          const standings=isFinal?race.positions:((race.quarterStandings&&race.quarterStandings[raceQuarter])||race.positions);
+          const leader=standings[0];
+          const qEvents=race.events.filter(ev=>ev.lap>=q.lapRange[0]&&ev.lap<=q.lapRange[1]);
+          return(
           <div style={{animation:"fadeIn 0.2s ease"}}>
-            <div style={{marginBottom:12}}>
+            {/* Header */}
+            <div style={{marginBottom:14}}>
               <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                <div style={{fontSize:26,fontWeight:700,letterSpacing:3}}>RACE RESULT — {track.name.toUpperCase()}</div>
-                {race.runsUsed>1&&<span style={{background:"#E8002D18",color:"#E8002D",fontSize:12,fontWeight:700,padding:"2px 8px",borderRadius:2,letterSpacing:1}}>⟳ ×{race.runsUsed} RUNS AVERAGED</span>}
+                <div style={{fontSize:26,fontWeight:700,letterSpacing:3}}>GRAND PRIX — {track.name.toUpperCase()}</div>
+                {race.runsUsed>1&&<span style={{background:"#E8002D18",color:"#E8002D",fontSize:12,fontWeight:700,padding:"2px 8px",borderRadius:2,letterSpacing:1}}>⟳ ×{race.runsUsed} RUNS</span>}
               </div>
               <div style={{display:"flex",gap:6,marginTop:6,flexWrap:"wrap"}}>
                 {race.isWet&&<span style={{background:"#4488FF18",color:"#4488FF",fontSize:13,fontWeight:700,padding:"2px 7px",letterSpacing:1.5,borderRadius:2}}>🌧️ WET</span>}
                 {race.hasSC&&<span style={{background:"#FFC90618",color:"#FFC906",fontSize:13,fontWeight:700,padding:"2px 7px",letterSpacing:1.5,borderRadius:2}}>🚗 SC LAP {race.scLap}</span>}
                 {race.fastestLap&&<span style={{background:"#CC44FF18",color:"#CC44FF",fontSize:13,fontWeight:700,padding:"2px 7px",letterSpacing:1.5,borderRadius:2}}>💜 FL: {race.fastestLap.name}</span>}
-                {raceSaved&&<span style={{background:"#44CC8818",color:"#44CC88",fontSize:13,fontWeight:700,padding:"2px 7px",letterSpacing:1.5,borderRadius:2}}>✓ SAVED TO CHAMPIONSHIP</span>}
+                {raceSaved&&<span style={{background:"#44CC8818",color:"#44CC88",fontSize:13,fontWeight:700,padding:"2px 7px",letterSpacing:1.5,borderRadius:2}}>✓ SAVED</span>}
               </div>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 380px",gap:18,alignItems:"start"}}>
-              {/* Classification — sprint-style cards */}
+
+            {/* Quarter tab bar */}
+            <div style={{display:"flex",gap:4,marginBottom:16,background:"#111118",border:"1px solid #1E1E22",borderRadius:6,padding:5}}>
+              {QUARTERS.map((qt,qi)=>(
+                <button key={qi} onClick={()=>setRaceQuarter(qi)} style={{flex:1,background:raceQuarter===qi?`${qt.color}20`:"transparent",color:raceQuarter===qi?qt.color:"#778",border:`1px solid ${raceQuarter===qi?qt.color+"55":"transparent"}`,padding:"8px 6px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1.5,borderRadius:4,transition:"all 0.15s",textAlign:"center"}}>
+                  <div>{qt.emoji} {qt.label}</div>
+                  <div style={{fontSize:10,fontWeight:400,opacity:0.7,marginTop:2,letterSpacing:0.5}}>{qt.sublabel}</div>
+                </button>
+              ))}
+            </div>
+
+            {/* Leader banner */}
+            {leader&&(
+              <div style={{background:`${q.color}12`,border:`1px solid ${q.color}33`,borderLeft:`5px solid ${q.color}`,borderRadius:"0 8px 8px 0",padding:"12px 18px",marginBottom:14,display:"flex",alignItems:"center",gap:14}}>
+                <span style={{fontSize:28}}>{q.emoji}</span>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:11,color:q.color,fontWeight:700,letterSpacing:2,marginBottom:2}}>{isFinal?"RACE WINNER":"LEADING AFTER "+q.label}</div>
+                  <div style={{fontSize:isFinal?22:18,fontWeight:700}}>{leader.driver?.name||leader.driverName}</div>
+                  <div style={{fontSize:13,color:(leader.team||leader).color||"#aaa",letterSpacing:1.5}}>{leader.team?.name||leader.teamName}</div>
+                </div>
+                {isFinal&&<div style={{textAlign:"right"}}>
+                  <div style={{fontSize:32}}>🏆</div>
+                  <div style={{fontSize:13,color:"#FFC906",fontWeight:700}}>+{race.positions[0]?.points||25} PTS</div>
+                </div>}
+              </div>
+            )}
+
+            <div style={{display:"grid",gridTemplateColumns:"1fr 360px",gap:18,alignItems:"start"}}>
+              {/* Standings */}
               <div>
-                <div style={{fontSize:13,color:"#778",letterSpacing:2.5,marginBottom:9}}>RACE CLASSIFICATION</div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-                  {race.positions.map((e,i)=>(
-                    <div key={e.driver.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:e.dnf?"#1A1010":i<3?"#181810":"#161618",border:`1px solid ${e.dnf?"#FF444418":i<3?"#FFC90618":"#1E1E22"}`,borderLeft:`3px solid ${e.dnf?"#FF4444":e.team.color}`,borderRadius:3,opacity:e.dnf?0.65:1}}>
-                      <div style={{width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?"#FFC906":i===1?"#aaa":i===2?"#CD7F32":"transparent",color:i<3?"#000":"#bbb",fontSize:13,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #2A2A30":"none",flexShrink:0}}>{e.dnf?"DNF":i+1}</div>
+                <div style={{fontSize:12,color:"#778",letterSpacing:2.5,marginBottom:8}}>{isFinal?"FINAL CLASSIFICATION":"STANDINGS AFTER "+q.label+" · "+q.sublabel}</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:5}}>
+                  {standings.map((e,i)=>{
+                    const dName=e.driver?.name||e.driverName||"";
+                    const tColor=e.team?.color||e.teamColor||"#aaa";
+                    const tName=e.team?.name||e.teamName||"";
+                    const isDNF=e.dnf;
+                    const posChg=isFinal?(e.gridPos-(i+1)):null;
+                    return(
+                    <div key={dName+i} style={{display:"flex",alignItems:"center",gap:9,padding:"9px 12px",background:isDNF?"#1A1010":i<3?"#181810":"#161618",border:`1px solid ${isDNF?"#FF444418":i<3?q.color+"22":"#1E1E22"}`,borderLeft:`3px solid ${isDNF?"#FF4444":tColor}`,borderRadius:3,opacity:isDNF?0.65:1}}>
+                      <div style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?q.color:i===1?"#aaa":i===2?"#CD7F32":"transparent",color:i<3?"#000":"#bbb",fontSize:12,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #2A2A30":"none",flexShrink:0}}>{isDNF?"DNF":i+1}</div>
                       <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:15,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{e.driver.name}</div>
-                        <div style={{fontSize:12,color:e.team.color,letterSpacing:1.5}}>{e.team.name}</div>
+                        <div style={{fontSize:13,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{e.driver?.flag||""} {dName}</div>
+                        <div style={{fontSize:11,color:tColor,letterSpacing:1}}>{tName}</div>
                       </div>
                       <div style={{textAlign:"right",flexShrink:0}}>
-                        {e.dnf
-                          ?<div style={{fontSize:13,color:"#FF4444"}}>L{e.dnfLap}</div>
+                        {isDNF?<div style={{fontSize:11,color:"#FF4444"}}>L{e.dnfLap||"?"}</div>
                           :<>
-                            <div style={{fontSize:14,fontFamily:"monospace",color:i===0?"#FFC906":"#bbb"}}>{i===0?"🏁 WIN":`+${e.gap}s`}</div>
-                            {e.points>0&&<div style={{fontSize:12,color:"#E8002D",fontWeight:700}}>+{e.points}pts</div>}
+                            <div style={{fontSize:12,fontFamily:"monospace",color:i===0?q.color:"#aaa"}}>{i===0?(isFinal?"🏁 WIN":"P1"):`+${e.gap}s`}</div>
+                            {isFinal&&e.points>0&&<div style={{fontSize:11,color:"#E8002D",fontWeight:700}}>+{e.points}pts</div>}
+                            {isFinal&&posChg!==null&&posChg!==0&&<div style={{fontSize:10,color:posChg>0?"#44CC88":"#FF6644"}}>{posChg>0?`▲${posChg}`:`▼${Math.abs(posChg)}`}</div>}
                           </>}
                       </div>
                     </div>
-                  ))}
+                  );})}
                 </div>
               </div>
-              {/* Events panel */}
+
+              {/* Events for this quarter */}
               <div style={{position:"sticky",top:16}}>
-                <div style={{fontSize:13,color:"#778",letterSpacing:2.5,marginBottom:9}}>RACE EVENTS ({race.events.length})</div>
-                <div style={{maxHeight:"calc(100vh - 180px)",overflowY:"auto"}}>
-                  {race.events.map((ev,i)=>(
+                <div style={{fontSize:12,color:"#778",letterSpacing:2.5,marginBottom:8}}>EVENTS · {q.label} ({qEvents.length})</div>
+                <div style={{maxHeight:"calc(100vh - 220px)",overflowY:"auto"}}>
+                  {qEvents.length===0&&<div style={{fontSize:13,color:"#445",padding:"16px 0",textAlign:"center"}}>No events this quarter.</div>}
+                  {qEvents.map((ev,i)=>(
                     <div key={i} style={{borderLeft:`3px solid ${EVT_C[ev.type]||"#899"}`,padding:"8px 12px",marginBottom:5,background:"#161618",borderRadius:"0 4px 4px 0"}}>
-                      {ev.lap>0&&<div style={{fontSize:12,color:"#778",letterSpacing:1.5,marginBottom:3}}>LAP {ev.lap}</div>}
-                      <div style={{fontSize:14,lineHeight:1.55}}>{ev.icon} {ev.text}</div>
+                      <div style={{fontSize:11,color:"#778",letterSpacing:1.5,marginBottom:2}}>LAP {ev.lap}</div>
+                      <div style={{fontSize:13,lineHeight:1.55}}>{ev.icon} {ev.text}</div>
                     </div>
                   ))}
                 </div>
+                {/* quarter nav */}
+                <div style={{display:"flex",gap:6,marginTop:10}}>
+                  {raceQuarter>0&&<button onClick={()=>setRaceQuarter(raceQuarter-1)} style={{flex:1,background:"#1E1E22",color:"#aaa",border:"none",padding:"8px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,borderRadius:3}}>← {QUARTERS[raceQuarter-1].label}</button>}
+                  {raceQuarter<3&&<button onClick={()=>setRaceQuarter(raceQuarter+1)} style={{flex:1,background:q.color,color:"#000",border:"none",padding:"8px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,borderRadius:3}}>{QUARTERS[raceQuarter+1].label} →</button>}
+                </div>
               </div>
             </div>
+
             <div style={{marginTop:16,display:"flex",gap:8,justifyContent:"flex-end",flexWrap:"wrap"}}>
               <button onClick={doRace} style={{background:"#2A2A30",color:"#ccc",border:"none",padding:"10px 18px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:2.5,borderRadius:3}}>↺ RE-RUN</button>
               <button onClick={saveToChampionship} disabled={raceSaved} style={{background:raceSaved?"#1A2A1A":"#44CC88",color:raceSaved?"#44CC88":"#000",border:`1px solid ${raceSaved?"#44CC8844":"transparent"}`,padding:"10px 18px",cursor:raceSaved?"default":"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,borderRadius:3,opacity:raceSaved?0.7:1}}>
@@ -5002,7 +5116,8 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
               <button onClick={()=>{setView("commentary");if(race&&!isGen)doCommentary();}} style={{background:"#CC44FF",color:"#fff",border:"none",padding:"10px 24px",cursor:"pointer",fontFamily:"inherit",fontSize:15,fontWeight:700,letterSpacing:2.5,borderRadius:3}}>🎙️ CROFT & BRUNDLE →</button>
             </div>
           </div>
-        )}
+          );
+        })()}
 
         
         {view==="commentary"&&(
