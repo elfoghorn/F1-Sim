@@ -4501,6 +4501,25 @@ export default function F1Sim(){
       winner:race.positions[0]?.driver.name||"—",
       podium:race.positions.slice(0,3).map(e=>e.driver.name),
       raceResults:race.positions.reduce((a,e)=>({...a,[e.driver.id]:e.points}),{}),
+      // Chaos stats tallied at save time
+      chaosStats:(()=>{
+        const evts=race.events||[];
+        const pos=race.positions||[];
+        const dnfs=pos.filter(e=>e.dnf);
+        const mechanical=dnfs.filter(e=>!e.dnfReason||(e.dnfReason&&!e.dnfReason.match(/collision|crash|barrier|aquaplan|spin/i)));
+        const crashes=dnfs.filter(e=>e.dnfReason&&e.dnfReason.match(/collision|crash|barrier|aquaplan/i));
+        const safetyCarEvts=evts.filter(e=>e.type==="safetycar"&&e.icon==="🚗");
+        const vscEvts=evts.filter(e=>e.type==="vsc"&&e.icon==="🟡");
+        const redFlags=evts.filter(e=>e.type==="redflag"&&e.icon==="🔴"&&e.text.includes("RED FLAG"));
+        const penalties=pos.filter(e=>e.timePenalty>0);
+        return {
+          totalDNFs:dnfs.length, crashDNFs:crashes.length, mechanicalDNFs:mechanical.length,
+          safetyCars:safetyCarEvts.length, vscs:vscEvts.length, redFlags:redFlags.length,
+          timePenalties:penalties.length, isWet:!!race.isWet,
+          dnfDrivers:dnfs.map(e=>({name:e.driver?.name||e.driverName||"?",reason:e.dnfReason||"mechanical failure",lap:e.dnfLap})),
+          penaltyDrivers:penalties.map(e=>({name:e.driver?.name||e.driverName||"?",secs:e.timePenalty})),
+        };
+      })(),
       sprintResults:sprint?sprint.positions.reduce((a,e)=>({...a,[e.driver.id]:e.points}),{}):null,
       sprintWinner:sprint?sprint.positions.find(e=>!e.dnf)?.driver.name||null:null,
       sprintTop8:sprint?sprint.positions.filter(e=>!e.dnf&&e.points>0).map(e=>({name:e.driver.name,pts:e.points})):null,
@@ -6744,7 +6763,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
             ):(
               <>
                 <div style={{display:"flex",gap:3,marginBottom:16,background:"#111115",border:"1px solid #1E1E22",borderRadius:5,padding:5}}>
-                  {[["drivers","👤 DRIVERS"],["constructors","🏗️ CONSTRUCTORS"],["history","📋 RACE HISTORY"]].map(([k,l])=>(
+                  {[["drivers","👤 DRIVERS"],["constructors","🏗️ CONSTRUCTORS"],["history","📋 RACE HISTORY"],["chaos","💥 CHAOS BOARD"]].map(([k,l])=>(
                     <button key={k} onClick={()=>setChampTab(k)} style={{flex:1,background:champTab===k?"#2A2A30":"transparent",color:champTab===k?"#F0F0F0":"#899",border:`1px solid ${champTab===k?"#778":"transparent"}`,padding:"8px 0",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,borderRadius:3,transition:"all 0.15s"}}>{l}</button>
                   ))}
                 </div>
@@ -6849,6 +6868,134 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                     </div>
                     )
                 )}
+
+                {champTab==="chaos"&&(()=>{
+                  // Aggregate chaos stats across all saved rounds
+                  const totals={totalDNFs:0,crashDNFs:0,mechanicalDNFs:0,safetyCars:0,vscs:0,redFlags:0,timePenalties:0,wetRaces:0};
+                  const dnfTally={};   // driverName -> count
+                  const penTally={};   // driverName -> total seconds
+                  const chaosRounds=[];
+                  championship.forEach(r=>{
+                    const cs=r.chaosStats;
+                    if(!cs) return;
+                    totals.totalDNFs+=cs.totalDNFs||0;
+                    totals.crashDNFs+=cs.crashDNFs||0;
+                    totals.mechanicalDNFs+=cs.mechanicalDNFs||0;
+                    totals.safetyCars+=cs.safetyCars||0;
+                    totals.vscs+=cs.vscs||0;
+                    totals.redFlags+=cs.redFlags||0;
+                    totals.timePenalties+=cs.timePenalties||0;
+                    if(cs.isWet) totals.wetRaces++;
+                    (cs.dnfDrivers||[]).forEach(d=>{dnfTally[d.name]=(dnfTally[d.name]||0)+1;});
+                    (cs.penaltyDrivers||[]).forEach(d=>{penTally[d.name]=(penTally[d.name]||0)+(d.secs||0);});
+                    chaosRounds.push({round:r.round,track:r.trackName,flag:r.trackFlag,...cs});
+                  });
+                  const dnfLeague=Object.entries(dnfTally).sort((a,b)=>b[1]-a[1]).slice(0,10);
+                  const penLeague=Object.entries(penTally).sort((a,b)=>b[1]-a[1]).slice(0,8);
+                  const totalRaces=championship.filter(r=>r.chaosStats).length;
+                  // Funny commentary lines
+                  const chaos=totals.totalDNFs;
+                  const chaosLine=chaos===0?"A miraculously boring season. Everyone drove in circles without incident.":chaos<=3?"Suspiciously clean. The stewards had nothing to do.":chaos<=8?"A proper season — tyres flew, engines cried.":chaos<=15?"Carnage. The medical car earned its contract.":chaos<=25?"This was not a race, it was a demolition derby.":"The FIA has filed for emotional damages.";
+                  const scLine=totals.safetyCars===0?"Not a single safety car. Either very skilled or very lucky.":totals.safetyCars<=3?"The safety car driver almost got a podium himself.":totals.safetyCars<=8?"The safety car put in more laps than some of the back markers.":"The safety car started requesting prize money.";
+                  const rfLine=totals.redFlags===0?"Zero red flags. Race control were bored stiff.":totals.redFlags===1?"One red flag. Someone had a very bad day.":totals.redFlags<=3?"Multiple red flags. The barriers took a beating.":"Race control declared a state of emergency.";
+                  const tile=(icon,label,val,sub,col)=>(
+                    <div style={{background:"#161618",border:`1px solid ${col}33`,borderTop:`3px solid ${col}`,borderRadius:4,padding:"14px 16px",textAlign:"center"}}>
+                      <div style={{fontSize:28,marginBottom:4}}>{icon}</div>
+                      <div style={{fontSize:30,fontWeight:900,color:col,fontFamily:"monospace"}}>{val}</div>
+                      <div style={{fontSize:12,color:"#778",letterSpacing:1.5,marginTop:2}}>{label}</div>
+                      {sub&&<div style={{fontSize:11,color:"#556",marginTop:3}}>{sub}</div>}
+                    </div>
+                  );
+                  return(
+                    <div>
+                      {/* Funny headline */}
+                      <div style={{background:"#111115",border:"1px solid #1E1E22",borderLeft:"4px solid #FF4444",borderRadius:4,padding:"12px 16px",marginBottom:16,fontStyle:"italic",color:"#ccc",fontSize:14}}>
+                        💬 "{chaosLine}"
+                      </div>
+
+                      {/* Big number tiles */}
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:8,marginBottom:16}}>
+                        {tile("💥","TOTAL DNFs",totals.totalDNFs,`${totalRaces} race${totalRaces!==1?"s":""}`,  "#FF4444")}
+                        {tile("🔧","MECHANICALS",totals.mechanicalDNFs,"engine/hydraulics/gearbox","#FF8800")}
+                        {tile("🏎️💢","CRASH DNFs",totals.crashDNFs,"barrier introductions","#FF6644")}
+                        {tile("🚗","SAFETY CARS",totals.safetyCars,"full SC deployments","#FFC906")}
+                        {tile("🟡","VSCS",totals.vscs,"virtual safety cars","#FFDD44")}
+                        {tile("🔴","RED FLAGS",totals.redFlags,"race suspensions","#FF2222")}
+                        {tile("🌧️","WET RACES",totals.wetRaces,`of ${totalRaces} rounds`,"#4488FF")}
+                        {tile("⚠️","PENALTIES",totals.timePenalties,"time penalties issued","#BB66FF")}
+                      </div>
+
+                      {/* Commentary sub-lines */}
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
+                        <div style={{background:"#111115",border:"1px solid #FFC90622",borderRadius:4,padding:"10px 14px",fontSize:13,color:"#aaa",fontStyle:"italic"}}>🚗 {scLine}</div>
+                        <div style={{background:"#111115",border:"1px solid #FF444422",borderRadius:4,padding:"10px 14px",fontSize:13,color:"#aaa",fontStyle:"italic"}}>🔴 {rfLine}</div>
+                      </div>
+
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                        {/* DNF shame board */}
+                        <div>
+                          <div style={{fontSize:12,color:"#778",letterSpacing:2,marginBottom:8}}>🏴 DNF HALL OF SHAME</div>
+                          {dnfLeague.length===0&&<div style={{fontSize:13,color:"#445",padding:"10px 0"}}>No DNFs yet — astounding.</div>}
+                          {dnfLeague.map(([name,count],i)=>(
+                            <div key={name} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",background:i===0?"#1A0A0A":"#111115",border:`1px solid ${i===0?"#FF444433":"#1E1E22"}`,borderLeft:`3px solid ${i===0?"#FF4444":i===1?"#FF8800":"#554"}`,borderRadius:3,marginBottom:4}}>
+                              <div style={{fontSize:13,color:"#556",width:18}}>{i+1}</div>
+                              <div style={{flex:1,fontSize:14,fontWeight:700}}>{name}</div>
+                              <div style={{fontSize:16,fontWeight:900,color:i===0?"#FF4444":"#FF8800",fontFamily:"monospace"}}>{count}</div>
+                              <div style={{fontSize:10,color:"#445",letterSpacing:1}}>DNF{count!==1?"s":""}</div>
+                            </div>
+                          ))}
+                          {dnfLeague.length>0&&dnfLeague[0][1]>=3&&(
+                            <div style={{fontSize:12,color:"#FF6644",fontStyle:"italic",marginTop:6}}>
+                              😬 {dnfLeague[0][0]} might want to check their contract.
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Penalty board */}
+                        <div>
+                          <div style={{fontSize:12,color:"#778",letterSpacing:2,marginBottom:8}}>⚠️ STEWARDS' FAVOURITES</div>
+                          {penLeague.length===0&&<div style={{fontSize:13,color:"#445",padding:"10px 0"}}>No penalties issued. The stewards are confused.</div>}
+                          {penLeague.map(([name,secs],i)=>(
+                            <div key={name} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",background:i===0?"#140A1A":"#111115",border:`1px solid ${i===0?"#BB66FF33":"#1E1E22"}`,borderLeft:`3px solid ${i===0?"#BB66FF":i===1?"#AA55EE":"#554"}`,borderRadius:3,marginBottom:4}}>
+                              <div style={{fontSize:13,color:"#556",width:18}}>{i+1}</div>
+                              <div style={{flex:1,fontSize:14,fontWeight:700}}>{name}</div>
+                              <div style={{fontSize:16,fontWeight:900,color:i===0?"#BB66FF":"#AA55EE",fontFamily:"monospace"}}>{secs}s</div>
+                              <div style={{fontSize:10,color:"#445",letterSpacing:1}}>PEN</div>
+                            </div>
+                          ))}
+                          {penLeague.length>0&&penLeague[0][1]>=15&&(
+                            <div style={{fontSize:12,color:"#BB66FF",fontStyle:"italic",marginTop:6}}>
+                              🕵️ {penLeague[0][0]} is on first-name terms with the stewards.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Per-round chaos breakdown */}
+                      {chaosRounds.length>0&&(
+                        <div style={{marginTop:16}}>
+                          <div style={{fontSize:12,color:"#778",letterSpacing:2,marginBottom:8}}>📊 ROUND-BY-ROUND CHAOS</div>
+                          <div style={{display:"grid",gap:4}}>
+                            {chaosRounds.map(cr=>(
+                              <div key={cr.round} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:"#111115",border:"1px solid #1E1E22",borderRadius:3}}>
+                                <div style={{fontSize:13,color:"#556",width:28,flexShrink:0}}>R{cr.round}</div>
+                                <div style={{fontSize:14,fontWeight:700,flex:1}}>{cr.flag} {cr.track}</div>
+                                <div style={{display:"flex",gap:8,flexShrink:0,flexWrap:"wrap",justifyContent:"flex-end"}}>
+                                  {cr.totalDNFs>0&&<span style={{fontSize:11,color:"#FF4444",background:"#FF444418",padding:"1px 6px",borderRadius:2,fontWeight:700}}>💥 {cr.totalDNFs} DNF</span>}
+                                  {cr.safetyCars>0&&<span style={{fontSize:11,color:"#FFC906",background:"#FFC90618",padding:"1px 6px",borderRadius:2,fontWeight:700}}>🚗 ×{cr.safetyCars}</span>}
+                                  {cr.vscs>0&&<span style={{fontSize:11,color:"#FFDD44",background:"#FFDD4418",padding:"1px 6px",borderRadius:2,fontWeight:700}}>🟡 ×{cr.vscs}</span>}
+                                  {cr.redFlags>0&&<span style={{fontSize:11,color:"#FF2222",background:"#FF222218",padding:"1px 6px",borderRadius:2,fontWeight:700}}>🔴 RF</span>}
+                                  {cr.timePenalties>0&&<span style={{fontSize:11,color:"#BB66FF",background:"#BB66FF18",padding:"1px 6px",borderRadius:2,fontWeight:700}}>⚠️ {cr.timePenalties}×pen</span>}
+                                  {cr.isWet&&<span style={{fontSize:11,color:"#4488FF",background:"#4488FF18",padding:"1px 6px",borderRadius:2,fontWeight:700}}>🌧️</span>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </>
             )}
           </div>
