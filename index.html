@@ -17477,7 +17477,7 @@ const PIT_DISASTERS = [
   {icon:"💥",type:"pitstop",label:"PIT NIGHTMARE",texts:["Lollipop error — released into traffic!","Wrong compound fitted — back to the box!","Unsafe release — five-second penalty incoming!","Front wing not secured — pit again next lap!"]},
   {icon:"⚠️",type:"strategy",label:"TYRE GAMBLE",texts:["Radical call — {cpd} tyres on? Bold.","Staying out on worn rubber — risky!","They're gambling on rain! Inters going on dry tyres.","Boxing early — going for the undercut on everyone!"]},
 ];
-const EVT_C      = {incident:"#FF4444",dnf:"#FF6644",safetycar:"#FFC906",weather:"#4488FF",charge:"#44CC88",fastestlap:"#CC44FF",battle:"#FF8844",pitstop:"#44AAFF",slowstop:"#FF8800",drop:"#FF8844",start:"#E8002D",strategy:"#BB66FF"};
+const EVT_C      = {incident:"#FF4444",dnf:"#FF6644",safetycar:"#FFC906",weather:"#4488FF",charge:"#44CC88",fastestlap:"#CC44FF",battle:"#FF8844",pitstop:"#44AAFF",slowstop:"#FF8800",drop:"#FF8844",start:"#E8002D",strategy:"#BB66FF",redflag:"#FF0000"};
 
 const pick  = a => a[Math.floor(Math.random()*a.length)];
 const pickN = (a,n) => [...a].sort(()=>Math.random()-0.5).slice(0,n);
@@ -18021,71 +18021,64 @@ function runSprint(grid, teams, track) {
 
 // ── buildQuarterStandings ─────────────────────────────────────────────────
 // Takes the final sorted positions array and produces 4 quarter snapshots.
-// Each quarter shuffles the order by a decreasing window so Q1 is chaotic
-// and Q4 (FINAL) is the true result. Gap values are freshly generated per
-// quarter with stage-appropriate tight/wide scales.
-function buildQuarterStandings(finalPositions, totalLaps) {
-  // How many positions a driver can be displaced at each quarter (max swap window)
-  var swapWindows = [7, 4, 2, 0];
-  // Gap scale per position per quarter  [min, max] seconds
-  var gapScales   = [[0.3,2.2],[0.8,4.5],[1.5,7.0],[null,null]]; // Q4 uses actual gaps
+// quarterWeather: array of {wet,sc} per quarter so wet conditions increase
+// swap chaos and widen gaps (rain causes unpredictability).
+function buildQuarterStandings(finalPositions, totalLaps, quarterWeather) {
+  var qw = quarterWeather || [{wet:false,sc:false},{wet:false,sc:false},{wet:false,sc:false},{wet:false,sc:false}];
+  // Base swap windows — wet weather adds extra positions of chaos
+  var baseSwap  = [7, 4, 2, 0];
+  // Gap scale [min, max] seconds — wider when wet
+  var gapScales = [[0.3,2.2],[0.8,4.5],[1.5,7.0],[null,null]];
 
   return [0,1,2,3].map(function(qi) {
-    var TLq = Math.floor(totalLaps * [0.25,0.50,0.75,1.0][qi]);
-    var window = swapWindows[qi];
+    var TLq    = Math.floor(totalLaps * [0.25,0.50,0.75,1.0][qi]);
+    var isWetQ = qw[qi] && qw[qi].wet;
+    var hasSCQ = qw[qi] && qw[qi].sc;
+    var hasRFQ = qw[qi] && qw[qi].rf;
+    // Red flag causes standing restart — big position shuffle possible, like a new race start
+    var window = baseSwap[qi] + (isWetQ ? 4 : 0) + (hasSCQ ? 2 : 0) + (hasRFQ ? 5 : 0);
 
-    // For Q4 return the exact final positions (with their real gaps)
+    // Q4 = exact final positions with real gaps
     if(qi === 3) {
       return finalPositions.map(function(e,i){
-        return {driver:e.driver,team:e.team,pos:i+1,gap:e.gap,dnf:e.dnf,dnfLap:e.dnfLap,gridPos:e.gridPos};
+        return {driver:e.driver,team:e.team,pos:i+1,gap:e.gap,dnf:e.dnf,dnfLap:e.dnfLap,gridPos:e.gridPos,weather:qw[qi]};
       });
     }
 
-    // Copy the array then apply random local swaps proportional to swapWindow
+    // Copy and shuffle within window
     var order = finalPositions.slice();
-    // Perform (window * 3) random adjacent-ish swaps so the further back you are
-    // the more likely you are to move
     var swapCount = window * 3;
     for(var s = 0; s < swapCount; s++) {
-      // Pick a random driver index and swap with a random neighbour within window
-      var idx = Math.floor(Math.random() * order.length);
+      var idx    = Math.floor(Math.random() * order.length);
       var offset = Math.floor(Math.random() * window * 2 + 1) - window;
       var target = Math.max(0, Math.min(order.length - 1, idx + offset));
-      if(idx !== target) {
-        var tmp = order[idx]; order[idx] = order[target]; order[target] = tmp;
-      }
+      if(idx !== target) { var tmp=order[idx]; order[idx]=order[target]; order[target]=tmp; }
     }
 
-    // Filter out drivers who DNF'd before this quarter lap — put them at the back
-    var active = [], retired = [];
-    order.forEach(function(e) {
-      var dnfLap = e.dnf ? (e.dnfLap || 1) : null;
-      if(dnfLap !== null && dnfLap <= TLq) retired.push(e);
+    // Drivers who DNF'd before this lap go to the back
+    var active=[], retired=[];
+    order.forEach(function(e){
+      var dnfLap=e.dnf?(e.dnfLap||1):null;
+      if(dnfLap!==null&&dnfLap<=TLq) retired.push(e);
       else active.push(e);
     });
-    var sorted = active.concat(retired);
+    var sorted=active.concat(retired);
 
-    // Generate fresh gap values for this quarter with appropriate scale
-    var gs = gapScales[qi];
-    var qg = 0;
-    return sorted.map(function(e, i) {
-      var isDNF = retired.indexOf(e) !== -1;
-      if(i > 0 && !isDNF) {
-        var step = gs[0] + Math.random() * (gs[1] - gs[0]);
-        // Top 3 stay closer; midfield and back spread out more
-        if(i <= 2) step *= 0.5;
-        else if(i >= 10) step *= 1.4;
-        qg = parseFloat((qg + step).toFixed(2));
+    // Fresh gap values — wet widens, SC/RF bunch the field
+    var gs=gapScales[qi];
+    var wetMult=isWetQ?1.4:1.0;
+    var scMult =hasSCQ?0.6:1.0;
+    var rfMult =hasRFQ?0.4:1.0; // Red flag restart: field bunched tightest of all
+    var qg=0;
+    return sorted.map(function(e,i){
+      var isDNF=retired.indexOf(e)!==-1;
+      if(i>0&&!isDNF){
+        var step=(gs[0]+Math.random()*(gs[1]-gs[0]))*wetMult*scMult*rfMult;
+        if(i<=2) step*=0.45;
+        else if(i>=10) step*=1.5;
+        qg=parseFloat((qg+step).toFixed(2));
       }
-      return {
-        driver: e.driver,
-        team: e.team,
-        pos: i + 1,
-        gap: isDNF ? null : (i === 0 ? 0 : qg),
-        dnf: isDNF,
-        dnfLap: isDNF ? e.dnfLap : null,
-        gridPos: e.gridPos,
-      };
+      return {driver:e.driver,team:e.team,pos:i+1,gap:isDNF?null:(i===0?0:qg),dnf:isDNF,dnfLap:isDNF?e.dnfLap:null,gridPos:e.gridPos,weather:qw[qi]};
     });
   });
 }
@@ -18093,9 +18086,50 @@ function buildQuarterStandings(finalPositions, totalLaps) {
 function runRace(grid, teams, track) {
   const TL=track.laps, events=[];
   const isWet=Math.random()*100<track.wr;
-  const hasSC=Math.random()<0.52;
+  // Wet conditions make safety cars far more likely (+25pp), and can trigger VSC
+  const scProb=isWet?Math.min(0.92,0.52+0.25):0.52;
+  const hasSC=Math.random()<scProb;
   const scLap=hasSC?Lf(TL,0.2)+Math.floor(Math.random()*Lf(TL,0.3)):0;
   const scEnd=hasSC?scLap+Math.floor(Math.random()*4)+3:0;
+  // Second safety car possible in wet races
+  const hasSC2=isWet&&Math.random()<0.35;
+  const sc2Lap=hasSC2?Lf(TL,0.55)+Math.floor(Math.random()*Lf(TL,0.2)):0;
+  const sc2End=hasSC2?sc2Lap+Math.floor(Math.random()*3)+2:0;
+
+  // Per-quarter weather: race can dry out over time
+  // dryingLap = lap when track starts to dry (0 = stays wet all race)
+  const dryingLap = isWet ? (Math.random()<0.5 ? Lf(TL,0.35)+Math.floor(Math.random()*Lf(TL,0.3)) : 0) : 0;
+
+  // ── Red Flag ─────────────────────────────────────────────────────────────
+  // Higher probability on street circuits and wet conditions
+  const rfBaseProb = track.type==="street" ? 0.28 : 0.14;
+  const rfProb = isWet ? rfBaseProb + 0.18 : rfBaseProb;
+  const hasRF = Math.random() < rfProb;
+  // Red flag lap: avoid first 3 laps and last 5 laps (must leave racing time)
+  const rfLap = hasRF ? Math.max(4, Lf(TL,0.12)+Math.floor(Math.random()*Lf(TL,0.65))) : 0;
+  // Suspension duration in laps: 3–8 laps off track
+  const rfDuration = hasRF ? 3+Math.floor(Math.random()*6) : 0;
+  const rfResumeLap = hasRF ? Math.min(rfLap+rfDuration, TL-3) : 0;
+  // Red flag cause
+  const RF_CAUSES = isWet
+    ? ["massive aquaplaning incident — car in the barriers","flooding on the racing line — race suspended","multi-car pile-up in the wet","driver airlifted from cockpit — precautionary red flag"]
+    : ["enormous crash at turn 1 — debris everywhere","fire in the pit lane — race suspended","car stranded in dangerous position","medical intervention required on track — red flag shown"];
+  const rfCause = hasRF ? pick(RF_CAUSES) : "";
+  // After red flag: teams get free tyre change — all cars line up pit-lane order
+  // This means on restart the order is set at rfLap positions (slight shuffle)
+  const rfRestartMessages = [
+    "STANDING START restart! Grid reformed on the pit straight.",
+    "ROLLING START for the resumption — safety car leads the field.",
+    "STANDING START from the grid! All bets are off.",
+  ];
+
+  const quarterWeather = [0.25,0.50,0.75,1.0].map(function(frac){
+    var midLap = Math.floor(TL * frac);
+    var wet = isWet && (dryingLap === 0 || midLap < dryingLap);
+    var sc  = hasSC&&scLap<=midLap&&scEnd>=Math.floor(TL*(frac-0.25))||hasSC2&&sc2Lap<=midLap&&sc2End>=Math.floor(TL*(frac-0.25));
+    var rf  = hasRF && rfLap<=midLap && rfResumeLap>=Math.floor(TL*(frac-0.25));
+    return {wet:wet, sc:!!sc, rf:!!rf};
+  });
 
   let entries=grid.map((q,i)=>{
     const {driver:d,team}=q;
@@ -18112,7 +18146,7 @@ function runRace(grid, teams, track) {
     pace+=((d.mental||7)-5)*0.35;
     pace-=i*0.18*(track.od/100)*(hasSC?0.55:1);
     pace+=(Math.random()-0.5)*9;
-    const dnfR=Math.max(0.02,(100-_ts.reliability)/100*0.28+Math.max(0,(5-(d.mental||7))*0.02)+(_optionalChain([strat, 'access', _17 => _17.mods, 'optionalAccess', _18 => _18.dnfRisk])||0));
+    const dnfR=Math.max(0.02,(100-_ts.reliability)/100*0.28+Math.max(0,(5-(d.mental||7))*0.02)+(_optionalChain([strat, 'access', _17 => _17.mods, 'optionalAccess', _18 => _18.dnfRisk])||0)+(isWet?0.06:0));
     const dnf=Math.random()<dnfR;
     const dnfL=dnf?Math.max(2,Lf(TL,0.05)+Math.floor(Math.random()*Lf(TL,0.85))):null;
     const fl1=i>4&&Math.random()<0.032;
@@ -18133,8 +18167,24 @@ function runRace(grid, teams, track) {
   if(fl1b) events.push({lap:1,type:"incident",icon:"⚠️",text:`LAP 1: ${fl1a.driver.name} and ${fl1b.driver.name} touch through the first complex — both continue.`});
   entries.filter(e=>e.fl1).forEach(e=>events.push({lap:1,type:"incident",icon:"💥",text:`FIRST LAP CHAOS! ${e.driver.name} is OUT!`}));
   if(isWet){
-    events.push({lap:1,type:"weather",icon:"🌧️",text:`RAIN at ${track.circuit}! Wet tyres mandatory.`});
-    events.push({lap:Lf(TL,0.28),type:"weather",icon:"🌤️",text:`Lap ${Lf(TL,0.28)}: Track drying — switch to inters now viable.`});
+    events.push({lap:1,type:"weather",icon:"🌧️",text:`RAIN at ${track.circuit}! Conditions treacherous — wets mandatory. Car control critical.`});
+    // Wet-specific early incidents — higher chance of spins and lock-ups
+    if(Math.random()<0.65){
+      const spinD=pick(grid.slice(2,15));
+      events.push({lap:Lf(TL,0.06),type:"incident",icon:"💦",text:`Lap ${Lf(TL,0.06)}: ${spinD.driver.name} SPINS on the wet tarmac! Narrowly avoids the wall.`});
+    }
+    if(Math.random()<0.50){
+      const lockD=pick(grid.slice(3,18));
+      events.push({lap:Lf(TL,0.10),type:"incident",icon:"🌊",text:`Lap ${Lf(TL,0.10)}: ${lockD.driver.name} aquaplanes through turn 3 — massive moment! Car saved.`});
+    }
+    if(dryingLap>0){
+      events.push({lap:dryingLap,type:"weather",icon:"🌤️",text:`Lap ${dryingLap}: Track beginning to dry. Teams agonising over the switch to intermediates — timing is everything.`});
+      events.push({lap:dryingLap+3,type:"weather",icon:"☀️",text:`Lap ${dryingLap+3}: Racing line drying fast. Slicks vs inters battle begins — wrong call here loses the race.`});
+    }
+  }
+  if(hasSC2){
+    events.push({lap:sc2Lap,type:"safetycar",icon:"🚗",text:`SECOND SAFETY CAR lap ${sc2Lap}!${isWet?" Visibility near zero — dangerous conditions.":"Another incident brings the SC back out."} Gaps erased again.`});
+    events.push({lap:sc2End,type:"safetycar",icon:"🟢",text:`Green flag lap ${sc2End}! SC withdraws — ${isWet?"soaking wet track,":""}expect fireworks at the restart.`});
   }
   [[0,4,Lf(TL,0.09),"the lead"],[4,8,Lf(TL,0.14),"the points"],[8,13,Lf(TL,0.19),"upper midfield"],[13,18,Lf(TL,0.23),"lower midfield"],[18,22,Lf(TL,0.27),"the back"]].forEach(([a,b,lap,lbl])=>{
     const grp=final.slice(a,b).filter(e=>!e.dnf);
@@ -18142,31 +18192,58 @@ function runRace(grid, teams, track) {
     const [x,y]=pickN(grp,2);
     if(x&&y) events.push({lap,type:"battle",icon:"🔥",text:`Lap ${lap}: ${x.driver.name} and ${y.driver.name} nose-to-tail in ${lbl}.`});
   });
-  // ── Pit stop helper: normal, slow, or disaster ──
+  // ── Penalty & event-DNF trackers (fed by events, applied after gap calc) ──
+  const timePenalties={};  // driverId -> seconds
+  const eventDNFs={};      // driverId -> {lap, reason}
+  const addPenalty=(driver,secs)=>{ timePenalties[driver.id]=(timePenalties[driver.id]||0)+secs; };
+  const addEventDNF=(driver,lap,reason)=>{ if(!eventDNFs[driver.id]) eventDNFs[driver.id]={lap,reason}; };
+
+  // ── Pit stop helper: normal, slow, or disaster (wet-aware, penalty-aware) ──
   const pitEvent=(e,lap,stopNum)=>{
     const strat=getTeamStrategy(e.team);
-    const cpd=pick(CPDS);
+    const wetPitCpd=isWet?pick(["Intermediates","Wets","Intermediates"]):null;
+    const cpd=wetPitCpd||pick(CPDS);
     const r=Math.random();
-    if(r<0.10){
-      // Disaster stop
-      const d=pick(PIT_DISASTERS.slice(1,2));
-      const txt=pick(d.texts).replace("{cpd}",cpd);
-      return {lap,type:d.type,icon:d.icon,text:`LAP ${lap}: ${e.driver.name} (${e.team.name}) — ${txt}`};
-    } else if(r<0.28){
-      // Slow stop
-      const secs=(4+Math.random()*6).toFixed(1);
+    const disasterThresh=isWet?0.14:0.10;
+    const slowThresh    =isWet?0.36:0.28;
+    const gambleThresh  =isWet?0.44:0.38;
+    if(r<disasterThresh){
+      // Pit disaster — pick specific type with matching penalty
+      const dtype=Math.floor(Math.random()*4);
+      if(dtype===0){
+        // Unsafe release into traffic → 5s penalty
+        addPenalty(e.driver,5);
+        const wetSuffix=isWet?" Pitlane soaking wet — driver nearly loses it.":"";
+        return {lap,type:"pitstop",icon:"🚨",text:`LAP ${lap}: ${e.driver.name} (${e.team.name}) — UNSAFE RELEASE into traffic!${wetSuffix} 5-SECOND TIME PENALTY ISSUED.`};
+      } else if(dtype===1){
+        // Wrong compound → 10s stop-and-go equivalent
+        addPenalty(e.driver,10);
+        return {lap,type:"pitstop",icon:"🚨",text:`LAP ${lap}: ${e.driver.name} (${e.team.name}) — Wrong compound fitted! Back to the box — 10-SECOND TIME PENALTY applied.`};
+      } else if(dtype===2){
+        // Front wing not secured → 5s penalty + slow stop
+        addPenalty(e.driver,5);
+        return {lap,type:"slowstop",icon:"🚨",text:`LAP ${lap}: ${e.driver.name} — Front wing not secured! Pits again next lap. 5-SECOND TIME PENALTY.`};
+      } else {
+        // Lollipop / jack error → 5s penalty
+        addPenalty(e.driver,5);
+        const wetSuffix=isWet?" Chaos in the wet pit lane.":"";
+        return {lap,type:"pitstop",icon:"🚨",text:`LAP ${lap}: ${e.driver.name} (${e.team.name}) — Lollipop error!${wetSuffix} Released too early — 5-SECOND TIME PENALTY.`};
+      }
+    } else if(r<slowThresh){
+      const secs=(isWet?5.5+Math.random()*5:4+Math.random()*6).toFixed(1);
       const txt=pick(PIT_DISASTERS[0].texts).replace("{t}",secs);
-      return {lap,type:"slowstop",icon:"⚠️",text:`LAP ${lap}: ${e.driver.name} pits — ${txt} Eventually exits on ${cpd}.`};
-    } else if(r<0.38){
-      // Bold tyre gamble
+      return {lap,type:"slowstop",icon:"⚠️",text:`LAP ${lap}: ${e.driver.name} pits — ${txt}${isWet?" Cold tyres in the wet — treacherous.":" "} Exits on ${cpd}.`};
+    } else if(r<gambleThresh){
+      const wetGamble=isWet?_pick(["SLICKS in the wet?! Enormous gamble!","Going to slicks as rain intensifies — bold move!","Staying on slicks — they're committing to the drying line."]):"";
       const d=PIT_DISASTERS[2];
-      const txt=pick(d.texts).replace("{cpd}",cpd);
+      const txt=wetGamble||pick(d.texts).replace("{cpd}",cpd);
       return {lap,type:"strategy",icon:"♟️",text:`LAP ${lap}: ${e.driver.name} (${e.team.name}) — ${txt}`};
     } else {
       const stratNote=strat?_pick(strat.lapNotes||["Executing team strategy"]):"";
-      const pitTime=(2.0+Math.random()*0.9).toFixed(1);
+      const pitTime=(isWet?2.5+Math.random()*1.2:2.0+Math.random()*0.9).toFixed(1);
       const stopLabel=stopNum===1?"First stop":stopNum===2?"Second stop":"Final stop";
-      return {lap,type:"pitstop",icon:"🔄",text:`LAP ${lap}: ${e.driver.name} (${e.team.name}) pits — ${cpd} fitted in ${pitTime}s. ${stopLabel}. ${stratNote||""}`};
+      const wetNote=isWet?" 🌧️ "+_pick(["Intermediates the call.","Wets still on.","Going to inters.","Brave call for slicks."]):"";
+      return {lap,type:"pitstop",icon:"🔄",text:`LAP ${lap}: ${e.driver.name} (${e.team.name}) pits — ${cpd} fitted in ${pitTime}s. ${stopLabel}.${wetNote} ${stratNote||""}`};
     }
   };
 
@@ -18188,6 +18265,62 @@ function runRace(grid, teams, track) {
     const scF=finishers.length>3?pick(finishers.slice(3,Math.min(10,finishers.length))):null;
     if(scF) events.push(pitEvent(scF,scLap+1,2));
     events.push({lap:scEnd,type:"safetycar",icon:"🟢",text:`Green flag lap ${scEnd}! Safety car in — gaps erased, racing resumes.`});
+  }
+  // ── Red Flag sequence ────────────────────────────────────────────────────
+  if(hasRF){
+    // Suspension announcement
+    events.push({lap:rfLap,type:"redflag",icon:"🔴",text:`🔴 RED FLAG! LAP ${rfLap}/${TL} — ${rfCause}. RACE SUSPENDED.`});
+    // Drivers are told to slow and return to pit lane
+    events.push({lap:rfLap,type:"redflag",icon:"🔴",text:`All cars return to the pit lane. Officials assessing the situation. Race clock stopped.`});
+    // Free tyre/wing changes while race is suspended
+    const rfPitDrivers=pickN(finishers.slice(0,Math.min(15,finishers.length)),Math.min(8,finishers.length));
+    rfPitDrivers.forEach(function(e){
+      const cpd=isWet?pick(["Intermediates","Wets","Slicks"]):pick(CPDS);
+      const wingNote=Math.random()<0.25?" Front wing replaced.":"";
+      events.push({lap:rfLap+1,type:"pitstop",icon:"🔄",text:`RED FLAG PIT: ${e.driver.name} (${e.team.name}) fits ${cpd} — free stop under suspension.${wingNote}`});
+    });
+    // Track inspection / delay
+    const delayMins=5+Math.floor(Math.random()*20);
+    events.push({lap:rfLap+Math.floor(rfDuration*0.4),type:"redflag",icon:"🔴",text:`Track inspection underway. ${delayMins}-minute delay anticipated. Marshals clearing the incident.`});
+    // Medical / recovery note (wet races more serious)
+    if(isWet&&Math.random()<0.5){
+      events.push({lap:rfLap+Math.floor(rfDuration*0.5),type:"redflag",icon:"🚑",text:`Medical car on track. Driver receiving attention. Race director in communication with both teams.`});
+    }
+    // Race director decision — resume or declare result at last lap completed
+    const resumeDecision=rfResumeLap<TL-2;
+    if(resumeDecision){
+      events.push({lap:rfResumeLap-1,type:"redflag",icon:"🟢",text:`RACE DIRECTOR: Racing will resume from LAP ${rfResumeLap}. ${pick(rfRestartMessages)}`});
+      // Restart overtakes
+      const restartP=pick(finishers.slice(1,Math.min(6,finishers.length)));
+      const restartVic=finishers[0];
+      if(restartP&&restartVic&&Math.random()<0.45){
+        events.push({lap:rfResumeLap,type:"battle",icon:"⚡",text:`RESTART LAP ${rfResumeLap}: ${restartP.driver.name} OVERTAKES ${restartVic.driver.name} off the line! New LEADER!`});
+      } else {
+        events.push({lap:rfResumeLap,type:"start",icon:"🚦",text:`RESTART LAP ${rfResumeLap}: ${restartVic.driver.name} leads into turn 1. Frantic racing resumes — ${TL-rfResumeLap} laps remaining.`});
+      }
+      // Restart incidents common — some cause DNF, some cause time penalty
+      if(Math.random()<0.40){
+        const incD=pick(finishers.slice(3,Math.min(14,finishers.length)));
+        if(incD){
+          const crashR=Math.random();
+          if(crashR<0.30){
+            // Serious crash → DNF
+            addEventDNF(incD.driver,rfResumeLap,"restart collision");
+            events.push({lap:rfResumeLap,type:"dnf",icon:"💥",text:`RESTART LAP ${rfResumeLap}: ${incD.driver.name} INTO THE BARRIER! Massive crash — CAR DESTROYED. DNF.`});
+          } else if(crashR<0.60){
+            // Contact → 5s penalty
+            const incD2=pick(finishers.slice(1,10).filter(x=>x!==incD));
+            addPenalty(incD.driver,5);
+            events.push({lap:rfResumeLap,type:"incident",icon:"⚠️",text:`Lap ${rfResumeLap}: ${incD.driver.name} makes contact with ${incD2?incD2.driver.name:"P2"} under braking — 5-SECOND TIME PENALTY for causing a collision.`});
+          } else {
+            // Close call — no penalty
+            events.push({lap:rfResumeLap,type:"incident",icon:"⚠️",text:`Lap ${rfResumeLap}: ${incD.driver.name} locked up at the restart — both cars continue, stewards investigating.`});
+          }
+        }
+      }
+    } else {
+      events.push({lap:rfLap+1,type:"redflag",icon:"🔴",text:`RACE DECLARED. Results taken at the end of lap ${rfLap-1}. Insufficient laps remaining to restart.`});
+    }
   }
   entries.filter(e=>e.dnf&&!e.fl1&&e.dnfLap>1).forEach(e=>events.push({lap:e.dnfLap,type:"dnf",icon:"🔧",text:`LAP ${e.dnfLap}: RETIREMENT — ${e.driver.name} (${e.team.name}) — ${pick(FAIL)}.`}));
   const p2b=Lf(TL,0.55);
@@ -18213,16 +18346,50 @@ function runRace(grid, teams, track) {
     if(bk1&&bk2) events.push({lap:Lf(TL,0.65),type:"battle",icon:"🔥",text:`Lap ${Lf(TL,0.65)}: ${bk1.driver.name} and ${bk2.driver.name} — their own battle at the back.`});
   }
 
+  // ── Apply event-driven DNFs ───────────────────────────────────────────────
+  Object.keys(eventDNFs).forEach(function(dId){
+    const e=final.find(function(x){return x.driver.id===dId;});
+    if(e&&!e.dnf){
+      e.dnf=true;
+      e.dnfLap=eventDNFs[dId].lap;
+      e.dnfReason=eventDNFs[dId].reason;
+    }
+  });
+  // Re-sort: finishers by pace, then dnf by lap retired desc
+  const newFinishers=final.filter(function(e){return !e.dnf;}).sort(function(a,b){return b.pace-a.pace;});
+  const newDNFs=final.filter(function(e){return e.dnf;}).sort(function(a,b){return (b.dnfLap||0)-(a.dnfLap||0);});
+  final.length=0;
+  newFinishers.forEach(function(e){final.push(e);});
+  newDNFs.forEach(function(e){final.push(e);});
+
+  // ── Compute gaps ─────────────────────────────────────────────────────────
   let cumGap=0;
   final.forEach((e,i)=>{
-    e.finalPos=i+1;
     if(i===0){e.gap=0;return;}
     if(e.dnf){e.gap=null;return;}
     const diff=(final[0].pace-e.pace)*0.55;
     cumGap=Math.max(cumGap+Math.random()*2.2,diff>0?diff:cumGap+0.5);
     e.gap=parseFloat(cumGap.toFixed(3));
   });
+
+  // ── Apply time penalties and re-sort finishers by effective time ──────────
+  const penFinishers=final.filter(function(e){return !e.dnf;});
+  penFinishers.forEach(function(e){
+    const pen=timePenalties[e.driver.id]||0;
+    if(pen>0){
+      e.timePenalty=pen;
+      e.gap=parseFloat(((e.gap||0)+pen).toFixed(3));
+    }
+  });
+  // Re-sort by effective gap (leader stays P1 if gap=0, others sort ascending)
+  penFinishers.sort(function(a,b){return (a.gap||0)-(b.gap||0);});
+  // Rebuild final with penalised order
+  final.length=0;
+  penFinishers.forEach(function(e){final.push(e);});
+  newDNFs.forEach(function(e){final.push(e);});
+
   final.forEach((e,i)=>{
+    e.finalPos=i+1;
     e.points=(!e.dnf&&i<10)?PTS[i]:0;
     if(flD&&e.driver.id===flD.driver.id&&!e.dnf&&i<10) e.points+=1;
   });
@@ -18232,9 +18399,9 @@ function runRace(grid, teams, track) {
   // ── Quarter standings: shuffle final order by decreasing amounts each quarter ──
   // Q1 is very chaotic (big swaps), each quarter settles toward the true final order.
   // Gap timings are fresh per quarter with stage-appropriate scales.
-  const quarterStandings = buildQuarterStandings(final, TL);
+  const quarterStandings = buildQuarterStandings(final, TL, quarterWeather);
 
-  return {positions:final,events,fastestLap:_optionalChain([flD, 'optionalAccess', _30 => _30.driver])||null,isWet,hasSC,scLap,totalLaps:TL,quarterStandings};
+  return {positions:final,events,fastestLap:_optionalChain([flD, 'optionalAccess', _30 => _30.driver])||null,isWet,hasSC,scLap,totalLaps:TL,quarterStandings,quarterWeather,dryingLap,hasRF,rfLap,rfResumeLap};
 }
 
 // ===================== CANVAS DOWNLOAD =====================
@@ -18917,7 +19084,8 @@ function aggRace(n, grid, teams, track) {
   const fastestLap=flId?_optionalChain([grid, 'access', _40 => _40.find, 'call', _41 => _41(e=>e.driver.id===flId), 'optionalAccess', _42 => _42.driver]):null;
   if(fastestLap){const fe=canon.find(e=>e.driver.id===fastestLap.id);if(fe&&!fe.isDNF&&fe.finalPos<=10)fe.points+=1;}
 
-  return {positions:canon,events:repRace?repRace.events:[],fastestLap,isWet:wetCount>=n/2,hasSC:scCount>=n/2,scLap:scCount?Math.round(scLapSum/scCount):0,totalLaps:track.laps,runsUsed:n,quarterStandings:buildQuarterStandings(canon,track.laps)};
+  const qw=repRace?repRace.quarterWeather:null;
+  return {positions:canon,events:repRace?repRace.events:[],fastestLap,isWet:wetCount>=n/2,hasSC:scCount>=n/2,scLap:scCount?Math.round(scLapSum/scCount):0,totalLaps:track.laps,runsUsed:n,quarterStandings:buildQuarterStandings(canon,track.laps,qw),quarterWeather:qw,dryingLap:repRace?repRace.dryingLap:0,hasRF:repRace?repRace.hasRF:false,rfLap:repRace?repRace.rfLap:0,rfResumeLap:repRace?repRace.rfResumeLap:0};
 }
 
 // Aggregated sprint: run N times, average positions → canonical sprint
@@ -22320,6 +22488,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
               , React.createElement('div', { style: {display:"flex",gap:6,marginTop:6,flexWrap:"wrap"},}
                 , race.isWet&&React.createElement('span', { style: {background:"#4488FF18",color:"#4488FF",fontSize:13,fontWeight:700,padding:"2px 7px",letterSpacing:1.5,borderRadius:2},}, "🌧️ WET" )
                 , race.hasSC&&React.createElement('span', { style: {background:"#FFC90618",color:"#FFC906",fontSize:13,fontWeight:700,padding:"2px 7px",letterSpacing:1.5,borderRadius:2},}, "🚗 SC LAP "   , race.scLap)
+                , race.hasRF&&React.createElement('span', { style: {background:"#FF000022",color:"#FF4444",fontSize:13,fontWeight:700,padding:"2px 7px",letterSpacing:1.5,borderRadius:2},}, "🔴 RED FLAG LAP "    , race.rfLap, " · RESUME "   , race.rfResumeLap)
                 , race.fastestLap&&React.createElement('span', { style: {background:"#CC44FF18",color:"#CC44FF",fontSize:13,fontWeight:700,padding:"2px 7px",letterSpacing:1.5,borderRadius:2},}, "💜 FL: "  , race.fastestLap.name)
                 , raceSaved&&React.createElement('span', { style: {background:"#44CC8818",color:"#44CC88",fontSize:13,fontWeight:700,padding:"2px 7px",letterSpacing:1.5,borderRadius:2},}, "✓ SAVED" )
               )
@@ -22327,13 +22496,35 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
 
             /* Quarter tab bar */
             , React.createElement('div', { style: {display:"flex",gap:4,marginBottom:16,background:"#111118",border:"1px solid #1E1E22",borderRadius:6,padding:5},}
-              , QUARTERS.map((qt,qi)=>(
+              , QUARTERS.map((qt,qi)=>{
+                const qWeather=race.quarterWeather&&race.quarterWeather[qi];
+                const wxBadge=qWeather&&qWeather.rf?"🔴":qWeather&&qWeather.wet?"🌧️":qWeather&&qWeather.sc?"🚗":"";
+                return(
                 React.createElement('button', { key: qi, onClick: ()=>setRaceQuarter(qi), style: {flex:1,background:raceQuarter===qi?`${qt.color}20`:"transparent",color:raceQuarter===qi?qt.color:"#778",border:`1px solid ${raceQuarter===qi?qt.color+"55":"transparent"}`,padding:"8px 6px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1.5,borderRadius:4,transition:"all 0.15s",textAlign:"center"},}
-                  , React.createElement('div', null, qt.emoji, " " , qt.label)
+                  , React.createElement('div', null, qt.emoji, " " , qt.label, " " , wxBadge)
                   , React.createElement('div', { style: {fontSize:10,fontWeight:400,opacity:0.7,marginTop:2,letterSpacing:0.5},}, qt.sublabel)
                 )
-              ))
+                );
+              })
             )
+
+            /* Quarter weather strip */
+            , (()=>{
+              const qWeather=race.quarterWeather&&race.quarterWeather[raceQuarter];
+              const isWetQ=qWeather&&qWeather.wet;
+              const hasSCQ=qWeather&&qWeather.sc;
+              const hasRFQ=qWeather&&qWeather.rf;
+              if(!isWetQ&&!hasSCQ&&!hasRFQ) return null;
+              return(
+                React.createElement('div', { style: {display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"},}
+                  , hasRFQ&&React.createElement('span', { style: {background:"#FF000022",color:"#FF4444",fontSize:13,fontWeight:700,padding:"4px 10px",letterSpacing:1.5,borderRadius:3,border:"1px solid #FF000044"},}, "🔴 RED FLAG · RACE SUSPENDED · "       , q.label)
+                  , isWetQ&&React.createElement('span', { style: {background:"#4488FF18",color:"#4488FF",fontSize:13,fontWeight:700,padding:"4px 10px",letterSpacing:1.5,borderRadius:3,border:"1px solid #4488FF33"},}, "🌧️ WET CONDITIONS · "    , q.label)
+                  , hasSCQ&&React.createElement('span', { style: {background:"#FFC90618",color:"#FFC906",fontSize:13,fontWeight:700,padding:"4px 10px",letterSpacing:1.5,borderRadius:3,border:"1px solid #FFC90633"},}, "🚗 SAFETY CAR PERIOD · "     , q.label)
+                  , isWetQ&&React.createElement('span', { style: {background:"#FF444418",color:"#FF8888",fontSize:12,fontWeight:700,padding:"4px 10px",letterSpacing:1,borderRadius:3,border:"1px solid #FF444422"},}, "⚠️ Incident risk elevated"   )
+                  , hasRFQ&&React.createElement('span', { style: {background:"#FF000018",color:"#FF8888",fontSize:12,fontWeight:700,padding:"4px 10px",letterSpacing:1,borderRadius:3,border:"1px solid #FF000022"},}, "🏎️ Free tyre changes for all"     )
+                )
+              );
+            })()
 
             /* Leader banner */
             , leader&&(
@@ -22370,9 +22561,13 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                         , React.createElement('div', { style: {fontSize:11,color:tColor,letterSpacing:1},}, tName)
                       )
                       , React.createElement('div', { style: {textAlign:"right",flexShrink:0},}
-                        , isDNF?React.createElement('div', { style: {fontSize:11,color:"#FF4444"},}, "L", e.dnfLap||"?")
+                        , isDNF?React.createElement(React.Fragment, null
+                            , React.createElement('div', { style: {fontSize:11,color:"#FF4444"},}, "L", e.dnfLap||"?")
+                            , e.dnfReason&&React.createElement('div', { style: {fontSize:10,color:"#FF6644",maxWidth:90,textAlign:"right",lineHeight:1.3},}, e.dnfReason)
+                          )
                           :React.createElement(React.Fragment, null
                             , React.createElement('div', { style: {fontSize:12,fontFamily:"monospace",color:i===0?q.color:"#aaa"},}, i===0?(isFinal?"🏁 WIN":"P1"):`+${e.gap}s`)
+                            , e.timePenalty&&React.createElement('div', { style: {fontSize:10,color:"#FF8800",fontWeight:700},}, "+", e.timePenalty, "s PEN" )
                             , isFinal&&e.points>0&&React.createElement('div', { style: {fontSize:11,color:"#E8002D",fontWeight:700},}, "+", e.points, "pts")
                             , isFinal&&posChg!==null&&posChg!==0&&React.createElement('div', { style: {fontSize:10,color:posChg>0?"#44CC88":"#FF6644"},}, posChg>0?`▲${posChg}`:`▼${Math.abs(posChg)}`)
                           )
