@@ -18351,7 +18351,8 @@ function runRace(grid, teams, track) {
       events.push({lap:rfLap+1,type:"redflag",icon:"🔴",text:`RACE DECLARED. Results taken at the end of lap ${rfLap-1}. Insufficient laps remaining to restart.`});
     }
   }
-  entries.filter(e=>e.dnf&&!e.fl1&&e.dnfLap>1).forEach(e=>events.push({lap:e.dnfLap,type:"dnf",icon:"🔧",text:`LAP ${e.dnfLap}: RETIREMENT — ${e.driver.name} (${e.team.name}) — ${pick(FAIL)}.`}));
+  // Only fire generic RETIREMENT events for DNFs not already covered by an event-DNF message
+  entries.filter(e=>e.dnf&&!e.fl1&&e.dnfLap>1&&!eventDNFs[e.driver.id]).forEach(e=>events.push({lap:e.dnfLap,type:"dnf",icon:"🔧",text:`LAP ${e.dnfLap}: RETIREMENT — ${e.driver.name} (${e.team.name}) — ${pick(FAIL)}.`}));
   const p2b=Lf(TL,0.55);
   pickN(finishers.slice(0,Math.min(12,finishers.length)),6).forEach((e,i)=>{
     events.push(pitEvent(e,p2b+i*2,2));
@@ -18487,46 +18488,53 @@ function runRace(grid, teams, track) {
   }
 
   // ── Apply event-driven DNFs ───────────────────────────────────────────────
+  // Apply event-DNFs — mark any driver (finisher or pre-existing DNF) with event reason
   Object.keys(eventDNFs).forEach(function(dId){
     const e=final.find(function(x){return x.driver.id===dId;});
-    if(e&&!e.dnf){
+    if(e){
       e.dnf=true;
       e.dnfLap=eventDNFs[dId].lap;
       e.dnfReason=eventDNFs[dId].reason;
     }
   });
-  // Re-sort: finishers by pace, then dnf by lap retired desc
-  const newFinishers=final.filter(function(e){return !e.dnf;}).sort(function(a,b){return b.pace-a.pace;});
-  const newDNFs=final.filter(function(e){return e.dnf;}).sort(function(a,b){return (b.dnfLap||0)-(a.dnfLap||0);});
-  final.length=0;
-  newFinishers.forEach(function(e){final.push(e);});
-  newDNFs.forEach(function(e){final.push(e);});
 
-  // ── Compute gaps ─────────────────────────────────────────────────────────
-  let cumGap=0;
-  final.forEach((e,i)=>{
-    if(i===0){e.gap=0;return;}
-    if(e.dnf){e.gap=null;return;}
-    const diff=(final[0].pace-e.pace)*0.55;
-    cumGap=Math.max(cumGap+Math.random()*2.2,diff>0?diff:cumGap+0.5);
-    e.gap=parseFloat(cumGap.toFixed(3));
+  // Deduplicate final by driver id (keep first occurrence only)
+  const seenIds={};
+  const dedupedFinal=final.filter(function(e){
+    const id=e.driver.id;
+    if(seenIds[id]) return false;
+    seenIds[id]=true;
+    return true;
   });
 
+  // Single clean split: active finishers vs DNFs
+  const cleanFinishers=dedupedFinal.filter(function(e){return !e.dnf;}).sort(function(a,b){return b.pace-a.pace;});
+  const cleanDNFs=dedupedFinal.filter(function(e){return e.dnf;}).sort(function(a,b){return (b.dnfLap||0)-(a.dnfLap||0);});
+
+  // ── Compute gaps (finishers only) ─────────────────────────────────────────
+  cleanFinishers.forEach(function(e,i){
+    if(i===0){e.gap=0;return;}
+    const diff=(cleanFinishers[0].pace-e.pace)*0.55;
+    const prev=cleanFinishers[i-1].gap||0;
+    const gap=Math.max(prev+Math.random()*2.2,diff>0?diff:prev+0.5);
+    e.gap=parseFloat(gap.toFixed(3));
+  });
+  cleanDNFs.forEach(function(e){e.gap=null;});
+
   // ── Apply time penalties and re-sort finishers by effective time ──────────
-  const penFinishers=final.filter(function(e){return !e.dnf;});
-  penFinishers.forEach(function(e){
+  cleanFinishers.forEach(function(e){
     const pen=timePenalties[e.driver.id]||0;
     if(pen>0){
       e.timePenalty=pen;
       e.gap=parseFloat(((e.gap||0)+pen).toFixed(3));
     }
   });
-  // Re-sort by effective gap (leader stays P1 if gap=0, others sort ascending)
-  penFinishers.sort(function(a,b){return (a.gap||0)-(b.gap||0);});
-  // Rebuild final with penalised order
+  cleanFinishers.sort(function(a,b){return (a.gap||0)-(b.gap||0);});
+
+  // Rebuild final — one entry per driver, finishers then DNFs
   final.length=0;
-  penFinishers.forEach(function(e){final.push(e);});
-  newDNFs.forEach(function(e){final.push(e);});
+  cleanFinishers.forEach(function(e){final.push(e);});
+  cleanDNFs.forEach(function(e){final.push(e);});
 
   final.forEach((e,i)=>{
     e.finalPos=i+1;
