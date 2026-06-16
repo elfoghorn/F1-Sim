@@ -1881,7 +1881,7 @@ function RoundDetail({r, onBack}) {
         <div>
           <div style={{fontSize:11,color:"#FFC906",letterSpacing:2,marginBottom:8,fontWeight:700}}>⚡ SPRINT — {snap.sprint.sprintLaps} LAPS</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:5}}>
-            {snap.sprint.positions.map((e,i)=>(
+            {(()=>{const _ss=new Set();return snap.sprint.positions.filter(e=>{if(_ss.has(e.driverId)) return false;_ss.add(e.driverId);return true;}).slice(0,22);})().map((e,i)=>(
               <div key={e.driverId||i} style={{display:"flex",alignItems:"center",gap:9,padding:"8px 11px",background:e.dnf?"#1A1010":i<3?"#181810":"#161618",border:`1px solid ${e.dnf?"#FF444418":i<3?"#FFC90618":"#1E1E22"}`,borderLeft:`3px solid ${e.dnf?"#FF4444":e.teamColor}`,borderRadius:3,opacity:e.dnf?0.65:1}}>
                 <div style={{width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?"#FFC906":i===1?"#aaa":i===2?"#CD7F32":"transparent",color:i<3?"#000":"#bbb",fontSize:11,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #2A2A30":"none",flexShrink:0}}>{e.dnf?"DNF":i+1}</div>
                 <div style={{flex:1,minWidth:0}}>
@@ -4067,7 +4067,7 @@ function F2Sim({onBack}){
               <div style={{display:"grid",gridTemplateColumns:"1fr 340px",gap:16,alignItems:"start"}}>
                 <div>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-                    {sprint.positions.map((e,i)=>(
+                    {(()=>{const _ss=new Set();return sprint.positions.filter(e=>{if(_ss.has(e.driver.id)) return false;_ss.add(e.driver.id);return true;}).slice(0,22);})().map((e,i)=>(
                       <div key={e.driver.id} style={{display:"flex",alignItems:"center",gap:9,padding:"9px 13px",background:e.dnf?"#150A0A":i<3?"#0D0D1C":"#0E0E1E",border:`1px solid ${e.dnf?"#FF444422":i<3?"#FFC90618":"#1A1A30"}`,borderLeft:`3px solid ${e.dnf?"#FF4444":e.team.color}`,borderRadius:3,opacity:e.dnf?0.7:1}}>
                         <div style={{width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?"#FFC906":i===1?"#aaa":i===2?"#CD7F32":"transparent",color:i<3?"#000":"#556",fontSize:11,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #1A1A30":"none",flexShrink:0}}>{e.dnf?"DNF":i+1}</div>
                         <div style={{flex:1,minWidth:0}}>
@@ -5570,7 +5570,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
               <div style={{fontSize:14,color:"#778",letterSpacing:1.5,marginTop:2}}>{track.flag} {track.name} · Points for top 8: 8-7-6-5-4-3-2-1</div>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:16}}>
-              {sprint.positions.map((e,i)=>(
+              {(()=>{const _ss=new Set();return sprint.positions.filter(e=>{if(_ss.has(e.driver.id)) return false;_ss.add(e.driver.id);return true;}).slice(0,22);})().map((e,i)=>(
                 <div key={e.driver.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:e.dnf?"#1A1010":i<3?"#181810":"#161618",border:`1px solid ${e.dnf?"#FF444418":i<3?"#FFC90618":"#1E1E22"}`,borderLeft:`3px solid ${e.dnf?"#FF4444":e.team.color}`,borderRadius:3,opacity:e.dnf?0.6:1}}>
                   <div style={{width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?"#FFC906":i===1?"#aaa":i===2?"#CD7F32":"transparent",color:i<3?"#000":"#bbb",fontSize:13,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #2A2A30":"none",flexShrink:0}}>{e.dnf?"DNF":i+1}</div>
                   <div style={{flex:1,minWidth:0}}>
