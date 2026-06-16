@@ -683,6 +683,8 @@ function buildFPCaption(fpData, track) {
 
 // Sprint qualifying: SQ1/SQ2/SQ3 — shorter sessions, same knockout structure as Q1/Q2/Q3.
 function runSprintQual(drivers, teams, track) {
+  const seen=new Set();
+  drivers=drivers.filter(d=>{if(seen.has(d.id)) return false;seen.add(d.id);return true;}).slice(0,22);
   const makeSessionForm = (spread) => {
     const m = {};
     drivers.forEach(d => { m[d.id] = (Math.random()-0.5)*2*spread; });
@@ -776,6 +778,8 @@ function buildSQCaption(session, entries, track) {
 }
 
 function runSprint(grid, teams, track) {
+  const spSeen=new Set();
+  grid=grid.filter(e=>{if(spSeen.has(e.driver.id)) return false;spSeen.add(e.driver.id);return true;}).slice(0,22);
   const spLaps=track.lapLen?Math.max(12,Math.round(100/track.lapLen)):Math.max(12,Math.floor(track.laps*0.33));
   const entries=grid.map((q,i)=>{
     const {driver:d,team}=q;
