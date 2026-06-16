@@ -742,7 +742,8 @@ function aggSprintQual(n, drivers, teams, track) {
   const sq3Avg=sq3All.slice(0,10).map((e,i)=>({...e, sq3Pos:i+1}));
   const sq2Elim=sq2Avg.filter(e=>e.sqElim2).sort((a,b)=>a.sq2Pos-b.sq2Pos);
   const sq1Elim=sq1Avg.filter(e=>e.sqElim1).sort((a,b)=>a.sq1Pos-b.sq1Pos);
-  const sprintGrid=[...sq3Avg,...sq2Elim,...sq1Elim];
+  const sqSeen=new Set();
+  const sprintGrid=[...sq3Avg,...sq2Elim,...sq1Elim].filter(e=>{if(sqSeen.has(e.driver.id)) return false;sqSeen.add(e.driver.id);return true;}).slice(0,22);
   const avgElim1=new Set(sq1Elim.map(e=>e.driver.id));
   const avgElim2=new Set(sq2Elim.map(e=>e.driver.id));
   const sq1Display=displayRun?displayRun.sq1.map(e=>({...e, sqElim1:avgElim1.has(e.driver.id)})):sq1Avg;
@@ -2189,6 +2190,8 @@ function aggRace(n, grid, teams, track) {
 
 // Aggregated sprint: run N times, average positions → canonical sprint
 function aggSprint(n, grid, teams, track) {
+  const spSeen=new Set();
+  grid=grid.filter(e=>{if(spSeen.has(e.driver.id)) return false;spSeen.add(e.driver.id);return true;}).slice(0,22);
   if(n<=1) return runSprint(grid,teams,track);
   const posAcc={}, dnfCount={}, dnfLaps={}; let spLaps=0;
   grid.forEach(({driver})=>{posAcc[driver.id]=[];dnfCount[driver.id]=0;dnfLaps[driver.id]=[];});
