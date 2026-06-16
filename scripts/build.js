@@ -42,6 +42,7 @@ function findModule(name) {
 
 function findSucrase() {
   const candidates = [
+    path.join(ROOT, 'node_modules', 'sucrase'),
     path.join(ROOT, 'node_modules', '@mermaid-js', 'mermaid-cli', 'node_modules', 'sucrase'),
     `/home/${process.env.USER || 'claude'}/.npm-global/lib/node_modules/@mermaid-js/mermaid-cli/node_modules/sucrase`,
     '/opt/node22/lib/node_modules/sucrase',
