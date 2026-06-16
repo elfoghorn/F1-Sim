@@ -4469,7 +4469,12 @@ export default function F1Sim(){
     try{return localStorage.getItem('f1sim_series')||'f1';}catch{return 'f1';}
   });
   const [drivers,setDrivers]=useState(()=>{
-    try{const s=localStorage.getItem('f1sim_drivers');return s?JSON.parse(s):DRIVERS;}catch{return DRIVERS;}
+    try{
+      const s=localStorage.getItem('f1sim_drivers');
+      if(!s) return DRIVERS;
+      const seen=new Set();
+      return JSON.parse(s).filter(d=>{if(seen.has(d.id)) return false;seen.add(d.id);return true;}).slice(0,22);
+    }catch{return DRIVERS;}
   });
   const [teams,setTeams]=useState(()=>{
     try{const s=localStorage.getItem('f1sim_teams');return s?JSON.parse(s):TEAMS;}catch{return TEAMS;}
@@ -4654,15 +4659,16 @@ export default function F1Sim(){
   const teamDrivers=id=>drivers.filter(d=>d.teamId===id);
 
   const doQual=()=>{
-    setFp1(runFP(1,drivers,teams,track));
+    const activeDrivers=drivers.slice(0,22);
+    setFp1(runFP(1,activeDrivers,teams,track));
     if(track.hasSprint){
       setFp2(null);
-      setSprintQual(aggSprintQual(runAccuracy,drivers,teams,track));
+      setSprintQual(aggSprintQual(runAccuracy,activeDrivers,teams,track));
     } else {
-      setFp2(runFP(2,drivers,teams,track));
+      setFp2(runFP(2,activeDrivers,teams,track));
       setSprintQual(null);
     }
-    setQual(aggQual(runAccuracy,drivers,teams,track));
+    setQual(aggQual(runAccuracy,activeDrivers,teams,track));
     setSprint(null); setRace(null); setStages(null); setRaceSaved(false); setDbSaving(false);
     setQTab("fp1"); setView("qualifying");
   };
@@ -4970,7 +4976,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
     finally{setIsGen(false);setGenMsg("");}
   };
 
-  const saveDriver=d=>{if(drivers.find(x=>x.id===d.id))setDrivers(p=>p.map(x=>x.id===d.id?d:x));else setDrivers(p=>[...p,{...d,id:`c_${Date.now()}`}]);setModal(null);};
+  const saveDriver=d=>{if(drivers.find(x=>x.id===d.id))setDrivers(p=>p.map(x=>x.id===d.id?d:x));else if(drivers.length<22)setDrivers(p=>[...p,{...d,id:`c_${Date.now()}`}]);setModal(null);};
   const saveTeam=t=>{if(teams.find(x=>x.id===t.id))setTeams(p=>p.map(x=>x.id===t.id?t:x));else setTeams(p=>[...p,{...t,id:`c_${Date.now()}`}]);setModal(null);};
   const setBudgetCap=(teamId,cap)=>setTeamBudgets(prev=>({...prev,[teamId]:Math.max(1,cap)}));
 
