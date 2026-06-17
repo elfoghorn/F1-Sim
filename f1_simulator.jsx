@@ -217,6 +217,15 @@ const TRACKS = [
   {id:"abudhabi",  name:"Abu Dhabi GP",     circuit:"Yas Marina",            flag:"🇦🇪",laps:58,od:45,td:50,wr:5, type:"mixed",         hasSprint:false,drs:2,corners:16,alt:3,   temp:28,abrasive:3,pitDelta:24,night:true, lapLen:5.28,topSpeed:332,downforce:6,street:false},
 ];
 
+// Reference pole-position lap times in seconds (based on 2024/2025 data, adjusted for 2027 regs)
+const QUAL_REFS = {
+  australia:75.9, china:92.9, japan:88.2, bahrain:89.2, saudi:87.5,
+  miami:87.2,     spain:71.4, monaco:70.3, canada:70.3, madrid:87.5,
+  austria:64.3,   britain:84.4, hungary:74.4, belgium:101.4, netherlands:69.8,
+  italy:79.4,     azerbaijan:101.4, singapore:89.5, usa:92.3, mexico:76.2,
+  brazil:70.0,    lasvegas:91.1, qatar:83.8, abudhabi:82.6,
+};
+
 const PTS        = [25,18,15,12,10,8,6,4,2,1];
 const SPRINT_PTS = [8,7,6,5,4,3,2,1];
 const CPDS       = ["Softs","Mediums","Hards","Intermediates"];
@@ -1432,6 +1441,15 @@ function downloadLeaderboardPNG(title,subtitle,entries,color,filename,opts={}){
       c.font="bold 13px Arial,sans-serif"; c.fillStyle="#FF4444";
       c.fillText("DNF Lap "+(e.dnfLap||"?"),W-PAD,y+26);
       if(e.dnfReason){c.font="11px Arial"; c.fillStyle="#FF6644"; c.fillText(e.dnfReason,W-PAD,y+44);}
+    }else if(opts.refQualSecs){
+      // Show actual lap times (qualifying / FP / testing mode)
+      const fmtT=s=>{const m=Math.floor(s/60);return m+":"+(s%60).toFixed(3).padStart(6,"0");};
+      const gapVal=e.gap!=null?parseFloat(e.gap):(e.gapStr!=null?parseFloat(e.gapStr):0);
+      const lapT=fmtT(opts.refQualSecs+(i===0?0:gapVal));
+      c.font="bold 16px monospace"; c.fillStyle=i===0?color:"#F0F0F0";
+      c.fillText(lapT,W-PAD,y+26);
+      if(i>0&&gapVal){c.font="11px Arial"; c.fillStyle="#778"; c.fillText("+"+e.gap+"s",W-PAD,y+44);}
+      if(opts.showLaps&&e.laps){c.font="11px Arial"; c.fillStyle="#556"; c.fillText(e.laps+" laps",W-PAD,y+46);}
     }else{
       const gap=e.gap!=null?e.gap:(e.gapStr!=null?e.gapStr:null);
       const gapTxt=i===0?(opts.leaderLabel||"LEADER"):(gap!==null?"+"+gap+"s":"—");
@@ -5542,11 +5560,12 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
 
               <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:16,flexWrap:"wrap"}}>
                 {cur&&<button onClick={()=>{
+                  const refSecs=QUAL_REFS[track.id]||null;
                   if(cur.kind==="fp"&&cur.data?.positions){
-                    downloadLeaderboardPNG(track.name+" — "+cur.l,track.circuit+" · "+cur.sub+" · "+cur.dur,cur.data.positions,cur.color,"f1sim-"+track.id+"-"+cur.k+".png",{leaderLabel:"FASTEST",showLaps:true});
+                    downloadLeaderboardPNG(track.name+" — "+cur.l,track.circuit+" · "+cur.sub+" · "+cur.dur,cur.data.positions,cur.color,"f1sim-"+track.id+"-"+cur.k+".png",{showLaps:true,refQualSecs:refSecs?refSecs+1.2:null});
                   }else if((cur.kind==="q"||cur.kind==="sq")&&cur.src){
                     const gs=cur.src.map((e,i)=>({...e,gap:i===0?null:((cur.src[0].score-e.score)*0.011).toFixed(3)}));
-                    downloadLeaderboardPNG(track.name+" — "+cur.l,track.circuit+" · "+cur.sub+" · "+cur.dur,gs,cur.color,"f1sim-"+track.id+"-"+cur.k+".png",{leaderLabel:"FASTEST"});
+                    downloadLeaderboardPNG(track.name+" — "+cur.l,track.circuit+" · "+cur.sub+" · "+cur.dur,gs,cur.color,"f1sim-"+track.id+"-"+cur.k+".png",{refQualSecs:refSecs});
                   }
                 }} style={{background:"#1E1E28",color:"#aaa",border:"1px solid #2A2A38",padding:"10px 16px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1,borderRadius:3}}>📷 PNG</button>}
                 <button onClick={()=>exportWeekendCSV(track,{fp1,fp2,qual,sprintQual,sprint:null,race:null})} style={{background:"#1E1E28",color:"#aaa",border:"1px solid #2A2A38",padding:"10px 16px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1,borderRadius:3}}>📊 Export CSV</button>
@@ -6052,7 +6071,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                       const ttl=activeDay?"Day "+testDay+" — "+activeDay.conditions.label:"Overall Standings";
                       const fn="f1sim-testing-"+(testSession.id||"test")+(activeDay?"-day"+testDay:"-overall")+".png";
                       const entries=displayResults.map((r,i)=>({...r,gap:i===0?null:((r.bestLap-fastest.bestLap)).toFixed(3)}));
-                      downloadLeaderboardPNG(testSession.name+" — "+ttl,(testSession.dates||"Pre-Season Testing"),entries,"#4466FF",fn,{leaderLabel:"FASTEST",showLaps:true});
+                      downloadLeaderboardPNG(testSession.name+" — "+ttl,(testSession.dates||"Pre-Season Testing"),entries,"#4466FF",fn,{refQualSecs:fastest.bestLap,showLaps:true});
                     }} style={{background:"#1E1E28",color:"#aaa",border:"1px solid #2A2A38",padding:"10px 16px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1,borderRadius:3}}>📷 PNG</button>
                     <button onClick={()=>exportTestingCSV(testResults,testSession)} style={{background:"#1E1E28",color:"#aaa",border:"1px solid #2A2A38",padding:"10px 16px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1,borderRadius:3}}>📊 Export CSV</button>
                     <button onClick={()=>doTest(testSession)} style={{background:"#2A2A30",color:"#ccc",border:"none",padding:"10px 18px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>↺ RE-RUN TEST</button>
