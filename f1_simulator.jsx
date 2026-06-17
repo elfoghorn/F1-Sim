@@ -6070,8 +6070,10 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                     <button onClick={()=>{
                       const ttl=activeDay?"Day "+testDay+" — "+activeDay.conditions.label:"Overall Standings";
                       const fn="f1sim-testing-"+(testSession.id||"test")+(activeDay?"-day"+testDay:"-overall")+".png";
-                      const entries=displayResults.map((r,i)=>({...r,gap:i===0?null:((r.bestLap-fastest.bestLap)).toFixed(3)}));
-                      downloadLeaderboardPNG(testSession.name+" — "+ttl,(testSession.dates||"Pre-Season Testing"),entries,"#4466FF",fn,{refQualSecs:fastest.bestLap,showLaps:true});
+                      const getLap=r=>r.bestLap??r.qualiSim;
+                      const fastestLap=getLap(fastest);
+                      const entries=displayResults.map((r,i)=>{const l=getLap(r);return{...r,gap:i===0||!l||!fastestLap?null:(l-fastestLap).toFixed(3)};});
+                      downloadLeaderboardPNG(testSession.name+" — "+ttl,(testSession.dates||"Pre-Season Testing"),entries,"#4466FF",fn,{refQualSecs:fastestLap,showLaps:true});
                     }} style={{background:"#1E1E28",color:"#aaa",border:"1px solid #2A2A38",padding:"10px 16px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1,borderRadius:3}}>📷 PNG</button>
                     <button onClick={()=>exportTestingCSV(testResults,testSession)} style={{background:"#1E1E28",color:"#aaa",border:"1px solid #2A2A38",padding:"10px 16px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1,borderRadius:3}}>📊 Export CSV</button>
                     <button onClick={()=>doTest(testSession)} style={{background:"#2A2A30",color:"#ccc",border:"none",padding:"10px 18px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>↺ RE-RUN TEST</button>
