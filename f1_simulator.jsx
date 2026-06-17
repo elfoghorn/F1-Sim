@@ -754,7 +754,8 @@ function aggSprintQual(n, drivers, teams, track) {
   const sq2Elim=sq2Avg.filter(e=>e.sqElim2).sort((a,b)=>a.sq2Pos-b.sq2Pos);
   const sq1Elim=sq1Avg.filter(e=>e.sqElim1).sort((a,b)=>a.sq1Pos-b.sq1Pos);
   const sqSeen=new Set();
-  const sprintGrid=[...sq3Avg,...sq2Elim,...sq1Elim].filter(e=>{if(sqSeen.has(e.driver.id)) return false;sqSeen.add(e.driver.id);return true;}).slice(0,22);
+  const sprintGrid=[...sq3Avg,...sq2Elim,...sq1Elim].filter(e=>{if(sqSeen.has(e.driver.id)) return false;sqSeen.add(e.driver.id);return true;});
+  driverMap.filter(e=>!sqSeen.has(e.driver.id)).sort((a,b)=>b.sq1Score-a.sq1Score).forEach(e=>{sprintGrid.push({...e,score:e.sq1Score});sqSeen.add(e.driver.id);});
   const avgElim1=new Set(sq1Elim.map(e=>e.driver.id));
   const avgElim2=new Set(sq2Elim.map(e=>e.driver.id));
   const sq1Display=displayRun?displayRun.sq1.map(e=>({...e, sqElim1:avgElim1.has(e.driver.id)})):sq1Avg;
@@ -2167,6 +2168,11 @@ function aggQual(n, drivers, teams, track) {
     gridSeen.add(e.driver.id);
     return true;
   });
+  // Safety net: a driver in q2All top-10 but outside q3All top-10 and outside q1Elim
+  // falls through all three sets — append them at the back sorted by q1Score
+  driverMap.filter(e=>!gridSeen.has(e.driver.id))
+    .sort((a,b)=>b.q1Score-a.q1Score)
+    .forEach(e=>{grid.push({...e,score:e.q1Score});gridSeen.add(e.driver.id);});
   const avgElim1=new Set(q1Elim.map(e=>e.driver.id));
   const avgElim2=new Set(q2Elim.map(e=>e.driver.id));
   const q1Display=displayRun?displayRun.q1.map(e=>({...e, elim1:avgElim1.has(e.driver.id)})):q1Avg;
