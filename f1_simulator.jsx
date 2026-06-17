@@ -692,6 +692,8 @@ function buildFPCaption(fpData, track) {
 
 // Sprint qualifying: SQ1/SQ2/SQ3 — shorter sessions, same knockout structure as Q1/Q2/Q3.
 function runSprintQual(drivers, teams, track) {
+  const seen=new Set();
+  drivers=drivers.filter(d=>{if(seen.has(d.id)) return false;seen.add(d.id);return true;}).slice(0,22);
   const makeSessionForm = (spread) => {
     const m = {};
     drivers.forEach(d => { m[d.id] = (Math.random()-0.5)*2*spread; });
@@ -751,7 +753,8 @@ function aggSprintQual(n, drivers, teams, track) {
   const sq3Avg=sq3All.slice(0,10).map((e,i)=>({...e, sq3Pos:i+1}));
   const sq2Elim=sq2Avg.filter(e=>e.sqElim2).sort((a,b)=>a.sq2Pos-b.sq2Pos);
   const sq1Elim=sq1Avg.filter(e=>e.sqElim1).sort((a,b)=>a.sq1Pos-b.sq1Pos);
-  const sprintGrid=[...sq3Avg,...sq2Elim,...sq1Elim];
+  const sqSeen=new Set();
+  const sprintGrid=[...sq3Avg,...sq2Elim,...sq1Elim].filter(e=>{if(sqSeen.has(e.driver.id)) return false;sqSeen.add(e.driver.id);return true;}).slice(0,22);
   const avgElim1=new Set(sq1Elim.map(e=>e.driver.id));
   const avgElim2=new Set(sq2Elim.map(e=>e.driver.id));
   const sq1Display=displayRun?displayRun.sq1.map(e=>({...e, sqElim1:avgElim1.has(e.driver.id)})):sq1Avg;
@@ -784,6 +787,8 @@ function buildSQCaption(session, entries, track) {
 }
 
 function runSprint(grid, teams, track) {
+  const spSeen=new Set();
+  grid=grid.filter(e=>{if(spSeen.has(e.driver.id)) return false;spSeen.add(e.driver.id);return true;}).slice(0,22);
   const spLaps=track.lapLen?Math.max(12,Math.round(100/track.lapLen)):Math.max(12,Math.floor(track.laps*0.33));
   const entries=grid.map((q,i)=>{
     const {driver:d,team}=q;
@@ -1894,7 +1899,7 @@ function RoundDetail({r, onBack}) {
         <div>
           <div style={{fontSize:11,color:"#FFC906",letterSpacing:2,marginBottom:8,fontWeight:700}}>⚡ SPRINT — {snap.sprint.sprintLaps} LAPS</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:5}}>
-            {snap.sprint.positions.map((e,i)=>(
+            {(()=>{const _ss=new Set();return snap.sprint.positions.filter(e=>{if(_ss.has(e.driverId)) return false;_ss.add(e.driverId);return true;}).slice(0,22);})().map((e,i)=>(
               <div key={e.driverId||i} style={{display:"flex",alignItems:"center",gap:9,padding:"8px 11px",background:e.dnf?"#1A1010":i<3?"#181810":"#161618",border:`1px solid ${e.dnf?"#FF444418":i<3?"#FFC90618":"#1E1E22"}`,borderLeft:`3px solid ${e.dnf?"#FF4444":e.teamColor}`,borderRadius:3,opacity:e.dnf?0.65:1}}>
                 <div style={{width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?"#FFC906":i===1?"#aaa":i===2?"#CD7F32":"transparent",color:i<3?"#000":"#bbb",fontSize:11,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #2A2A30":"none",flexShrink:0}}>{e.dnf?"DNF":i+1}</div>
                 <div style={{flex:1,minWidth:0}}>
@@ -2207,6 +2212,8 @@ function aggRace(n, grid, teams, track) {
 
 // Aggregated sprint: run N times, average positions → canonical sprint
 function aggSprint(n, grid, teams, track) {
+  const spSeen=new Set();
+  grid=grid.filter(e=>{if(spSeen.has(e.driver.id)) return false;spSeen.add(e.driver.id);return true;}).slice(0,22);
   if(n<=1) return runSprint(grid,teams,track);
   const posAcc={}, dnfCount={}, dnfLaps={}; let spLaps=0;
   grid.forEach(({driver})=>{posAcc[driver.id]=[];dnfCount[driver.id]=0;dnfLaps[driver.id]=[];});
@@ -4078,7 +4085,7 @@ function F2Sim({onBack}){
               <div style={{display:"grid",gridTemplateColumns:"1fr 340px",gap:16,alignItems:"start"}}>
                 <div>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-                    {sprint.positions.map((e,i)=>(
+                    {(()=>{const _ss=new Set();return sprint.positions.filter(e=>{if(_ss.has(e.driver.id)) return false;_ss.add(e.driver.id);return true;}).slice(0,22);})().map((e,i)=>(
                       <div key={e.driver.id} style={{display:"flex",alignItems:"center",gap:9,padding:"9px 13px",background:e.dnf?"#150A0A":i<3?"#0D0D1C":"#0E0E1E",border:`1px solid ${e.dnf?"#FF444422":i<3?"#FFC90618":"#1A1A30"}`,borderLeft:`3px solid ${e.dnf?"#FF4444":e.team.color}`,borderRadius:3,opacity:e.dnf?0.7:1}}>
                         <div style={{width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?"#FFC906":i===1?"#aaa":i===2?"#CD7F32":"transparent",color:i<3?"#000":"#556",fontSize:11,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #1A1A30":"none",flexShrink:0}}>{e.dnf?"DNF":i+1}</div>
                         <div style={{flex:1,minWidth:0}}>
@@ -4484,7 +4491,12 @@ export default function F1Sim(){
     try{return localStorage.getItem('f1sim_series')||'f1';}catch{return 'f1';}
   });
   const [drivers,setDrivers]=useState(()=>{
-    try{const s=localStorage.getItem('f1sim_drivers');return s?JSON.parse(s):DRIVERS;}catch{return DRIVERS;}
+    try{
+      const s=localStorage.getItem('f1sim_drivers');
+      if(!s) return DRIVERS;
+      const seen=new Set();
+      return JSON.parse(s).filter(d=>{if(seen.has(d.id)) return false;seen.add(d.id);return true;}).slice(0,22);
+    }catch{return DRIVERS;}
   });
   const [teams,setTeams]=useState(()=>{
     try{const s=localStorage.getItem('f1sim_teams');return s?JSON.parse(s):TEAMS;}catch{return TEAMS;}
@@ -4669,15 +4681,16 @@ export default function F1Sim(){
   const teamDrivers=id=>drivers.filter(d=>d.teamId===id);
 
   const doQual=()=>{
-    setFp1(runFP(1,drivers,teams,track));
+    const activeDrivers=drivers.slice(0,22);
+    setFp1(runFP(1,activeDrivers,teams,track));
     if(track.hasSprint){
       setFp2(null);
-      setSprintQual(aggSprintQual(runAccuracy,drivers,teams,track));
+      setSprintQual(aggSprintQual(runAccuracy,activeDrivers,teams,track));
     } else {
-      setFp2(runFP(2,drivers,teams,track));
+      setFp2(runFP(2,activeDrivers,teams,track));
       setSprintQual(null);
     }
-    setQual(aggQual(runAccuracy,drivers,teams,track));
+    setQual(aggQual(runAccuracy,activeDrivers,teams,track));
     setSprint(null); setRace(null); setStages(null); setRaceSaved(false); setDbSaving(false);
     setQTab("fp1"); setView("qualifying");
   };
@@ -4985,7 +4998,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
     finally{setIsGen(false);setGenMsg("");}
   };
 
-  const saveDriver=d=>{if(drivers.find(x=>x.id===d.id))setDrivers(p=>p.map(x=>x.id===d.id?d:x));else setDrivers(p=>[...p,{...d,id:`c_${Date.now()}`}]);setModal(null);};
+  const saveDriver=d=>{if(drivers.find(x=>x.id===d.id))setDrivers(p=>p.map(x=>x.id===d.id?d:x));else if(drivers.length<22)setDrivers(p=>[...p,{...d,id:`c_${Date.now()}`}]);setModal(null);};
   const saveTeam=t=>{if(teams.find(x=>x.id===t.id))setTeams(p=>p.map(x=>x.id===t.id?t:x));else setTeams(p=>[...p,{...t,id:`c_${Date.now()}`}]);setModal(null);};
   const setBudgetCap=(teamId,cap)=>setTeamBudgets(prev=>({...prev,[teamId]:Math.max(1,cap)}));
 
@@ -5576,7 +5589,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
               <div style={{fontSize:14,color:"#778",letterSpacing:1.5,marginTop:2}}>{track.flag} {track.name} · Points for top 8: 8-7-6-5-4-3-2-1</div>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:16}}>
-              {sprint.positions.map((e,i)=>(
+              {(()=>{const _ss=new Set();return sprint.positions.filter(e=>{if(_ss.has(e.driver.id)) return false;_ss.add(e.driver.id);return true;}).slice(0,22);})().map((e,i)=>(
                 <div key={e.driver.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:e.dnf?"#1A1010":i<3?"#181810":"#161618",border:`1px solid ${e.dnf?"#FF444418":i<3?"#FFC90618":"#1E1E22"}`,borderLeft:`3px solid ${e.dnf?"#FF4444":e.team.color}`,borderRadius:3,opacity:e.dnf?0.6:1}}>
                   <div style={{width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",background:i===0?"#FFC906":i===1?"#aaa":i===2?"#CD7F32":"transparent",color:i<3?"#000":"#bbb",fontSize:13,fontWeight:700,borderRadius:2,border:i>=3?"1px solid #2A2A30":"none",flexShrink:0}}>{e.dnf?"DNF":i+1}</div>
                   <div style={{flex:1,minWidth:0}}>
