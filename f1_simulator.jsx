@@ -5998,7 +5998,9 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                       ))}
                     </div>
                     {displayResults.map((r,i)=>{
-                      const gap = i===0 ? null : (r.bestLap - fastest.bestLap);
+                      const rLap=r.bestLap??r.qualiSim;
+                      const fLap=fastest.bestLap??fastest.qualiSim;
+                      const gap = i===0 ? null : (rLap - fLap);
                       const prog = activeDay
                         ? [r.didQualiRun?"🏎 Q-sim":"",r.didLongRun?"📏 Long run":"",!r.didQualiRun&&!r.didLongRun?"🔧 Install/setup":""].filter(Boolean).join("  ")
                         : null;
@@ -6018,7 +6020,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                             </div>
                           </div>
                           <div style={{textAlign:"right"}}>
-                            <div style={{fontSize:14,fontFamily:"monospace",fontWeight:700,color:i===0?"#6688FF":"#F0F0F0"}}>{fmtLap(r.bestLap)}</div>
+                            <div style={{fontSize:14,fontFamily:"monospace",fontWeight:700,color:i===0?"#6688FF":"#F0F0F0"}}>{fmtLap(rLap)}</div>
                             {gap&&<div style={{fontSize:11,color:"#778"}}>+{gap.toFixed(3)}s</div>}
                           </div>
                           <div style={{textAlign:"right"}}>
