@@ -381,6 +381,9 @@ function getTrackSectors(track) {
   const p = TRACK_SECTOR_PROFILES[track.id] || DEFAULT_SECTOR_PROFILES[track.type] || DEFAULT_SECTOR_PROFILES.mixed;
   return p.map((s,i)=>({...s, name:"Sector "+(i+1)}));
 }
+// Standard broadcast sector identity colours (S1 blue, S2 green, S3 red) —
+// overridden by purple whenever that sector is the fastest across the field.
+const SECTOR_COLORS = ["#4488FF","#44CC88","#E8002D"];
 
 // Reference lap time (seconds) used as the baseline to split into sectors.
 function refLapSeconds(track) {
@@ -2317,10 +2320,11 @@ function QGrid({entries,gapFrom,posLabel,elimLine,elimColor="#FF4444"}){
                 <div style={{display:"flex",gap:5,marginTop:5}}>
                   {e.sectors.map((s,si)=>{
                     const purple=e.sectorPurple&&e.sectorPurple[si];
+                    const c=purple?"#CC44FF":SECTOR_COLORS[si];
                     return(
-                      <div key={si} style={{display:"flex",alignItems:"center",gap:4,padding:"2px 6px 2px 7px",borderRadius:3,background:purple?"linear-gradient(180deg,#CC44FF2A,#CC44FF14)":"#00000030",border:`1px solid ${purple?"#CC44FF66":"#2A2A3266"}`,boxShadow:purple?"0 0 6px #CC44FF33":"none"}}>
-                        <span style={{fontSize:9,fontWeight:700,letterSpacing:0.5,color:purple?"#E0AFFF":"#566"}}>S{si+1}</span>
-                        <span style={{fontSize:11,fontFamily:"monospace",fontWeight:700,color:purple?"#E8BFFF":"#9AA"}}>{s.toFixed(3)}</span>
+                      <div key={si} style={{display:"flex",alignItems:"center",gap:4,padding:"2px 6px 2px 7px",borderRadius:3,background:`linear-gradient(180deg,${c}2A,${c}14)`,border:`1px solid ${c}66`,boxShadow:purple?`0 0 6px ${c}55`:"none"}}>
+                        <span style={{fontSize:9,fontWeight:700,letterSpacing:0.5,color:c}}>S{si+1}</span>
+                        <span style={{fontSize:11,fontFamily:"monospace",fontWeight:700,color:"#F0F0F0"}}>{s.toFixed(3)}</span>
                       </div>
                     );
                   })}
@@ -5890,12 +5894,15 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                     {(()=>{const m=Math.floor(race.fastestLapSeconds/60);return m+":"+(race.fastestLapSeconds%60).toFixed(3).padStart(6,"0");})()}
                   </span>
                   <div style={{display:"flex",gap:5}}>
-                    {race.fastestLapSectors.map((s,si)=>(
-                      <div key={si} style={{display:"flex",alignItems:"center",gap:4,padding:"2px 6px 2px 7px",borderRadius:3,background:"linear-gradient(180deg,#CC44FF20,#CC44FF0C)",border:"1px solid #CC44FF44"}}>
-                        <span style={{fontSize:9,fontWeight:700,letterSpacing:0.5,color:"#CC44FF"}}>S{si+1}</span>
-                        <span style={{fontSize:11,fontFamily:"monospace",fontWeight:700,color:"#E0AFFF"}}>{s.toFixed(3)}</span>
+                    {race.fastestLapSectors.map((s,si)=>{
+                      const c=SECTOR_COLORS[si];
+                      return(
+                      <div key={si} style={{display:"flex",alignItems:"center",gap:4,padding:"2px 6px 2px 7px",borderRadius:3,background:`linear-gradient(180deg,${c}2A,${c}14)`,border:`1px solid ${c}66`}}>
+                        <span style={{fontSize:9,fontWeight:700,letterSpacing:0.5,color:c}}>S{si+1}</span>
+                        <span style={{fontSize:11,fontFamily:"monospace",fontWeight:700,color:"#F0F0F0"}}>{s.toFixed(3)}</span>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
