@@ -235,10 +235,10 @@ const PIT_DISASTERS = [
   {icon:"💥",type:"pitstop",label:"PIT NIGHTMARE",texts:["Lollipop error — released into traffic!","Wrong compound fitted — back to the box!","Unsafe release — five-second penalty incoming!","Front wing not secured — pit again next lap!"]},
   {icon:"⚠️",type:"strategy",label:"TYRE GAMBLE",texts:["Radical call — {cpd} tyres on? Bold.","Staying out on worn rubber — risky!","They're gambling on rain! Inters going on dry tyres.","Boxing early — going for the undercut on everyone!"]},
 ];
-const EVT_C      = {incident:"#FF4444",dnf:"#FF6644",safetycar:"#FFC906",vsc:"#FFDD44",weather:"#4488FF",charge:"#44CC88",fastestlap:"#CC44FF",battle:"#FF8844",pitstop:"#44AAFF",slowstop:"#FF8800",drop:"#FF8844",start:"#E8002D",strategy:"#BB66FF",redflag:"#FF0000",damage:"#FF6600"};
+const EVT_C      = {incident:"#FF4444",dnf:"#FF6644",safetycar:"#FFC906",vsc:"#FFDD44",weather:"#4488FF",charge:"#44CC88",fastestlap:"#CC44FF",battle:"#FF8844",pitstop:"#44AAFF",slowstop:"#FF8800",drop:"#FF8844",start:"#E8002D",strategy:"#BB66FF",redflag:"#FF0000",damage:"#FF6600",sector:"#BB66FF"};
 
 const OFF_TRACK_MSGS = [
-  "{d} runs wide through turn {t} — four wheels over the white line! Gravel scattered across the racing line.",
+  "{d} runs wide through turn {t} in {sec} — four wheels over the white line! Gravel scattered across the racing line.",
   "{d} locks up under braking and goes off at the chicane! Car bounces through the gravel trap.",
   "{d} loses the rear and spins — slides backwards into the gravel! Marshals on standby.",
   "{d} pushed wide by a rival and loses the car over the kerbs — gravel everywhere.",
@@ -246,16 +246,16 @@ const OFF_TRACK_MSGS = [
   "{d} half-pirouettes at the exit — tyres shredded by gravel, flat-spotted badly.",
 ];
 const GRAVEL_MSGS = [
-  "🪨 Gravel deposited at turn {t} from {d}'s excursion — VIRTUAL SAFETY CAR DEPLOYED.",
+  "🪨 Gravel deposited at turn {t} in {sec} from {d}'s excursion — VIRTUAL SAFETY CAR DEPLOYED.",
   "🪨 Debris and gravel scattered across the racing line — stewards request a VSC period.",
   "🪨 Gravel brought onto the circuit. Track limits compromised — VSC called immediately.",
-  "🪨 Significant gravel on the apex of turn {t}. Marshals cannot clear without a VSC.",
+  "🪨 Significant gravel on the apex of turn {t} in {sec}. Marshals cannot clear without a VSC.",
 ];
 const ENGINE_FAIL_MSGS = [
   "{d} has catastrophic ENGINE FAILURE — plume of white smoke from the rear! Car stops on track.",
   "{d} reports a sudden power loss — 'ENGINE, ENGINE!' on the radio. Car coasting to a halt.",
   "RETIREMENT: {d} — engine let go spectacularly on the main straight. Fire extinguisher deployed.",
-  "{d} pulls over at turn {t} — 'I've lost all power.' Engine gone. Race over for {abbr}.",
+  "{d} pulls over at turn {t} in {sec} — 'I've lost all power.' Engine gone. Race over for {abbr}.",
 ];
 const DAMAGE_MSGS = [
   "{d} pits with significant front wing damage — something picked up from a kerb strike.",
@@ -439,6 +439,55 @@ function annotateSectorTimes(entries, track, refSeconds) {
   const bestSectors = [0,1,2].map(si=>Math.min(...out.map(e=>e.sectors[si])));
   out.forEach(e=>{ e.sectorPurple = [0,1,2].map(si=>Math.abs(e.sectors[si]-bestSectors[si])<0.0005); });
   return out;
+}
+
+const SECTOR_PUSH_MSGS = [
+  "{d} sets the fastest {sec} of the race so far — {team} clearly happy with the balance right now.",
+  "{d} goes purple through {sec} — nothing wasted, every apex clipped this lap.",
+  "{d} is finding real pace in {sec} — the pit wall will have seen that one.",
+  "{d} attacking hard through {sec} — the standout sector time on the board right now.",
+  "{d} on it through {sec} — {team} looking planted exactly where it counts.",
+];
+const SECTOR_STRUGGLE_MSGS = [
+  "{d} shipping time in {sec} — {team} will be looking hard at the data.",
+  "{d} well off the pace through {sec} this lap — tyres talking back.",
+  "{d} losing real time in {sec} — the sector screens don't lie.",
+  "{d} conservative through {sec} right now — managing rather than attacking.",
+  "{d} struggling for grip in {sec} — a lap to forget through there.",
+];
+const _fmtSectorMsg=(s,e,secName)=>s.replace(/{d}/g,e.driver.name).replace(/{sec}/g,secName).replace(/{team}/g,e.team.name);
+
+// Periodic "sector spotlight" events threaded through a race. Uses each
+// still-running driver's real cornering/top-speed/consistency/pace edge for
+// every sector (plus lap-to-lap noise, so it's not the same name every time)
+// to call out who is genuinely pushing and who is losing time, sector by
+// sector, as the race unfolds — not just at the end via fastest lap.
+function genRaceSectorEvents(entries, track, TL) {
+  const events = [];
+  const sectors = getTrackSectors(track);
+  const checkpoints = [0.16,0.34,0.52,0.70,0.88].map(f=>Lf(TL,f));
+  checkpoints.forEach(lap=>{
+    const active = entries.filter(e=>!e.dnf||(e.dnfLap&&e.dnfLap>lap));
+    if (active.length<6) return;
+    const withEdges = active.map(e=>({
+      e, edges: sectors.map(s=>sectorEdgeRaw(e.driver,e.team,s)+(Math.random()-0.5)*6),
+    }));
+    const avgEdges = sectors.map((s,si)=>{
+      const vals=withEdges.map(x=>x.edges[si]);
+      return vals.reduce((a,b)=>a+b,0)/vals.length;
+    });
+    let best=null, worst=null;
+    withEdges.forEach(x=>{
+      sectors.forEach((s,si)=>{
+        const rel=x.edges[si]-avgEdges[si];
+        if(!best||rel>best.rel) best={entry:x.e, si, rel};
+        if(!worst||rel<worst.rel) worst={entry:x.e, si, rel};
+      });
+    });
+    if(best) events.push({lap,type:"sector",icon:"🟣",text:_fmtSectorMsg(pick(SECTOR_PUSH_MSGS),best.entry,sectors[best.si].name)});
+    if(worst&&worst.entry.driver.id!==best?.entry.driver.id&&Math.random()<0.6) events.push({lap,type:"sector",icon:"🔻",text:_fmtSectorMsg(pick(SECTOR_STRUGGLE_MSGS),worst.entry,sectors[worst.si].name)});
+  });
+  return events;
 }
 
 // ║  calcBase()      — Deterministic base score from driver+team+track.     ║
@@ -1268,8 +1317,29 @@ function runRace(grid, teams, track) {
   }
 
   // ── Mid-race incidents: off-track, gravel, crashes, engine failures, damage ─
-  const _turn=()=>Math.floor(Math.random()*16)+1;
-  const _fmt=(s,d)=>s.replace(/{d}/g,d.driver.name).replace(/{t}/g,_turn()).replace(/{abbr}/g,d.team.abbr||d.team.name);
+  const _incidentSectors=getTrackSectors(track);
+  const _turn=()=>Math.floor(Math.random()*(track.corners||16))+1;
+  const _turnToSector=(t)=>{
+    const frac=t/(track.corners||16);
+    let cum=0;
+    for(let i=0;i<_incidentSectors.length;i++){ cum+=_incidentSectors[i].frac; if(frac<=cum||i===_incidentSectors.length-1) return i; }
+    return _incidentSectors.length-1;
+  };
+  // Estimated time an incident-affected driver is shipping in a given sector —
+  // grounded in their real (weak) sectorEdgeRaw relative to the field, not just flavour.
+  const _sectorLossText=(d,team,si)=>{
+    const s=_incidentSectors[si];
+    const edge=sectorEdgeRaw(d,team,s);
+    const avg=entries.reduce((a,e)=>a+sectorEdgeRaw(e.driver,e.team,s),0)/entries.length;
+    const weakness=Math.max(0,avg-edge);
+    const secs=0.15+Math.random()*0.35+weakness*0.006;
+    return secs.toFixed(1)+"s a lap in "+s.name;
+  };
+  const _fmt=(s,d)=>{
+    const t=_turn();
+    const si=_turnToSector(t);
+    return s.replace(/{d}/g,d.driver.name).replace(/{t}/g,t).replace(/{sec}/g,_incidentSectors[si].name).replace(/{abbr}/g,d.team.abbr||d.team.name);
+  };
 
   // Off-track excursions (1–3 per race, more in wet)
   const offTrackCount=isWet?Math.floor(Math.random()*3)+1:Math.floor(Math.random()*2)+(Math.random()<0.55?1:0);
@@ -1373,8 +1443,10 @@ function runRace(grid, teams, track) {
         events.push({lap:vscEndD,type:"vsc",icon:"🟢",text:`VSC ENDING — lap ${vscEndD}. Track clear.`});
       }
     } else {
-      // Survivable — driver continues but pace is hurt (reflected in commentary)
-      events.push({lap:dmgLap,type:"damage",icon:"🔧",text:`LAP ${dmgLap}: ${dmgMsg} Racing on but losing time every lap.`});
+      // Survivable — driver continues but pace is hurt (reflected in commentary,
+      // grounded in a real sector-time estimate rather than a generic line)
+      const dmgSector=_turnToSector(_turn());
+      events.push({lap:dmgLap,type:"damage",icon:"🔧",text:`LAP ${dmgLap}: ${dmgMsg} Racing on but shipping around ${_sectorLossText(dmgD.driver,dmgD.team,dmgSector)} — the damage is costing real time.`});
     }
   }
 
@@ -1432,6 +1504,8 @@ function runRace(grid, teams, track) {
     e.points=(!e.dnf&&i<10)?PTS[i]:0;
     if(flD&&e.driver.id===flD.driver.id&&!e.dnf&&i<10) e.points+=1;
   });
+
+  events.push(...genRaceSectorEvents(final, track, TL));
 
   events.sort((a,b)=>a.lap-b.lap);
 
@@ -2240,12 +2314,16 @@ function QGrid({entries,gapFrom,posLabel,elimLine,elimColor="#FF4444"}){
               <div style={{fontSize:16,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{e.driver.name}</div>
               <div style={{fontSize:13,color:e.team.color,letterSpacing:1.5}}>{e.team.name}</div>
               {e.sectors&&(
-                <div style={{display:"flex",gap:10,marginTop:3}}>
-                  {e.sectors.map((s,si)=>(
-                    <span key={si} style={{fontSize:11,fontFamily:"monospace",fontWeight:700,color:e.sectorPurple&&e.sectorPurple[si]?"#CC44FF":"#667"}}>
-                      S{si+1} {s.toFixed(3)}
-                    </span>
-                  ))}
+                <div style={{display:"flex",gap:5,marginTop:5}}>
+                  {e.sectors.map((s,si)=>{
+                    const purple=e.sectorPurple&&e.sectorPurple[si];
+                    return(
+                      <div key={si} style={{display:"flex",alignItems:"center",gap:4,padding:"2px 6px 2px 7px",borderRadius:3,background:purple?"linear-gradient(180deg,#CC44FF2A,#CC44FF14)":"#00000030",border:`1px solid ${purple?"#CC44FF66":"#2A2A3266"}`,boxShadow:purple?"0 0 6px #CC44FF33":"none"}}>
+                        <span style={{fontSize:9,fontWeight:700,letterSpacing:0.5,color:purple?"#E0AFFF":"#566"}}>S{si+1}</span>
+                        <span style={{fontSize:11,fontFamily:"monospace",fontWeight:700,color:purple?"#E8BFFF":"#9AA"}}>{s.toFixed(3)}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -5807,10 +5885,18 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                 {raceSaved&&<span style={{background:"#44CC8818",color:"#44CC88",fontSize:13,fontWeight:700,padding:"2px 7px",letterSpacing:1.5,borderRadius:2}}>✓ SAVED</span>}
               </div>
               {race.fastestLap&&race.fastestLapSectors&&(
-                <div style={{fontSize:12,fontFamily:"monospace",color:"#889",marginTop:6,letterSpacing:0.5}}>
-                  {(()=>{const m=Math.floor(race.fastestLapSeconds/60);return m+":"+(race.fastestLapSeconds%60).toFixed(3).padStart(6,"0");})()}
-                  {" — "}
-                  {race.fastestLapSectors.map((s,si)=>"S"+(si+1)+" "+s.toFixed(3)).join(" · ")}
+                <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8,flexWrap:"wrap"}}>
+                  <span style={{fontSize:13,fontFamily:"monospace",fontWeight:700,color:"#CC44FF"}}>
+                    {(()=>{const m=Math.floor(race.fastestLapSeconds/60);return m+":"+(race.fastestLapSeconds%60).toFixed(3).padStart(6,"0");})()}
+                  </span>
+                  <div style={{display:"flex",gap:5}}>
+                    {race.fastestLapSectors.map((s,si)=>(
+                      <div key={si} style={{display:"flex",alignItems:"center",gap:4,padding:"2px 6px 2px 7px",borderRadius:3,background:"linear-gradient(180deg,#CC44FF20,#CC44FF0C)",border:"1px solid #CC44FF44"}}>
+                        <span style={{fontSize:9,fontWeight:700,letterSpacing:0.5,color:"#CC44FF"}}>S{si+1}</span>
+                        <span style={{fontSize:11,fontFamily:"monospace",fontWeight:700,color:"#E0AFFF"}}>{s.toFixed(3)}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
