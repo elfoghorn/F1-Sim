@@ -336,6 +336,111 @@ function getStyleMods(d) {
   return style ? style.mods : {pace:0,consistency:0,overtaking:0,defense:0,wet:0,experience:0,dnfRisk:0,qualBonus:0,racePace:0};
 }
 
+// ===================== SECTOR TIMES =====================
+// Every circuit is split into 3 sectors, each carrying a "corner" weight and a
+// "speed" weight (0-1) describing how much cornering ability vs. top speed
+// matters there, plus its share (frac) of the total lap time. Splits are
+// authored per-circuit from each track's real layout character; frac values
+// sum to ~1 across a track's 3 sectors.
+const TRACK_SECTOR_PROFILES = {
+  australia:  [{corner:0.50,speed:0.60,frac:0.35},{corner:0.70,speed:0.35,frac:0.33},{corner:0.45,speed:0.65,frac:0.32}],
+  china:      [{corner:0.60,speed:0.50,frac:0.34},{corner:0.65,speed:0.45,frac:0.33},{corner:0.40,speed:0.80,frac:0.33}],
+  japan:      [{corner:0.85,speed:0.55,frac:0.35},{corner:0.80,speed:0.30,frac:0.33},{corner:0.50,speed:0.75,frac:0.32}],
+  bahrain:    [{corner:0.40,speed:0.75,frac:0.35},{corner:0.70,speed:0.40,frac:0.33},{corner:0.75,speed:0.35,frac:0.32}],
+  saudi:      [{corner:0.35,speed:0.85,frac:0.34},{corner:0.40,speed:0.85,frac:0.33},{corner:0.60,speed:0.60,frac:0.33}],
+  miami:      [{corner:0.75,speed:0.35,frac:0.34},{corner:0.50,speed:0.60,frac:0.33},{corner:0.75,speed:0.35,frac:0.33}],
+  spain:      [{corner:0.45,speed:0.70,frac:0.34},{corner:0.65,speed:0.45,frac:0.33},{corner:0.80,speed:0.30,frac:0.33}],
+  monaco:     [{corner:0.90,speed:0.20,frac:0.34},{corner:0.60,speed:0.55,frac:0.33},{corner:0.90,speed:0.25,frac:0.33}],
+  canada:     [{corner:0.50,speed:0.65,frac:0.35},{corner:0.55,speed:0.55,frac:0.32},{corner:0.55,speed:0.70,frac:0.33}],
+  madrid:     [{corner:0.60,speed:0.55,frac:0.34},{corner:0.70,speed:0.40,frac:0.33},{corner:0.65,speed:0.50,frac:0.33}],
+  austria:    [{corner:0.40,speed:0.75,frac:0.35},{corner:0.55,speed:0.60,frac:0.32},{corner:0.40,speed:0.80,frac:0.33}],
+  britain:    [{corner:0.55,speed:0.80,frac:0.35},{corner:0.65,speed:0.45,frac:0.32},{corner:0.55,speed:0.65,frac:0.33}],
+  hungary:    [{corner:0.85,speed:0.30,frac:0.34},{corner:0.85,speed:0.25,frac:0.33},{corner:0.80,speed:0.30,frac:0.33}],
+  belgium:    [{corner:0.40,speed:0.90,frac:0.36},{corner:0.80,speed:0.40,frac:0.32},{corner:0.55,speed:0.75,frac:0.32}],
+  netherlands:[{corner:0.75,speed:0.45,frac:0.34},{corner:0.70,speed:0.45,frac:0.33},{corner:0.80,speed:0.40,frac:0.33}],
+  italy:      [{corner:0.35,speed:0.85,frac:0.35},{corner:0.50,speed:0.75,frac:0.32},{corner:0.40,speed:0.85,frac:0.33}],
+  azerbaijan: [{corner:0.80,speed:0.30,frac:0.35},{corner:0.25,speed:0.95,frac:0.32},{corner:0.55,speed:0.60,frac:0.33}],
+  singapore:  [{corner:0.85,speed:0.30,frac:0.34},{corner:0.85,speed:0.30,frac:0.33},{corner:0.80,speed:0.35,frac:0.33}],
+  usa:        [{corner:0.75,speed:0.55,frac:0.35},{corner:0.55,speed:0.55,frac:0.32},{corner:0.45,speed:0.75,frac:0.33}],
+  mexico:     [{corner:0.35,speed:0.85,frac:0.35},{corner:0.85,speed:0.30,frac:0.33},{corner:0.60,speed:0.55,frac:0.32}],
+  brazil:     [{corner:0.50,speed:0.75,frac:0.35},{corner:0.65,speed:0.50,frac:0.32},{corner:0.45,speed:0.70,frac:0.33}],
+  lasvegas:   [{corner:0.30,speed:0.90,frac:0.34},{corner:0.35,speed:0.90,frac:0.33},{corner:0.55,speed:0.65,frac:0.33}],
+  qatar:      [{corner:0.60,speed:0.65,frac:0.34},{corner:0.65,speed:0.60,frac:0.33},{corner:0.60,speed:0.60,frac:0.33}],
+  abudhabi:   [{corner:0.55,speed:0.55,frac:0.35},{corner:0.75,speed:0.35,frac:0.32},{corner:0.45,speed:0.70,frac:0.33}],
+};
+// Fallback profile by track.type for any circuit missing a hand-authored layout.
+const DEFAULT_SECTOR_PROFILES = {
+  "high-speed":     [{corner:0.40,speed:0.75,frac:0.34},{corner:0.55,speed:0.60,frac:0.33},{corner:0.45,speed:0.75,frac:0.33}],
+  "technical":      [{corner:0.80,speed:0.30,frac:0.34},{corner:0.80,speed:0.25,frac:0.33},{corner:0.75,speed:0.30,frac:0.33}],
+  "street":         [{corner:0.75,speed:0.35,frac:0.34},{corner:0.70,speed:0.40,frac:0.33},{corner:0.75,speed:0.30,frac:0.33}],
+  "low-downforce":  [{corner:0.35,speed:0.80,frac:0.34},{corner:0.45,speed:0.75,frac:0.33},{corner:0.35,speed:0.85,frac:0.33}],
+  "high-downforce": [{corner:0.75,speed:0.35,frac:0.34},{corner:0.75,speed:0.35,frac:0.33},{corner:0.70,speed:0.40,frac:0.33}],
+  mixed:            [{corner:0.60,speed:0.55,frac:0.34},{corner:0.60,speed:0.50,frac:0.33},{corner:0.55,speed:0.55,frac:0.33}],
+};
+function getTrackSectors(track) {
+  const p = TRACK_SECTOR_PROFILES[track.id] || DEFAULT_SECTOR_PROFILES[track.type] || DEFAULT_SECTOR_PROFILES.mixed;
+  return p.map((s,i)=>({...s, name:"Sector "+(i+1)}));
+}
+
+// Reference lap time (seconds) used as the baseline to split into sectors.
+function refLapSeconds(track) {
+  return QUAL_REFS[track.id] || (track.lapLen||5)*18.5;
+}
+// A race's fastest lap runs a touch slower than a qualifying pole lap (fuel load, tyre wear).
+function estimateRaceLapSeconds(track) {
+  return refLapSeconds(track)*1.015;
+}
+
+// A driver+car's raw affinity for a given sector — cornering ability and
+// consistency matter more in corner-heavy sectors, top speed and pace matter
+// more in power sectors, and driving style adds circuit-flavoured bonuses.
+function sectorEdgeRaw(d, team, sector) {
+  const sm = getStyleMods(d);
+  const ts = getTeamStats(team);
+  const ec = d.consistency + sm.consistency;
+  const ep = d.pace + sm.pace;
+  let edge = sector.corner*ts.cornerBonus + sector.speed*ts.straightBonus
+           + sector.corner*ec*0.25 + sector.speed*ep*0.25;
+  if (d.style==="technical") edge += sector.corner*3;
+  if (d.style==="aggressive"||d.style==="charger") edge += sector.speed*2.5;
+  if (d.style==="smooth") edge += sector.corner*1.5;
+  return edge;
+}
+
+// Splits a driver's already-simulated lap time into 3 sector times that sum
+// exactly back to lapSeconds — car/driver sector strength only redistributes
+// time between sectors relative to the rest of the field, it never changes
+// the total (so finishing order and points are untouched by this feature).
+function computeSectorTimes(entry, fieldEntries, track, lapSeconds) {
+  const sectors = getTrackSectors(track);
+  const raw = sectors.map(s=>sectorEdgeRaw(entry.driver, entry.team, s));
+  const fieldAvg = sectors.map((s,i)=>{
+    const vals = fieldEntries.map(e=>sectorEdgeRaw(e.driver, e.team, s));
+    return vals.reduce((a,b)=>a+b,0)/vals.length;
+  });
+  const K = 0.0065; // stat-point edge → seconds
+  let deltas = raw.map((r,i)=>(fieldAvg[i]-r)*K); // positive = slower than field average here
+  const mean = deltas.reduce((a,b)=>a+b,0)/deltas.length;
+  deltas = deltas.map(x=>x-mean); // conserve total lap time across the 3 sectors
+  return sectors.map((s,i)=>s.frac*lapSeconds + deltas[i]);
+}
+
+// Attaches .sectors (array of 3 times) and .sectorPurple (best-in-session flags)
+// to every entry in a session's results, given each entry's .score and the
+// session's reference lap time in seconds.
+function annotateSectorTimes(entries, track, refSeconds) {
+  if (!entries?.length) return entries;
+  const leaderScore = entries[0].score;
+  const out = entries.map((e,i)=>{
+    const gap = i===0 ? 0 : (leaderScore-e.score)*0.011;
+    const lapSeconds = refSeconds+gap;
+    return {...e, lapSeconds, sectors:computeSectorTimes(e, entries, track, lapSeconds)};
+  });
+  const bestSectors = [0,1,2].map(si=>Math.min(...out.map(e=>e.sectors[si])));
+  out.forEach(e=>{ e.sectorPurple = [0,1,2].map(si=>Math.abs(e.sectors[si]-bestSectors[si])<0.0005); });
+  return out;
+}
+
 // ║  calcBase()      — Deterministic base score from driver+team+track.     ║
 // ║  calcQualBase()  — calcBase + qualifying style bonus.                   ║
 // ║                    traffic, rivalries, mechanical issues, strategy).     ║
@@ -730,7 +835,11 @@ function runSprintQual(drivers, teams, track) {
 }
 
 function aggSprintQual(n, drivers, teams, track) {
-  if(n<=1) return runSprintQual(drivers,teams,track);
+  if(n<=1) {
+    const r = runSprintQual(drivers,teams,track);
+    const ref = refLapSeconds(track);
+    return {...r, sq1:annotateSectorTimes(r.sq1,track,ref), sq2:annotateSectorTimes(r.sq2,track,ref), sq3:annotateSectorTimes(r.sq3,track,ref)};
+  }
   const sq1Acc={}, sq2Acc={}, sq3Acc={};
   drivers.forEach(d=>{ sq1Acc[d.id]=[]; sq2Acc[d.id]=[]; sq3Acc[d.id]=[]; });
   let displayRun=null;
@@ -761,7 +870,8 @@ function aggSprintQual(n, drivers, teams, track) {
   const sq1Display=displayRun?displayRun.sq1.map(e=>({...e, sqElim1:avgElim1.has(e.driver.id)})):sq1Avg;
   const sq2Display=displayRun?displayRun.sq2.map(e=>({...e, sqElim2:avgElim2.has(e.driver.id)})):sq2Avg;
   const sq3Display=displayRun?displayRun.sq3:sq3Avg;
-  return {sq1:sq1Display, sq2:sq2Display, sq3:sq3Display, sprintGrid:sprintGrid.map(e=>({...e,score:e.sq3Score||e.sq2Score||e.sq1Score})), runsUsed:n, sq1Events:genQEvents("Q1",sq1Display,track,15), sq2Events:genQEvents("Q2",sq2Display,track,10), sq3Events:genQEvents("Q3",sq3Display,track,null)};
+  const ref=refLapSeconds(track);
+  return {sq1:annotateSectorTimes(sq1Display,track,ref), sq2:annotateSectorTimes(sq2Display,track,ref), sq3:annotateSectorTimes(sq3Display,track,ref), sprintGrid:sprintGrid.map(e=>({...e,score:e.sq3Score||e.sq2Score||e.sq1Score})), runsUsed:n, sq1Events:genQEvents("Q1",sq1Display,track,15), sq2Events:genQEvents("Q2",sq2Display,track,10), sq3Events:genQEvents("Q3",sq3Display,track,null)};
 }
 
 function buildSQCaption(session, entries, track) {
@@ -1145,9 +1255,12 @@ function runRace(grid, teams, track) {
   }
   if(finishers[9]&&finishers[10]) events.push({lap:TL-3,type:"battle",icon:"🔥",text:`LAP ${TL-3}: ${finishers[9].driver.name} vs ${finishers[10].driver.name} — final points position!`});
   const flD=finishers.length>0?pick(finishers.slice(0,Math.min(8,finishers.length))):null;
+  let fastestLapSeconds=null, fastestLapSectors=null;
   if(flD){
     const flL=Lf(TL,0.78)+Math.floor(Math.random()*Lf(TL,0.12));
     events.push({lap:flL,type:"fastestlap",icon:"💜",text:`FASTEST LAP: ${flD.driver.name} goes purple on lap ${flL}!`});
+    fastestLapSeconds=estimateRaceLapSeconds(track);
+    fastestLapSectors=computeSectorTimes(flD, finishers, track, fastestLapSeconds);
   }
   if(finishers.length>=20){
     const[bk1,bk2]=finishers.slice(-4);
@@ -1327,7 +1440,7 @@ function runRace(grid, teams, track) {
   // Gap timings are fresh per quarter with stage-appropriate scales.
   const quarterStandings = buildQuarterStandings(final, TL, quarterWeather);
 
-  return {positions:final,events,fastestLap:flD?.driver||null,isWet,hasSC,scLap,totalLaps:TL,quarterStandings,quarterWeather,dryingLap,hasRF,rfLap,rfResumeLap};
+  return {positions:final,events,fastestLap:flD?.driver||null,fastestLapSeconds,fastestLapSectors,isWet,hasSC,scLap,totalLaps:TL,quarterStandings,quarterWeather,dryingLap,hasRF,rfLap,rfResumeLap};
 }
 
 // ===================== CANVAS DOWNLOAD =====================
@@ -1486,9 +1599,11 @@ function exportWeekendCSV(track,sessions){
   const addPos=(label,positions,gapFn,showPoints,showLaps)=>{
     if(!positions?.length)return;
     rows.push(row(["=== "+label+" ==="]));
+    const hasSectors=positions.some(e=>e.sectors);
     const h=["Pos","Driver","Team","Gap / Status"];
     if(showLaps)h.push("Laps");
     if(showPoints)h.push("Points");
+    if(hasSectors)h.push("S1","S2","S3","Lap Time");
     h.push("Notes");
     rows.push(row(h));
     positions.forEach((e,i)=>{
@@ -1501,6 +1616,10 @@ function exportWeekendCSV(track,sessions){
       const cells=[e.dnf?"DNF":String(i+1),dn,tn,g];
       if(showLaps)cells.push(e.laps||"");
       if(showPoints)cells.push(e.points||0);
+      if(hasSectors){
+        if(e.sectors){cells.push(e.sectors[0].toFixed(3),e.sectors[1].toFixed(3),e.sectors[2].toFixed(3),e.lapSeconds.toFixed(3));}
+        else{cells.push("","","","");}
+      }
       const notes=[e.timePenalty?"+"+e.timePenalty+"s penalty":"",e.incidents>0?e.incidents+" incident(s)":""].filter(Boolean).join(", ");
       cells.push(notes);
       rows.push(row(cells));
@@ -1538,7 +1657,11 @@ function exportWeekendCSV(track,sessions){
   if(race){
     addPos("GRAND PRIX — FINAL CLASSIFICATION",race.positions,null,true);
     if(race.events)addEvts("RACE EVENTS",race.events);
-    if(race.fastestLap)rows.push(row(["Fastest Lap: "+race.fastestLap.name,race.fastestLap.team?.name||"","",""]));
+    if(race.fastestLap){
+      const flCells=["Fastest Lap: "+race.fastestLap.name,race.fastestLap.team?.name||"","",""];
+      if(race.fastestLapSectors)flCells.push(race.fastestLapSectors.map((s,si)=>"S"+(si+1)+" "+s.toFixed(3)).join(" / "),race.fastestLapSeconds.toFixed(3));
+      rows.push(row(flCells));
+    }
   }
   const csv=BOM+rows.join("\n");
   const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});
@@ -2116,6 +2239,15 @@ function QGrid({entries,gapFrom,posLabel,elimLine,elimColor="#FF4444"}){
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontSize:16,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{e.driver.name}</div>
               <div style={{fontSize:13,color:e.team.color,letterSpacing:1.5}}>{e.team.name}</div>
+              {e.sectors&&(
+                <div style={{display:"flex",gap:10,marginTop:3}}>
+                  {e.sectors.map((s,si)=>(
+                    <span key={si} style={{fontSize:11,fontFamily:"monospace",fontWeight:700,color:e.sectorPurple&&e.sectorPurple[si]?"#CC44FF":"#667"}}>
+                      S{si+1} {s.toFixed(3)}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
             <div style={{textAlign:"right",flexShrink:0}}>
               <div style={{fontSize:15,fontFamily:"monospace",color:i===0?"#FFC906":"#aaa"}}>{i===0?"POLE":gap?"+"+gap.toFixed(3)+"s":""}</div>
@@ -2138,7 +2270,11 @@ function QGrid({entries,gapFrom,posLabel,elimLine,elimColor="#FF4444"}){
 // Session display (q1/q2/q3 tabs) uses a representative single run so each
 // session shows its own varied order rather than the same averaged ranking.
 function aggQual(n, drivers, teams, track) {
-  if(n<=1) return runQ1Q2Q3(drivers,teams,track);
+  if(n<=1) {
+    const r = runQ1Q2Q3(drivers,teams,track);
+    const ref = refLapSeconds(track);
+    return {...r, q1:annotateSectorTimes(r.q1,track,ref), q2:annotateSectorTimes(r.q2,track,ref), q3:annotateSectorTimes(r.q3,track,ref)};
+  }
   const q1ScoreAcc={}, q2ScoreAcc={}, q3ScoreAcc={};
   drivers.forEach(d=>{ q1ScoreAcc[d.id]=[]; q2ScoreAcc[d.id]=[]; q3ScoreAcc[d.id]=[]; });
   let displayRun=null;
@@ -2178,7 +2314,8 @@ function aggQual(n, drivers, teams, track) {
   const q1Display=displayRun?displayRun.q1.map(e=>({...e, elim1:avgElim1.has(e.driver.id)})):q1Avg;
   const q2Display=displayRun?displayRun.q2.map(e=>({...e, elim2:avgElim2.has(e.driver.id)})):q2Avg;
   const q3Display=displayRun?displayRun.q3:q3Avg;
-  return {q1:q1Display, q2:q2Display, q3:q3Display, grid:grid.map(e=>({...e,score:e.q3Score||e.q2Score||e.q1Score})), runsUsed:n, q1Events:genQEvents("Q1",q1Display,track,15), q2Events:genQEvents("Q2",q2Display,track,10), q3Events:genQEvents("Q3",q3Display,track,null)};
+  const ref=refLapSeconds(track);
+  return {q1:annotateSectorTimes(q1Display,track,ref), q2:annotateSectorTimes(q2Display,track,ref), q3:annotateSectorTimes(q3Display,track,ref), grid:grid.map(e=>({...e,score:e.q3Score||e.q2Score||e.q1Score})), runsUsed:n, q1Events:genQEvents("Q1",q1Display,track,15), q2Events:genQEvents("Q2",q2Display,track,10), q3Events:genQEvents("Q3",q3Display,track,null)};
 }
 
 // Aggregated race: run N times, average finish positions → canonical race
@@ -2211,9 +2348,17 @@ function aggRace(n, grid, teams, track) {
   });
   const flId=Object.entries(flCount).sort((a,b)=>b[1]-a[1])[0]?.[0];
   const fastestLap=flId?grid.find(e=>e.driver.id===flId)?.driver:null;
-  if(fastestLap){const fe=dedupCanon.find(e=>e.driver.id===fastestLap.id);if(fe&&!fe.dnf&&fe.finalPos<=10)fe.points+=1;}
+  let fastestLapSeconds=null, fastestLapSectors=null;
+  if(fastestLap){
+    const fe=dedupCanon.find(e=>e.driver.id===fastestLap.id);
+    if(fe){
+      if(!fe.dnf&&fe.finalPos<=10)fe.points+=1;
+      fastestLapSeconds=estimateRaceLapSeconds(track);
+      fastestLapSectors=computeSectorTimes(fe, dedupCanon, track, fastestLapSeconds);
+    }
+  }
   const qw=repRace?repRace.quarterWeather:null;
-  return {positions:dedupCanon,events:repRace?repRace.events:[],fastestLap,isWet:wetCount>=n/2,hasSC:scCount>=n/2,scLap:scCount?Math.round(scLapSum/scCount):0,totalLaps:track.laps,runsUsed:n,quarterStandings:buildQuarterStandings(dedupCanon,track.laps,qw),quarterWeather:qw,dryingLap:repRace?repRace.dryingLap:0,hasRF:repRace?repRace.hasRF:false,rfLap:repRace?repRace.rfLap:0,rfResumeLap:repRace?repRace.rfResumeLap:0};
+  return {positions:dedupCanon,events:repRace?repRace.events:[],fastestLap,fastestLapSeconds,fastestLapSectors,isWet:wetCount>=n/2,hasSC:scCount>=n/2,scLap:scCount?Math.round(scLapSum/scCount):0,totalLaps:track.laps,runsUsed:n,quarterStandings:buildQuarterStandings(dedupCanon,track.laps,qw),quarterWeather:qw,dryingLap:repRace?repRace.dryingLap:0,hasRF:repRace?repRace.hasRF:false,rfLap:repRace?repRace.rfLap:0,rfResumeLap:repRace?repRace.rfResumeLap:0};
 }
 
 // Aggregated sprint: run N times, average positions → canonical sprint
@@ -4785,6 +4930,8 @@ export default function F1Sim(){
           scLap: race.scLap,
           totalLaps: race.totalLaps,
           fastestLapName: race.fastestLap?.name||null,
+          fastestLapSeconds: race.fastestLapSeconds||null,
+          fastestLapSectors: race.fastestLapSectors||null,
         },
       },
     };
@@ -5659,6 +5806,13 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                 {race.fastestLap&&<span style={{background:"#CC44FF18",color:"#CC44FF",fontSize:13,fontWeight:700,padding:"2px 7px",letterSpacing:1.5,borderRadius:2}}>💜 FL: {race.fastestLap.name}</span>}
                 {raceSaved&&<span style={{background:"#44CC8818",color:"#44CC88",fontSize:13,fontWeight:700,padding:"2px 7px",letterSpacing:1.5,borderRadius:2}}>✓ SAVED</span>}
               </div>
+              {race.fastestLap&&race.fastestLapSectors&&(
+                <div style={{fontSize:12,fontFamily:"monospace",color:"#889",marginTop:6,letterSpacing:0.5}}>
+                  {(()=>{const m=Math.floor(race.fastestLapSeconds/60);return m+":"+(race.fastestLapSeconds%60).toFixed(3).padStart(6,"0");})()}
+                  {" — "}
+                  {race.fastestLapSectors.map((s,si)=>"S"+(si+1)+" "+s.toFixed(3)).join(" · ")}
+                </div>
+              )}
             </div>
 
             {/* Quarter tab bar */}
