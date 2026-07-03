@@ -410,18 +410,32 @@ function sectorEdgeRaw(d, team, sector) {
   return edge;
 }
 
+// Generates a fixed per-entry-per-sector random "form" swing — traffic, tyre
+// phase, a driver just gelling with one corner complex and not another — so
+// sector strength isn't purely a readout of car/driver stats. A driver can
+// be genuinely quick in Sector 1 and off the pace in Sector 2 on the same
+// lap, independent of who's fastest overall. Built once per lap/snapshot so
+// an entry's own noise matches the value used when it contributes to the
+// field average (keeps comparisons internally consistent).
+function buildSectorNoise(entries, spread=16) {
+  const m = new Map();
+  entries.forEach(e=>{ m.set(e, [0,1,2].map(()=>(Math.random()-0.5)*2*spread)); });
+  return m;
+}
+
 // Splits a driver's already-simulated lap time into 3 sector times that sum
 // exactly back to lapSeconds — car/driver sector strength only redistributes
 // time between sectors relative to the rest of the field, it never changes
 // the total (so finishing order and points are untouched by this feature).
-function computeSectorTimes(entry, fieldEntries, track, lapSeconds) {
+function computeSectorTimes(entry, fieldEntries, track, lapSeconds, noiseMap) {
   const sectors = getTrackSectors(track);
-  const raw = sectors.map(s=>sectorEdgeRaw(entry.driver, entry.team, s));
-  const fieldAvg = sectors.map((s,i)=>{
-    const vals = fieldEntries.map(e=>sectorEdgeRaw(e.driver, e.team, s));
+  const noiseOf = (e,si) => (noiseMap && noiseMap.get(e) ? noiseMap.get(e)[si] : 0);
+  const raw = sectors.map((s,si)=>sectorEdgeRaw(entry.driver, entry.team, s)+noiseOf(entry,si));
+  const fieldAvg = sectors.map((s,si)=>{
+    const vals = fieldEntries.map(e=>sectorEdgeRaw(e.driver, e.team, s)+noiseOf(e,si));
     return vals.reduce((a,b)=>a+b,0)/vals.length;
   });
-  const K = 0.0065; // stat-point edge → seconds
+  const K = 0.011; // stat-point edge → seconds
   let deltas = raw.map((r,i)=>(fieldAvg[i]-r)*K); // positive = slower than field average here
   const mean = deltas.reduce((a,b)=>a+b,0)/deltas.length;
   deltas = deltas.map(x=>x-mean); // conserve total lap time across the 3 sectors
@@ -433,14 +447,34 @@ function computeSectorTimes(entry, fieldEntries, track, lapSeconds) {
 // session's reference lap time in seconds.
 function annotateSectorTimes(entries, track, refSeconds) {
   if (!entries?.length) return entries;
+  const noiseMap = buildSectorNoise(entries);
   const leaderScore = entries[0].score;
   const out = entries.map((e,i)=>{
     const gap = i===0 ? 0 : (leaderScore-e.score)*0.011;
     const lapSeconds = refSeconds+gap;
-    return {...e, lapSeconds, sectors:computeSectorTimes(e, entries, track, lapSeconds)};
+    return {...e, lapSeconds, sectors:computeSectorTimes(e, entries, track, lapSeconds, noiseMap)};
   });
   const bestSectors = [0,1,2].map(si=>Math.min(...out.map(e=>e.sectors[si])));
   out.forEach(e=>{ e.sectorPurple = [0,1,2].map(si=>Math.abs(e.sectors[si]-bestSectors[si])<0.0005); });
+  return out;
+}
+
+// Same idea as annotateSectorTimes, but for entries that already carry a
+// computed .gap (race quarter-stage standings) rather than a qualifying
+// .score. DNF'd entries are left untouched (no sector times to show).
+function annotateSectorTimesFromGap(entries, track, refSeconds) {
+  if (!entries?.length) return entries;
+  const active = entries.filter(e=>!e.dnf);
+  if (!active.length) return entries;
+  const noiseMap = buildSectorNoise(active);
+  const out = entries.map(e=>{
+    if (e.dnf) return e;
+    const lapSeconds = refSeconds+(e.gap||0);
+    return {...e, lapSeconds, sectors:computeSectorTimes(e, active, track, lapSeconds, noiseMap)};
+  });
+  const withSectors = out.filter(e=>e.sectors);
+  const bestSectors = [0,1,2].map(si=>Math.min(...withSectors.map(e=>e.sectors[si])));
+  withSectors.forEach(e=>{ e.sectorPurple = [0,1,2].map(si=>Math.abs(e.sectors[si]-bestSectors[si])<0.0005); });
   return out;
 }
 
@@ -473,7 +507,7 @@ function genRaceSectorEvents(entries, track, TL) {
     const active = entries.filter(e=>!e.dnf||(e.dnfLap&&e.dnfLap>lap));
     if (active.length<6) return;
     const withEdges = active.map(e=>({
-      e, edges: sectors.map(s=>sectorEdgeRaw(e.driver,e.team,s)+(Math.random()-0.5)*6),
+      e, edges: sectors.map(s=>sectorEdgeRaw(e.driver,e.team,s)+(Math.random()-0.5)*16),
     }));
     const avgEdges = sectors.map((s,si)=>{
       const vals=withEdges.map(x=>x.edges[si]);
@@ -978,10 +1012,11 @@ function runSprint(grid, teams, track) {
 // Takes the final sorted positions array and produces 4 quarter snapshots.
 // quarterWeather: array of {wet,sc} per quarter so wet conditions increase
 // swap chaos and widen gaps (rain causes unpredictability).
-function buildQuarterStandings(finalPositions, totalLaps, quarterWeather) {
+function buildQuarterStandings(finalPositions, totalLaps, quarterWeather, track) {
   var qw = quarterWeather || [{wet:false,sc:false},{wet:false,sc:false},{wet:false,sc:false},{wet:false,sc:false}];
   var baseSwap  = [7, 4, 2, 0];
   var gapScales = [[0.3,2.2],[0.8,4.5],[1.5,7.0],[null,null]];
+  var qRefLap   = track ? estimateRaceLapSeconds(track) : null;
 
   // Deduplicate by driver id and cap at 22 — prevents any upstream duplication showing in standings
   var seenQ={};
@@ -1001,9 +1036,10 @@ function buildQuarterStandings(finalPositions, totalLaps, quarterWeather) {
 
     // Q4 = exact final positions — DNFs already sorted to the back, one entry per driver
     if(qi === 3) {
-      return uniquePositions.map(function(e,i){
+      var q4=uniquePositions.map(function(e,i){
         return {driver:e.driver,team:e.team,pos:i+1,gap:e.dnf?null:e.gap,dnf:!!e.dnf,dnfLap:e.dnfLap||null,dnfReason:e.dnfReason||null,gridPos:e.gridPos,timePenalty:e.timePenalty||null,points:e.points||0,weather:qw[qi]};
       });
+      return track?annotateSectorTimesFromGap(q4,track,qRefLap):q4;
     }
 
     // Split into active (not yet DNF'd at this quarter) and already-retired
@@ -1034,7 +1070,7 @@ function buildQuarterStandings(finalPositions, totalLaps, quarterWeather) {
     var scMult =hasSCQ?0.6:1.0;
     var rfMult =hasRFQ?0.4:1.0;
     var qg=0;
-    return sorted.map(function(e,i){
+    var qArr=sorted.map(function(e,i){
       var isDNF = preDNF.indexOf(e) !== -1;
       if(i > 0 && !isDNF){
         var step=(gs[0]+Math.random()*(gs[1]-gs[0]))*wetMult*scMult*rfMult;
@@ -1049,6 +1085,7 @@ function buildQuarterStandings(finalPositions, totalLaps, quarterWeather) {
         gridPos:e.gridPos, weather:qw[qi]
       };
     });
+    return track?annotateSectorTimesFromGap(qArr,track,qRefLap):qArr;
   });
 }
 
@@ -1312,7 +1349,7 @@ function runRace(grid, teams, track) {
     const flL=Lf(TL,0.78)+Math.floor(Math.random()*Lf(TL,0.12));
     events.push({lap:flL,type:"fastestlap",icon:"💜",text:`FASTEST LAP: ${flD.driver.name} goes purple on lap ${flL}!`});
     fastestLapSeconds=estimateRaceLapSeconds(track);
-    fastestLapSectors=computeSectorTimes(flD, finishers, track, fastestLapSeconds);
+    fastestLapSectors=computeSectorTimes(flD, finishers, track, fastestLapSeconds, buildSectorNoise(finishers));
   }
   if(finishers.length>=20){
     const[bk1,bk2]=finishers.slice(-4);
@@ -1515,9 +1552,10 @@ function runRace(grid, teams, track) {
   // ── Quarter standings: shuffle final order by decreasing amounts each quarter ──
   // Q1 is very chaotic (big swaps), each quarter settles toward the true final order.
   // Gap timings are fresh per quarter with stage-appropriate scales.
-  const quarterStandings = buildQuarterStandings(final, TL, quarterWeather);
+  const quarterStandings = buildQuarterStandings(final, TL, quarterWeather, track);
+  const finalWithSectors = annotateSectorTimesFromGap(final, track, estimateRaceLapSeconds(track));
 
-  return {positions:final,events,fastestLap:flD?.driver||null,fastestLapSeconds,fastestLapSectors,isWet,hasSC,scLap,totalLaps:TL,quarterStandings,quarterWeather,dryingLap,hasRF,rfLap,rfResumeLap};
+  return {positions:finalWithSectors,events,fastestLap:flD?.driver||null,fastestLapSeconds,fastestLapSectors,isWet,hasSC,scLap,totalLaps:TL,quarterStandings,quarterWeather,dryingLap,hasRF,rfLap,rfResumeLap};
 }
 
 // ===================== CANVAS DOWNLOAD =====================
@@ -2436,11 +2474,13 @@ function aggRace(n, grid, teams, track) {
     if(fe){
       if(!fe.dnf&&fe.finalPos<=10)fe.points+=1;
       fastestLapSeconds=estimateRaceLapSeconds(track);
-      fastestLapSectors=computeSectorTimes(fe, dedupCanon, track, fastestLapSeconds);
+      fastestLapSectors=computeSectorTimes(fe, dedupCanon, track, fastestLapSeconds, buildSectorNoise(dedupCanon));
     }
   }
   const qw=repRace?repRace.quarterWeather:null;
-  return {positions:dedupCanon,events:repRace?repRace.events:[],fastestLap,fastestLapSeconds,fastestLapSectors,isWet:wetCount>=n/2,hasSC:scCount>=n/2,scLap:scCount?Math.round(scLapSum/scCount):0,totalLaps:track.laps,runsUsed:n,quarterStandings:buildQuarterStandings(dedupCanon,track.laps,qw),quarterWeather:qw,dryingLap:repRace?repRace.dryingLap:0,hasRF:repRace?repRace.hasRF:false,rfLap:repRace?repRace.rfLap:0,rfResumeLap:repRace?repRace.rfResumeLap:0};
+  const quarterStandingsAgg=buildQuarterStandings(dedupCanon,track.laps,qw,track);
+  const dedupCanonWithSectors=annotateSectorTimesFromGap(dedupCanon,track,estimateRaceLapSeconds(track));
+  return {positions:dedupCanonWithSectors,events:repRace?repRace.events:[],fastestLap,fastestLapSeconds,fastestLapSectors,isWet:wetCount>=n/2,hasSC:scCount>=n/2,scLap:scCount?Math.round(scLapSum/scCount):0,totalLaps:track.laps,runsUsed:n,quarterStandings:quarterStandingsAgg,quarterWeather:qw,dryingLap:repRace?repRace.dryingLap:0,hasRF:repRace?repRace.hasRF:false,rfLap:repRace?repRace.rfLap:0,rfResumeLap:repRace?repRace.rfResumeLap:0};
 }
 
 // Aggregated sprint: run N times, average positions → canonical sprint
@@ -5973,6 +6013,20 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontSize:13,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{e.driver?.flag||""} {dName}</div>
                         <div style={{fontSize:11,color:tColor,letterSpacing:1}}>{tName}</div>
+                        {e.sectors&&(
+                          <div style={{display:"flex",gap:4,marginTop:4}}>
+                            {e.sectors.map((s,si)=>{
+                              const purple=e.sectorPurple&&e.sectorPurple[si];
+                              const c=purple?"#CC44FF":SECTOR_COLORS[si];
+                              return(
+                                <div key={si} style={{display:"flex",alignItems:"center",gap:3,padding:"1px 5px 1px 6px",borderRadius:3,background:`linear-gradient(180deg,${c}2A,${c}14)`,border:`1px solid ${c}66`}}>
+                                  <span style={{fontSize:8,fontWeight:700,letterSpacing:0.3,color:c}}>S{si+1}</span>
+                                  <span style={{fontSize:10,fontFamily:"monospace",fontWeight:700,color:"#F0F0F0"}}>{s.toFixed(3)}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                       <div style={{textAlign:"right",flexShrink:0}}>
                         {isDNF?<>
