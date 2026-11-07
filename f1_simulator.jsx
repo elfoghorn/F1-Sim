@@ -16,14 +16,15 @@ import { useState, useRef } from "react";
 
 // Derive effective team stats — reads direct slider fields
 // Returns { carPace, reliability, pitSpeed, tyreLife, wetBonus, cornerBonus, straightBonus }
-function getTeamStats(team) {
-  const carPace     = team.carPace     ?? 75;
-  const reliability = team.reliability ?? 75;
-  const pitSpeed    = team.pitSpeed    ?? (team.basePitSpeed || 80);
-  const tyreLife    = team.tyreLife    ?? 65;
-  const cornering   = team.cornering   ?? 10;
-  const topSpeed    = team.topSpeed    ?? 10;
-  // Small wet bonus derived from tyre management ability
+function getTeamStats(team, staffBonus) {
+  // staffBonus = {carPace,reliability,pitSpeed,tyreLife,cornering,topSpeed} from hired mechanics + principal
+  const sb = staffBonus || {};
+  const carPace     = Math.min(99, (team.carPace     ?? 75) + (sb.carPace     || 0));
+  const reliability = Math.min(99, (team.reliability ?? 75) + (sb.reliability || 0));
+  const pitSpeed    = Math.min(99, (team.pitSpeed    ?? (team.basePitSpeed || 80)) + (sb.pitSpeed || 0));
+  const tyreLife    = Math.min(99, (team.tyreLife    ?? 65) + (sb.tyreLife   || 0));
+  const cornering   = Math.min(20, (team.cornering   ?? 10) + (sb.cornering  || 0));
+  const topSpeed    = Math.min(20, (team.topSpeed    ?? 10) + (sb.topSpeed   || 0));
   const wetBonus    = Math.round((tyreLife - 65) / 5);
   return {
     carPace,
@@ -35,6 +36,26 @@ function getTeamStats(team) {
     straightBonus: topSpeed  * 1.2,
     aeroCircuitBonus: {},
   };
+}
+
+// Compute total staff bonus for a team from hired mechanics + principal style
+function computeStaffBonus(teamId, teamStaff) {
+  const staff = teamStaff?.[teamId] || {};
+  const bonus = {};
+  const apply = (b) => { for(const k in b) bonus[k] = (bonus[k]||0) + (b[k]||0); };
+  // Mechanic bonuses
+  (staff.mechanics || []).forEach(mechId => {
+    const m = MECHANICS_POOL.find(x => x.id === mechId);
+    if(m) apply({[m.specialty]: m.bonus});
+  });
+  // Principal bonus
+  if(staff.principalOverride) {
+    apply(staff.principalOverride.bonus || {});
+  } else {
+    const defP = TEAM_PRINCIPALS.find(p => p.teamId === teamId);
+    if(defP) apply(defP.bonus || {});
+  }
+  return bonus;
 }
 
 const TEAMS = [
@@ -55,6 +76,62 @@ const TEAMS = [
 
 
 
+
+// ── Mechanic pool — available to hire per team ───────────────────────────────
+const MECHANICS_POOL = [
+  // pit specialists
+  {id:"mech_pitgod",  name:"Ravi Sharma",      role:"Chief Pit Crew",    icon:"⚡", specialty:"pitSpeed",    bonus:4,  cost:6,  rarity:"elite",  desc:"Lightning wheel-gun reflexes. Sub-2s stops guaranteed.",color:"#FFC906"},
+  {id:"mech_pitvet",  name:"Tomás Brauer",     role:"Pit Crew Veteran",  icon:"🔧", specialty:"pitSpeed",    bonus:2,  cost:3,  rarity:"common", desc:"Twenty years on the wheel. Steady under pressure.",color:"#44CC88"},
+  {id:"mech_pitfast", name:"Yuki Tanaka",      role:"Tyre Fitter",       icon:"🏎", specialty:"pitSpeed",    bonus:3,  cost:4,  rarity:"rare",   desc:"Sub-2.3s average. Mistakes are rare, speed is constant.",color:"#44CC88"},
+  // car development
+  {id:"mech_aero",    name:"Dr. Amara Osei",   role:"Aero Lead",         icon:"🌬", specialty:"carPace",     bonus:3,  cost:5,  rarity:"rare",   desc:"Cuts drag, sharpens downforce curves.",color:"#4488FF"},
+  {id:"mech_aero2",   name:"Petra Novak",      role:"CFD Specialist",    icon:"💨", specialty:"carPace",     bonus:2,  cost:4,  rarity:"common", desc:"Builds the simulation models that find tenths.",color:"#4488FF"},
+  {id:"mech_power",   name:"James Whitfield",  role:"Power Unit Engineer",icon:"⚙",specialty:"carPace",     bonus:2,  cost:3,  rarity:"common", desc:"Extracts every watt from the PU without hurting reliability.",color:"#4488FF"},
+  // reliability
+  {id:"mech_relgod",  name:"Clara Müller",     role:"Reliability Chief", icon:"🛡", specialty:"reliability", bonus:4,  cost:6,  rarity:"elite",  desc:"If it's about to break, she finds it in pre-race checks.",color:"#44CC88"},
+  {id:"mech_relvet",  name:"Marco di Luca",    role:"Systems Engineer",  icon:"🔬", specialty:"reliability", bonus:3,  cost:4,  rarity:"rare",   desc:"Fault-trees everything. Hydraulics are his speciality.",color:"#44CC88"},
+  {id:"mech_relmed",  name:"Sun Wei",          role:"Gearbox Technician",icon:"⚙", specialty:"reliability", bonus:2,  cost:3,  rarity:"common", desc:"Smooth gear changes, clean shifts — no gearbox failures on his watch.",color:"#44CC88"},
+  // tyre management
+  {id:"mech_tyre",    name:"Isabelle Renard",  role:"Tyre Strategist",   icon:"🔵", specialty:"tyreLife",    bonus:4,  cost:5,  rarity:"elite",  desc:"Reads tyre thermal windows better than anyone in the paddock.",color:"#BB66FF"},
+  {id:"mech_tyre2",   name:"Diego Fernández",  role:"Tyre Engineer",     icon:"⭕", specialty:"tyreLife",    bonus:3,  cost:4,  rarity:"rare",   desc:"Blanket temperatures, pressures — the marginal gains are his.",color:"#BB66FF"},
+  {id:"mech_tyre3",   name:"Priya Kapoor",     role:"Compound Analyst",  icon:"📊", specialty:"tyreLife",    bonus:2,  cost:3,  rarity:"common", desc:"Models tyre degradation curves and feeds strategy calls.",color:"#BB66FF"},
+  // cornering / chassis
+  {id:"mech_chassis", name:"Lukas Hoffmann",   role:"Chassis Engineer",  icon:"🏗", specialty:"cornering",   bonus:2,  cost:4,  rarity:"rare",   desc:"Suspension geometry wizard. Unlocks rotation in slow corners.",color:"#FF8800"},
+  {id:"mech_setup",   name:"Ana Santos",       role:"Setup Specialist",  icon:"🔩", specialty:"cornering",   bonus:1,  cost:2,  rarity:"common", desc:"Quick setup changes between sessions keep the car balanced.",color:"#FF8800"},
+  // top speed / power
+  {id:"mech_engine",  name:"Karl Bremer",      role:"Engine Mapper",     icon:"🔥", specialty:"topSpeed",    bonus:2,  cost:4,  rarity:"rare",   desc:"Maps engine modes to extract peak straight-line power.",color:"#E8002D"},
+  {id:"mech_drag",    name:"Fatima Al-Rashid", role:"Drag Reduction Lead",icon:"💨",specialty:"topSpeed",    bonus:1,  cost:2,  rarity:"common", desc:"Finds tenths in the DRS zone through bodywork tuning.",color:"#E8002D"},
+];
+
+const MECHANIC_RARITY_COLOR={elite:"#FFC906",rare:"#BB66FF",common:"#44CC88"};
+
+const TEAM_PRINCIPALS = [
+  {teamId:"mclaren",    name:"Andrea Stella",    icon:"🏆", style:"data_driven",    bonus:{carPace:2},   desc:"Data-driven perfectionist. Nurtures talent and extracts the max from every simulation run."},
+  {teamId:"ferrari",    name:"Frédéric Vasseur", icon:"🔥", style:"aggressive",     bonus:{carPace:1,reliability:-1}, desc:"Attack is everything. Takes risks, tolerates nothing less than a win."},
+  {teamId:"redbull",    name:"Christian Horner", icon:"♟️", style:"political",      bonus:{pitSpeed:1},  desc:"Psychological warfare master. The politics are as sharp as the strategies."},
+  {teamId:"mercedes",   name:"Toto Wolff",        icon:"🧠", style:"ruthless",       bonus:{reliability:2}, desc:"Strategic ruthlessness. No sentiment — only championship points matter."},
+  {teamId:"williams",   name:"James Vowles",      icon:"🛠", style:"builder",        bonus:{reliability:1}, desc:"Long-game architect. Building the foundation, one development token at a time."},
+  {teamId:"racingbulls",name:"Laurent Mekies",    icon:"⚡", style:"fast_tracking",  bonus:{carPace:1},   desc:"Talent identifier. Finds the fastest junior and bets everything on raw pace."},
+  {teamId:"astonmartin",name:"Mike Krack",         icon:"🎯", style:"methodical",    bonus:{tyreLife:2},  desc:"Process over panic. Every decision has a data point behind it."},
+  {teamId:"alpine",     name:"Oliver Oakes",      icon:"🌟", style:"youthful",       bonus:{carPace:1},   desc:"Young, bold, and unafraid to tear up the rulebook entirely."},
+  {teamId:"haas",       name:"Ayao Komatsu",      icon:"📐", style:"precision",      bonus:{reliability:1}, desc:"Engineering-first mindset. The car will be bulletproof before it goes fast."},
+  {teamId:"audi",       name:"Jonathan Wheatley", icon:"⚙️", style:"operational",   bonus:{pitSpeed:3},  desc:"Pit-stop maestro. Operational excellence is the competitive edge."},
+  {teamId:"cadillac",   name:"Graeme Lowdon",     icon:"🚀", style:"startup",        bonus:{carPace:1},   desc:"Startup energy. Resourceful, scrappy, and not afraid of anyone."},
+];
+
+const MGMT_STYLES={
+  data_driven:{label:"Data Driven",  color:"#4488FF"},
+  aggressive:  {label:"Aggressive",  color:"#E8002D"},
+  political:   {label:"Political",   color:"#BB66FF"},
+  ruthless:    {label:"Ruthless",    color:"#FF4444"},
+  builder:     {label:"Builder",     color:"#44CC88"},
+  fast_tracking:{label:"Fast Track", color:"#FFC906"},
+  methodical:  {label:"Methodical",  color:"#44AAFF"},
+  youthful:    {label:"Youthful",    color:"#FF8800"},
+  precision:   {label:"Precision",   color:"#44CC88"},
+  operational: {label:"Operational", color:"#FFC906"},
+  startup:     {label:"Startup",     color:"#FF8844"},
+};
 
 // ── Budget tier configuration ────────────────────────────────────────────────
 const TIER_CONFIG = {
@@ -4307,6 +4384,9 @@ export default function F1Sim(){
   const [dbSaving,setDbSaving]=useState(false);
   const [selectedRound,setSelectedRound]=useState(null);
   const [teamBudgets,setTeamBudgets]=useState(()=>{try{const s=localStorage.getItem('f1sim_budgets');return s?JSON.parse(s):initBudgets();}catch{return initBudgets();}});
+  const [driverProfiles,setDriverProfiles]=useState(()=>{try{const s=localStorage.getItem('f1sim_driverprofiles');return s?JSON.parse(s):{};}catch{return {};}});
+  const [teamStaff,setTeamStaff]=useState(()=>{try{const s=localStorage.getItem('f1sim_teamstaff');return s?JSON.parse(s):{};}catch{return {};}});
+  const [profileView,setProfileView]=useState(null); // {type:"driver"|"team", id}
   // auto-save
   React.useEffect(()=>{
     try{localStorage.setItem('f1sim_drivers',JSON.stringify(drivers));}catch(e){}
@@ -4320,6 +4400,12 @@ export default function F1Sim(){
   React.useEffect(()=>{
     try{localStorage.setItem('f1sim_budgets',JSON.stringify(teamBudgets));}catch(e){}
   },[teamBudgets]);
+  React.useEffect(()=>{
+    try{localStorage.setItem('f1sim_driverprofiles',JSON.stringify(driverProfiles));}catch(e){}
+  },[driverProfiles]);
+  React.useEffect(()=>{
+    try{localStorage.setItem('f1sim_teamstaff',JSON.stringify(teamStaff));}catch(e){}
+  },[teamStaff]);
 
   // save/load
   const exportSave=()=>{
@@ -4464,27 +4550,31 @@ export default function F1Sim(){
   const teamDrivers=id=>drivers.filter(d=>d.teamId===id);
 
   const doQual=()=>{
-    setFp1(runFP(1,drivers,teams,track));
+    // Apply staff bonuses to teams before simulation
+    const boostedTeams=teams.map(t=>{const sb=computeStaffBonus(t.id,teamStaff);return Object.keys(sb).length?{...t,carPace:Math.min(99,(t.carPace??75)+(sb.carPace||0)),reliability:Math.min(99,(t.reliability??75)+(sb.reliability||0)),pitSpeed:Math.min(99,(t.pitSpeed??(t.basePitSpeed||80))+(sb.pitSpeed||0)),tyreLife:Math.min(99,(t.tyreLife??65)+(sb.tyreLife||0)),cornering:Math.min(20,(t.cornering??10)+(sb.cornering||0)),topSpeed:Math.min(20,(t.topSpeed??10)+(sb.topSpeed||0))}:t;});
+    setFp1(runFP(1,drivers,boostedTeams,track));
     if(track.hasSprint){
       setFp2(null);
-      setSprintQual(aggSprintQual(runAccuracy,drivers,teams,track));
+      setSprintQual(aggSprintQual(runAccuracy,drivers,boostedTeams,track));
     } else {
-      setFp2(runFP(2,drivers,teams,track));
+      setFp2(runFP(2,drivers,boostedTeams,track));
       setSprintQual(null);
     }
-    setQual(aggQual(runAccuracy,drivers,teams,track));
+    setQual(aggQual(runAccuracy,drivers,boostedTeams,track));
     setSprint(null); setRace(null); setStages(null); setRaceSaved(false); setDbSaving(false);
     setQTab("fp1"); setView("qualifying");
   };
   const doSprint=()=>{
     if(!qual) return;
+    const boostedTeams=teams.map(t=>{const sb=computeStaffBonus(t.id,teamStaff);return Object.keys(sb).length?{...t,carPace:Math.min(99,(t.carPace??75)+(sb.carPace||0)),reliability:Math.min(99,(t.reliability??75)+(sb.reliability||0)),pitSpeed:Math.min(99,(t.pitSpeed??(t.basePitSpeed||80))+(sb.pitSpeed||0)),tyreLife:Math.min(99,(t.tyreLife??65)+(sb.tyreLife||0)),cornering:Math.min(20,(t.cornering??10)+(sb.cornering||0)),topSpeed:Math.min(20,(t.topSpeed??10)+(sb.topSpeed||0))}:t;});
     const sprintGrid = sprintQual ? sprintQual.sprintGrid : qual.grid;
-    setSprint(aggSprint(runAccuracy,sprintGrid,teams,track));
+    setSprint(aggSprint(runAccuracy,sprintGrid,boostedTeams,track));
     setView("sprint");
   };
   const doRace=()=>{
     if(!qual) return;
-    setRace(aggRace(runAccuracy,qual.grid,teams,track));
+    const boostedTeams=teams.map(t=>{const sb=computeStaffBonus(t.id,teamStaff);return Object.keys(sb).length?{...t,carPace:Math.min(99,(t.carPace??75)+(sb.carPace||0)),reliability:Math.min(99,(t.reliability??75)+(sb.reliability||0)),pitSpeed:Math.min(99,(t.pitSpeed??(t.basePitSpeed||80))+(sb.pitSpeed||0)),tyreLife:Math.min(99,(t.tyreLife??65)+(sb.tyreLife||0)),cornering:Math.min(20,(t.cornering??10)+(sb.cornering||0)),topSpeed:Math.min(20,(t.topSpeed??10)+(sb.topSpeed||0))}:t;});
+    setRace(aggRace(runAccuracy,qual.grid,boostedTeams,track));
     setRaceSaved(false); setRaceQuarter(0); setView("race");
   };
 
@@ -4990,7 +5080,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
   }, [raceSaved]);
 
   const NAVS=[
-    {v:"garage",l:"GARAGE"},{v:"tracks",l:"TRACKS"},
+    {v:"garage",l:"GARAGE"},{v:"profiles",l:"👤 PROFILES"},{v:"tracks",l:"TRACKS"},
     {v:"qualifying",l:"QUALIFYING",locked:!qual},
     {v:"sprint",l:"SPRINT",locked:!showSprint||!sprint,hidden:!track.hasSprint},
     {v:"race",l:"RACE",locked:!race},
@@ -5164,7 +5254,445 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
           </div>
         )}
 
-        
+        {view==="profiles"&&(()=>{
+          // ── helper: career stats from championship data ───────────────────
+          const careerStats=(dId)=>{
+            let wins=0,podiums=0,poles=0,pts=0,dnfs=0,fl=0,races=0;
+            championship.forEach(round=>{
+              const raceRes=round.race?.results||[];
+              raceRes.forEach((r,i)=>{
+                if(r.id===dId){
+                  races++;
+                  if(r.dnf) dnfs++;
+                  else {
+                    if(i===0) wins++;
+                    if(i<3) podiums++;
+                    if(r.pts) pts+=r.pts;
+                    if(r.fastestLap) fl++;
+                  }
+                }
+              });
+              const qRes=round.qualifying?.grid||[];
+              if(qRes.length && qRes[0]?.driver?.id===dId) poles++;
+            });
+            return {wins,podiums,poles,pts,dnfs,fl,races};
+          };
+
+          // ── driver detail panel ──────────────────────────────────────────
+          if(profileView?.type==="driver"){
+            const d=drivers.find(x=>x.id===profileView.id);
+            const team=d?teams.find(t=>t.id===d.teamId)||teams[0]:null;
+            if(!d||!team) return null;
+            const prof=driverProfiles[d.id]||{};
+            const cs=careerStats(d.id);
+            const sty=DRIVING_STYLES.find(s=>s.id===d.style);
+            const goodNames=(d.goodTracks||[]).map(id=>TRACKS.find(t=>t.id===id)).filter(Boolean);
+            const badNames=(d.badTracks||[]).map(id=>TRACKS.find(t=>t.id===id)).filter(Boolean);
+            const statBars=[["PACE",d.pace],["CONSISTENCY",d.consistency],["WET",d.wet],["OVERTAKING",d.overtaking],["DEFENSE",d.defense],["EXPERIENCE",d.experience]];
+            return(
+              <div style={{animation:"fadeIn 0.2s ease"}}>
+                <button onClick={()=>setProfileView(null)} style={{background:"transparent",color:"#778",border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,marginBottom:16,padding:0}}>← BACK TO PROFILES</button>
+                <div style={{display:"grid",gridTemplateColumns:"300px 1fr",gap:16,alignItems:"start"}}>
+                  {/* Left column — photo + identity */}
+                  <div>
+                    <div style={{background:"#111115",border:`2px solid ${team.color}44`,borderRadius:8,overflow:"hidden",marginBottom:12}}>
+                      {/* Photo area */}
+                      <div style={{position:"relative",height:300,background:"#0C0C0F",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",borderBottom:`2px solid ${team.color}44`}}>
+                        {prof.imageDataUrl?(
+                          <img src={prof.imageDataUrl} alt={d.name} style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center top"}}/>
+                        ):(
+                          <div style={{textAlign:"center",padding:20}}>
+                            <div style={{fontSize:72,lineHeight:1}}>{d.flag}</div>
+                            <div style={{fontSize:48,fontWeight:900,color:team.color,opacity:0.3,marginTop:8}}>{d.abbr}</div>
+                          </div>
+                        )}
+                        {/* Upload overlay */}
+                        <label style={{position:"absolute",bottom:8,right:8,background:"#000000AA",color:"#fff",border:"1px solid #fff3",padding:"4px 10px",borderRadius:4,cursor:"pointer",fontSize:12,fontWeight:700,letterSpacing:1}}>
+                          📷 {prof.imageDataUrl?"CHANGE":"ADD PHOTO"}
+                          <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{
+                            const f=e.target.files[0];
+                            if(!f) return;
+                            const reader=new FileReader();
+                            reader.onload=ev=>setDriverProfiles(p=>({...p,[d.id]:{...p[d.id],imageDataUrl:ev.target.result}}));
+                            reader.readAsDataURL(f);
+                            e.target.value='';
+                          }}/>
+                        </label>
+                        {prof.imageDataUrl&&(
+                          <button onClick={()=>setDriverProfiles(p=>({...p,[d.id]:{...p[d.id],imageDataUrl:null}}))} style={{position:"absolute",top:8,right:8,background:"#000000AA",color:"#FF4444",border:"1px solid #FF444488",padding:"3px 8px",borderRadius:4,cursor:"pointer",fontSize:11,fontWeight:700}}>✕</button>
+                        )}
+                      </div>
+                      {/* Identity */}
+                      <div style={{padding:"16px 18px"}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                          <div>
+                            <div style={{fontSize:11,color:"#778",letterSpacing:2}}>#{d.num} · {d.flag}</div>
+                            <div style={{fontSize:22,fontWeight:900,letterSpacing:1,marginTop:2}}>{d.name}</div>
+                            <div style={{fontSize:13,color:team.color,fontWeight:700,letterSpacing:2,marginTop:2}}>{team.name}</div>
+                          </div>
+                          <div style={{fontSize:36,fontWeight:900,color:team.color,opacity:0.5}}>{d.abbr}</div>
+                        </div>
+                        {sty&&<div style={{display:"flex",alignItems:"center",gap:6,marginTop:10,padding:"5px 10px",background:sty.color+"1A",border:`1px solid ${sty.color}44`,borderRadius:4}}>
+                          <span style={{fontSize:16}}>{sty.icon}</span>
+                          <div><div style={{fontSize:11,fontWeight:700,color:sty.color,letterSpacing:1}}>{sty.name.toUpperCase()}</div><div style={{fontSize:11,color:"#778",marginTop:1}}>{sty.desc}</div></div>
+                        </div>}
+                        <div style={{marginTop:10,fontSize:12,color:"#778",lineHeight:1.5}}>Mental: {["","😰","😐","😐","🙂","🙂","😤","😤","💪","💪","🏆"][d.mental]||"💪"} {d.mental}/10</div>
+                      </div>
+                    </div>
+                    {/* Career bio */}
+                    <div style={{background:"#111115",border:"1px solid #1E1E22",borderRadius:6,padding:"14px 16px"}}>
+                      <div style={{fontSize:11,color:"#778",letterSpacing:2,marginBottom:8}}>📝 BIO</div>
+                      <textarea
+                        value={prof.bio||""}
+                        onChange={e=>setDriverProfiles(p=>({...p,[d.id]:{...p[d.id],bio:e.target.value}}))}
+                        placeholder="Write a driver bio, notes, season goals..."
+                        style={{width:"100%",background:"#0C0C0F",color:"#F0F0F0",border:"1px solid #2A2A30",borderRadius:4,padding:"8px 10px",fontFamily:"inherit",fontSize:13,lineHeight:1.6,resize:"vertical",minHeight:90,outline:"none"}}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Right column — stats + career */}
+                  <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                    {/* Career stats */}
+                    <div style={{background:"#111115",border:"1px solid #1E1E22",borderRadius:6,padding:"14px 18px"}}>
+                      <div style={{fontSize:11,color:"#FFC906",letterSpacing:2,marginBottom:12}}>🏆 CAREER STATS ({cs.races} races)</div>
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:8}}>
+                        {[["WINS",cs.wins,"#FFC906"],["PODIUMS",cs.podiums,"#E8002D"],["POLES",cs.poles,"#BB66FF"],["POINTS",cs.pts,"#44CC88"],["FASTEST",cs.fl,"#CC44FF"],["DNFs",cs.dnfs,"#FF4444"]].map(([l,v,c])=>(
+                          <div key={l} style={{textAlign:"center",background:"#161618",borderRadius:4,padding:"10px 6px",border:`1px solid ${c}22`}}>
+                            <div style={{fontSize:24,fontWeight:900,color:c,fontFamily:"monospace"}}>{v}</div>
+                            <div style={{fontSize:10,color:"#556",letterSpacing:1,marginTop:2}}>{l}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    {/* Driver stats bars */}
+                    <div style={{background:"#111115",border:"1px solid #1E1E22",borderRadius:6,padding:"14px 18px"}}>
+                      <div style={{fontSize:11,color:"#4488FF",letterSpacing:2,marginBottom:12}}>📊 DRIVER RATINGS</div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px 20px"}}>
+                        {statBars.map(([l,v])=>(
+                          <div key={l}>
+                            <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#778",letterSpacing:1.5,marginBottom:4}}>
+                              <span>{l}</span><span style={{color:v>=90?"#FFC906":v>=80?"#44CC88":"#aaa",fontWeight:700}}>{v}</span>
+                            </div>
+                            <div style={{height:6,background:"#1E1E22",borderRadius:3,overflow:"hidden"}}>
+                              <div style={{height:"100%",width:`${v}%`,background:v>=90?"#FFC906":v>=80?"#44CC88":team.color,borderRadius:3,transition:"width 0.4s"}}/>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    {/* Good/bad tracks + rivals */}
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                      <div style={{background:"#111115",border:"1px solid #44CC8822",borderRadius:6,padding:"14px 16px"}}>
+                        <div style={{fontSize:11,color:"#44CC88",letterSpacing:2,marginBottom:8}}>✅ GOOD TRACKS</div>
+                        {goodNames.length?goodNames.map(t=>(
+                          <div key={t.id} style={{fontSize:13,padding:"4px 0",borderBottom:"1px solid #1E1E22",display:"flex",alignItems:"center",gap:6}}><span>{t.flag}</span><span style={{color:"#F0F0F0"}}>{t.name}</span></div>
+                        )):<div style={{fontSize:12,color:"#445"}}>None set</div>}
+                      </div>
+                      <div style={{background:"#111115",border:"1px solid #FF444422",borderRadius:6,padding:"14px 16px"}}>
+                        <div style={{fontSize:11,color:"#FF4444",letterSpacing:2,marginBottom:8}}>❌ BAD TRACKS</div>
+                        {badNames.length?badNames.map(t=>(
+                          <div key={t.id} style={{fontSize:13,padding:"4px 0",borderBottom:"1px solid #1E1E22",display:"flex",alignItems:"center",gap:6}}><span>{t.flag}</span><span style={{color:"#F0F0F0"}}>{t.name}</span></div>
+                        )):<div style={{fontSize:12,color:"#445"}}>None set</div>}
+                      </div>
+                    </div>
+                    {/* Rivals */}
+                    {(d.rivals||[]).length>0&&(
+                      <div style={{background:"#111115",border:"1px solid #E8002D22",borderRadius:6,padding:"14px 16px"}}>
+                        <div style={{fontSize:11,color:"#E8002D",letterSpacing:2,marginBottom:8}}>⚔️ RIVALS</div>
+                        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                          {(d.rivals||[]).map(rid=>{const rd=drivers.find(x=>x.id===rid);return rd?(
+                            <div key={rid} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 12px",background:"#161618",border:"1px solid #E8002D33",borderRadius:4,cursor:"pointer"}} onClick={()=>setProfileView({type:"driver",id:rid})}>
+                              <div style={{width:28,height:28,borderRadius:"50%",background:teams.find(t=>t.id===rd.teamId)?.color+"33",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>{rd.flag}</div>
+                              <div><div style={{fontSize:13,fontWeight:700}}>{rd.name}</div><div style={{fontSize:11,color:teams.find(t=>t.id===rd.teamId)?.color||"#778"}}>{teams.find(t=>t.id===rd.teamId)?.name}</div></div>
+                            </div>
+                          ):null;})}
+                        </div>
+                      </div>
+                    )}
+                    {/* Notes */}
+                    <div style={{background:"#111115",border:"1px solid #1E1E22",borderRadius:6,padding:"14px 16px"}}>
+                      <div style={{fontSize:11,color:"#778",letterSpacing:2,marginBottom:8}}>🗒 NOTES</div>
+                      <textarea
+                        value={prof.notes||""}
+                        onChange={e=>setDriverProfiles(p=>({...p,[d.id]:{...p[d.id],notes:e.target.value}}))}
+                        placeholder="Season notes, storylines, predictions..."
+                        style={{width:"100%",background:"#0C0C0F",color:"#F0F0F0",border:"1px solid #2A2A30",borderRadius:4,padding:"8px 10px",fontFamily:"inherit",fontSize:13,lineHeight:1.6,resize:"vertical",minHeight:80,outline:"none"}}
+                      />
+                    </div>
+                    <button onClick={()=>setModal({type:"driver",data:d})} style={{background:"#2A2A30",color:"#ccc",border:"1px solid #3A3A40",padding:"10px 20px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:2,borderRadius:4,alignSelf:"flex-start"}}>
+                      ✏️ EDIT DRIVER STATS
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          // ── team detail panel ────────────────────────────────────────────
+          if(profileView?.type==="team"){
+            const t=teams.find(x=>x.id===profileView.id);
+            if(!t) return null;
+            const tProf=driverProfiles["team_"+t.id]||{};
+            const staff=teamStaff[t.id]||{};
+            const hiredMechanics=staff.mechanics||[];
+            const sb=computeStaffBonus(t.id,teamStaff);
+            const stats=getTeamStats(t,sb);
+            const baseSt=getTeamStats(t);
+            const tDrivers=drivers.filter(d=>d.teamId===t.id);
+            const defPrincipal=TEAM_PRINCIPALS.find(p=>p.teamId===t.id);
+            const principal=staff.principalOverride||defPrincipal;
+            const mgmtStyle=principal?MGMT_STYLES[principal.style]||MGMT_STYLES.methodical:null;
+            const tierCfg=TIER_CONFIG[t.tier||"low"]||TIER_CONFIG.low;
+            const budget=teamBudgets[t.id]||0;
+            const statDiff=(base,boosted)=>boosted>base?<span style={{fontSize:10,color:"#44CC88",marginLeft:4}}>+{boosted-base}</span>:null;
+            return(
+              <div style={{animation:"fadeIn 0.2s ease"}}>
+                <button onClick={()=>setProfileView(null)} style={{background:"transparent",color:"#778",border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,marginBottom:16,padding:0}}>← BACK TO PROFILES</button>
+                <div style={{display:"grid",gridTemplateColumns:"300px 1fr",gap:16,alignItems:"start"}}>
+                  {/* Left — team identity + principal photo */}
+                  <div>
+                    <div style={{background:"#111115",border:`2px solid ${t.color}44`,borderRadius:8,overflow:"hidden",marginBottom:12}}>
+                      {/* Principal photo */}
+                      <div style={{position:"relative",height:260,background:"#0C0C0F",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",borderBottom:`2px solid ${t.color}44`}}>
+                        {tProf.imageDataUrl?(
+                          <img src={tProf.imageDataUrl} alt={principal?.name} style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center top"}}/>
+                        ):(
+                          <div style={{textAlign:"center"}}>
+                            <div style={{background:t.color,color:t.tc||"#fff",fontSize:36,fontWeight:900,padding:"16px 24px",borderRadius:6,letterSpacing:4}}>{t.abbr}</div>
+                            {principal&&<div style={{marginTop:12,fontSize:14,color:"#778"}}>{principal.name}</div>}
+                          </div>
+                        )}
+                        <label style={{position:"absolute",bottom:8,right:8,background:"#000000AA",color:"#fff",border:"1px solid #fff3",padding:"4px 10px",borderRadius:4,cursor:"pointer",fontSize:12,fontWeight:700,letterSpacing:1}}>
+                          📷 {tProf.imageDataUrl?"CHANGE":"PRINCIPAL PHOTO"}
+                          <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{
+                            const f=e.target.files[0];
+                            if(!f) return;
+                            const reader=new FileReader();
+                            reader.onload=ev=>setDriverProfiles(p=>({...p,["team_"+t.id]:{...p["team_"+t.id],imageDataUrl:ev.target.result}}));
+                            reader.readAsDataURL(f);
+                            e.target.value='';
+                          }}/>
+                        </label>
+                      </div>
+                      <div style={{padding:"16px 18px"}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                          <div>
+                            <div style={{fontSize:22,fontWeight:900}}>{t.name}</div>
+                            <span style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:tierCfg.color,background:tierCfg.color+"1A",padding:"2px 7px",borderRadius:2,display:"inline-block",marginTop:4}}>{tierCfg.label}</span>
+                          </div>
+                          <div style={{background:t.color,color:t.tc||"#fff",fontSize:16,fontWeight:700,padding:"4px 10px",letterSpacing:2.5,borderRadius:3}}>{t.abbr}</div>
+                        </div>
+                        {principal&&(
+                          <div style={{marginTop:10,padding:"8px 10px",background:"#161618",borderRadius:4,border:`1px solid ${t.color}22`}}>
+                            <div style={{fontSize:10,color:"#778",letterSpacing:1.5,marginBottom:3}}>TEAM PRINCIPAL</div>
+                            <div style={{fontSize:15,fontWeight:700}}>{principal.name}</div>
+                            {mgmtStyle&&<div style={{fontSize:10,color:mgmtStyle.color,fontWeight:700,letterSpacing:1,marginTop:2}}>{mgmtStyle.label.toUpperCase()}</div>}
+                            {principal.desc&&<div style={{fontSize:11,color:"#778",marginTop:5,lineHeight:1.5}}>{principal.desc}</div>}
+                          </div>
+                        )}
+                        <div style={{marginTop:10,fontSize:13,color:"#778"}}>Budget: <span style={{color:"#FFC906",fontWeight:700}}>£{budget}m</span></div>
+                      </div>
+                    </div>
+                    {/* Notes */}
+                    <div style={{background:"#111115",border:"1px solid #1E1E22",borderRadius:6,padding:"14px 16px"}}>
+                      <div style={{fontSize:11,color:"#778",letterSpacing:2,marginBottom:8}}>🗒 TEAM NOTES</div>
+                      <textarea
+                        value={(driverProfiles["team_"+t.id]||{}).notes||""}
+                        onChange={e=>setDriverProfiles(p=>({...p,["team_"+t.id]:{...p["team_"+t.id],notes:e.target.value}}))}
+                        placeholder="Season goals, development targets, storylines..."
+                        style={{width:"100%",background:"#0C0C0F",color:"#F0F0F0",border:"1px solid #2A2A30",borderRadius:4,padding:"8px 10px",fontFamily:"inherit",fontSize:13,lineHeight:1.6,resize:"vertical",minHeight:90,outline:"none"}}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Right — stats + drivers + mechanics */}
+                  <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                    {/* Team stats with bonus overlay */}
+                    <div style={{background:"#111115",border:"1px solid #1E1E22",borderRadius:6,padding:"14px 18px"}}>
+                      <div style={{fontSize:11,color:"#4488FF",letterSpacing:2,marginBottom:12}}>📊 TEAM STATS {hiredMechanics.length>0&&<span style={{fontSize:10,color:"#44CC88",marginLeft:6}}>(+{hiredMechanics.length} staff boost applied)</span>}</div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px 20px"}}>
+                        {[["CAR PACE",baseSt.carPace,stats.carPace],["RELIABILITY",baseSt.reliability,stats.reliability],["PIT SPEED",baseSt.pitSpeed,stats.pitSpeed],["TYRE LIFE",baseSt.tyreLife,stats.tyreLife]].map(([l,base,boosted])=>(
+                          <div key={l}>
+                            <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#778",letterSpacing:1.5,marginBottom:4}}>
+                              <span>{l}</span>
+                              <span>{base>=90?"":""}
+                                <span style={{color:boosted>=90?"#FFC906":boosted>=80?"#44CC88":"#aaa",fontWeight:700}}>{boosted}</span>
+                                {statDiff(base,boosted)}
+                              </span>
+                            </div>
+                            <div style={{height:6,background:"#1E1E22",borderRadius:3,overflow:"hidden",position:"relative"}}>
+                              <div style={{height:"100%",width:`${base}%`,background:t.color+"66",borderRadius:3}}/>
+                              {boosted>base&&<div style={{position:"absolute",top:0,left:`${base}%`,height:"100%",width:`${boosted-base}%`,background:"#44CC88",borderRadius:3}}/>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    {/* Drivers */}
+                    <div style={{background:"#111115",border:"1px solid #1E1E22",borderRadius:6,padding:"14px 18px"}}>
+                      <div style={{fontSize:11,color:t.color,letterSpacing:2,marginBottom:10}}>🏎️ DRIVERS</div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                        {tDrivers.map(d=>(
+                          <div key={d.id} style={{padding:"8px 12px",background:"#161618",border:`1px solid ${t.color}22`,borderRadius:4,cursor:"pointer"}} onClick={()=>setProfileView({type:"driver",id:d.id})}>
+                            <div style={{fontSize:12,color:"#778"}}>#{d.num} {d.flag}</div>
+                            <div style={{fontSize:15,fontWeight:700,marginTop:2}}>{d.name}</div>
+                            <div style={{fontSize:11,color:"#44CC88",marginTop:3}}>View Profile →</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    {/* Mechanic hire panel */}
+                    <div style={{background:"#111115",border:"1px solid #1E1E22",borderRadius:6,padding:"14px 18px"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                        <div style={{fontSize:11,color:"#FFC906",letterSpacing:2}}>🔧 STAFF &amp; MECHANICS ({hiredMechanics.length} hired)</div>
+                        <div style={{fontSize:11,color:"#778"}}>Budget: <span style={{color:"#FFC906",fontWeight:700}}>£{budget}m</span></div>
+                      </div>
+                      {/* Hired mechanics */}
+                      {hiredMechanics.length>0&&(
+                        <div style={{marginBottom:12}}>
+                          <div style={{fontSize:10,color:"#556",letterSpacing:1,marginBottom:6}}>CURRENT STAFF</div>
+                          <div style={{display:"flex",flexDirection:"column",gap:5}}>
+                            {hiredMechanics.map(mechId=>{
+                              const m=MECHANICS_POOL.find(x=>x.id===mechId);
+                              if(!m) return null;
+                              return(
+                                <div key={mechId} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 10px",background:"#161618",border:`1px solid ${m.color}33`,borderRadius:4}}>
+                                  <span style={{fontSize:16}}>{m.icon}</span>
+                                  <div style={{flex:1,minWidth:0}}>
+                                    <div style={{fontSize:13,fontWeight:700}}>{m.name}</div>
+                                    <div style={{fontSize:11,color:"#778"}}>{m.role} · <span style={{color:m.color}}>+{m.bonus} {m.specialty}</span></div>
+                                  </div>
+                                  <span style={{fontSize:9,fontWeight:700,letterSpacing:1,color:MECHANIC_RARITY_COLOR[m.rarity],background:MECHANIC_RARITY_COLOR[m.rarity]+"1A",padding:"2px 6px",borderRadius:2}}>{m.rarity.toUpperCase()}</span>
+                                  <button onClick={()=>{
+                                    const newHired=hiredMechanics.filter(x=>x!==mechId);
+                                    const refund=Math.floor(m.cost*0.5);
+                                    setTeamStaff(s=>({...s,[t.id]:{...s[t.id],mechanics:newHired}}));
+                                    setTeamBudgets(b=>({...b,[t.id]:(b[t.id]||0)+refund}));
+                                  }} style={{background:"#FF444422",color:"#FF4444",border:"1px solid #FF444444",padding:"2px 8px",borderRadius:3,cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,flexShrink:0}}>
+                                    RELEASE (£{Math.floor(m.cost*0.5)}m back)
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      {/* Available mechanics to hire */}
+                      <div style={{fontSize:10,color:"#556",letterSpacing:1,marginBottom:6}}>AVAILABLE TO HIRE</div>
+                      <div style={{display:"flex",flexDirection:"column",gap:5,maxHeight:300,overflowY:"auto"}}>
+                        {MECHANICS_POOL.filter(m=>!hiredMechanics.includes(m.id)).map(m=>{
+                          const canAfford=budget>=m.cost;
+                          return(
+                            <div key={m.id} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 10px",background:"#0C0C0F",border:`1px solid ${m.color}22`,borderRadius:4,opacity:canAfford?1:0.5}}>
+                              <span style={{fontSize:16}}>{m.icon}</span>
+                              <div style={{flex:1,minWidth:0}}>
+                                <div style={{fontSize:13,fontWeight:700}}>{m.name}</div>
+                                <div style={{fontSize:11,color:"#778",marginTop:1}}>{m.role} · <span style={{color:m.color}}>+{m.bonus} {m.specialty}</span></div>
+                                <div style={{fontSize:10,color:"#445",marginTop:1}}>{m.desc}</div>
+                              </div>
+                              <span style={{fontSize:9,fontWeight:700,letterSpacing:1,color:MECHANIC_RARITY_COLOR[m.rarity],background:MECHANIC_RARITY_COLOR[m.rarity]+"1A",padding:"2px 6px",borderRadius:2,flexShrink:0}}>{m.rarity.toUpperCase()}</span>
+                              <button disabled={!canAfford} onClick={()=>{
+                                setTeamStaff(s=>({...s,[t.id]:{...s[t.id],mechanics:[...(s[t.id]?.mechanics||[]),m.id]}}));
+                                setTeamBudgets(b=>({...b,[t.id]:(b[t.id]||0)-m.cost}));
+                              }} style={{background:canAfford?"#44CC8822":"transparent",color:canAfford?"#44CC88":"#2A2A30",border:`1px solid ${canAfford?"#44CC8844":"#2A2A30"}`,padding:"4px 10px",borderRadius:3,cursor:canAfford?"pointer":"default",fontFamily:"inherit",fontSize:11,fontWeight:700,flexShrink:0,whiteSpace:"nowrap"}}>
+                                HIRE £{m.cost}m
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <button onClick={()=>setModal({type:"team",data:t})} style={{background:"#2A2A30",color:"#ccc",border:"1px solid #3A3A40",padding:"10px 20px",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:2,borderRadius:4,alignSelf:"flex-start"}}>
+                      ✏️ EDIT TEAM STATS
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          // ── main profiles grid ───────────────────────────────────────────
+          return(
+            <div style={{animation:"fadeIn 0.2s ease"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
+                <div>
+                  <div style={{fontSize:26,fontWeight:700,letterSpacing:3}}>DRIVER &amp; TEAM PROFILES</div>
+                  <div style={{fontSize:14,color:"#778",letterSpacing:1.5,marginTop:2}}>PHOTOS · BIOS · CAREER STATS · MECHANICS · STAFF</div>
+                </div>
+              </div>
+              {/* Teams row */}
+              <div style={{fontSize:12,color:"#778",letterSpacing:2,marginBottom:8}}>🏗 TEAMS &amp; PRINCIPALS</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:10,marginBottom:20}}>
+                {teams.map(t=>{
+                  const sb=computeStaffBonus(t.id,teamStaff);
+                  const hired=(teamStaff[t.id]?.mechanics||[]).length;
+                  const tProf=driverProfiles["team_"+t.id]||{};
+                  const defP=TEAM_PRINCIPALS.find(p=>p.teamId===t.id);
+                  return(
+                    <div key={t.id} className="hov" onClick={()=>setProfileView({type:"team",id:t.id})} style={{background:"#161618",border:`1px solid ${t.color}22`,borderTop:`3px solid ${t.color}`,borderRadius:4,padding:0,cursor:"pointer",overflow:"hidden",transition:"background 0.15s"}}>
+                      <div style={{height:120,background:"#0C0C0F",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",position:"relative"}}>
+                        {tProf.imageDataUrl?(
+                          <img src={tProf.imageDataUrl} alt={t.name} style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center top"}}/>
+                        ):(
+                          <div style={{textAlign:"center"}}>
+                            <div style={{background:t.color,color:t.tc||"#fff",fontSize:22,fontWeight:900,padding:"8px 16px",borderRadius:4,letterSpacing:3}}>{t.abbr}</div>
+                            {defP&&<div style={{fontSize:11,color:"#556",marginTop:6}}>{defP.name}</div>}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{padding:"10px 12px"}}>
+                        <div style={{fontSize:15,fontWeight:700}}>{t.name}</div>
+                        {defP&&<div style={{fontSize:11,color:"#778",marginTop:2}}>{defP.icon} {defP.name}</div>}
+                        <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6}}>
+                          {hired>0&&<span style={{fontSize:10,color:"#44CC88",background:"#44CC8818",padding:"1px 6px",borderRadius:2,fontWeight:700}}>🔧 ×{hired} staff</span>}
+                          <span style={{fontSize:10,color:"#778"}}>£{teamBudgets[t.id]||0}m</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Drivers grid */}
+              <div style={{fontSize:12,color:"#778",letterSpacing:2,marginBottom:8}}>🏎️ DRIVERS</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:10}}>
+                {teams.map(team=>drivers.filter(d=>d.teamId===team.id).map(d=>{
+                  const prof=driverProfiles[d.id]||{};
+                  const cs=careerStats(d.id);
+                  return(
+                    <div key={d.id} className="hov" onClick={()=>setProfileView({type:"driver",id:d.id})} style={{background:"#161618",border:`1px solid ${team.color}18`,borderLeft:`3px solid ${team.color}`,borderRadius:4,cursor:"pointer",overflow:"hidden",transition:"background 0.15s"}}>
+                      <div style={{height:140,background:"#0C0C0F",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",position:"relative"}}>
+                        {prof.imageDataUrl?(
+                          <img src={prof.imageDataUrl} alt={d.name} style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center top"}}/>
+                        ):(
+                          <div style={{textAlign:"center"}}>
+                            <div style={{fontSize:48,lineHeight:1}}>{d.flag}</div>
+                            <div style={{fontSize:28,fontWeight:900,color:team.color,opacity:0.4,marginTop:4}}>{d.abbr}</div>
+                          </div>
+                        )}
+                        <div style={{position:"absolute",top:6,right:6,background:"#000000AA",fontSize:11,fontWeight:700,color:"#FFC906",padding:"2px 6px",borderRadius:2}}>#{d.num}</div>
+                      </div>
+                      <div style={{padding:"10px 12px"}}>
+                        <div style={{fontSize:14,fontWeight:700}}>{d.name}</div>
+                        <div style={{fontSize:11,color:team.color,fontWeight:700,letterSpacing:1.5,marginTop:1}}>{team.name}</div>
+                        {cs.races>0&&(
+                          <div style={{display:"flex",gap:8,marginTop:6,fontSize:11}}>
+                            <span style={{color:"#FFC906"}}>🏆 {cs.wins}W</span>
+                            <span style={{color:"#aaa"}}>🏅 {cs.podiums}P</span>
+                            <span style={{color:"#44CC88"}}>{cs.pts}pts</span>
+                          </div>
+                        )}
+                        {cs.races===0&&<div style={{fontSize:10,color:"#445",marginTop:4}}>No races saved yet</div>}
+                      </div>
+                    </div>
+                  );
+                }))}
+              </div>
+            </div>
+          );
+        })()}
+
+
         {view==="tracks"&&(
           <div style={{animation:"fadeIn 0.2s ease"}}>
             <div style={{marginBottom:16}}>
