@@ -3158,7 +3158,7 @@ const sbClient = (typeof window !== 'undefined' && window.supabase && !SUPABASE_
     })
   : null;
 
-const sbFakeEmail = (u) => `${u.toLowerCase().replace(/[^a-z0-9_]/g,'')}@f1sim.league`;
+const sbFakeEmail = (u) => `${u.toLowerCase().replace(/[^a-z0-9_]/g,'')}@f1sim.app`;
 
 async function sbSignUp(username, password) {
   if (!sbClient) return { error: 'Supabase not configured' };
@@ -4834,5 +4834,6 @@ export default function F1Sim() {
     </div>
   );
 }
+
 
 
