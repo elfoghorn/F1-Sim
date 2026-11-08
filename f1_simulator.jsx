@@ -1,4 +1,4 @@
-﻿/**
+﻿﻿/**
  * F1 SIM 2027 â€” Formula 1 Season Simulator
  * React 19 JSX, single-file PWA, localStorage persistence
  * Commentary via Anthropic claude-sonnet-4
@@ -39,7 +39,7 @@ function getTeamStats(team) {
 
 const TEAMS = [
   // Stats based on 2025/2026 IRL performance
-  // carPace(55-99) Â· reliability(55-99) Â· pitSpeed(70-99) Â· tyreLife(40-90) Â· cornering(1-20) Â· topSpeed(1-20)
+  // carPace(55-99) · reliability(55-99) · pitSpeed(70-99) · tyreLife(40-90) · cornering(1-20) · topSpeed(1-20)
   {id:"mclaren",    tier:"top", strategy:"aggressive_two", name:"McLaren",      abbr:"MCL",color:"#FF8000",tc:"#000",basePitSpeed:92, carPace:96, reliability:88, pitSpeed:92, tyreLife:82, cornering:18, topSpeed:14},
   {id:"ferrari",    tier:"top", strategy:"overcut",        name:"Ferrari",      abbr:"FER",color:"#E8002D",tc:"#fff",basePitSpeed:87, carPace:93, reliability:84, pitSpeed:87, tyreLife:76, cornering:16, topSpeed:16},
   {id:"redbull",    tier:"top", strategy:"one_stop",       name:"Red Bull",     abbr:"RBR",color:"#3671C6",tc:"#fff",basePitSpeed:95, carPace:91, reliability:83, pitSpeed:95, tyreLife:79, cornering:16, topSpeed:15},
@@ -58,9 +58,9 @@ const TEAMS = [
 
 // â”€â”€ Budget tier configuration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const TIER_CONFIG = {
-  top: {label:"TOP TEAM",   color:"#E8002D", startCap:25, capPerRound:6, desc:"Leading constructor Â· Full factory resources"},
-  mid: {label:"MID-FIELD",  color:"#FFC906", startCap:15, capPerRound:4, desc:"Independent constructor Â· Focused development"},
-  low: {label:"BACKMARKER", color:"#778899", startCap:12, capPerRound:2, desc:"New or developing team Â· Limited budget"},
+  top: {label:"TOP TEAM",   color:"#E8002D", startCap:25, capPerRound:6, desc:"Leading constructor · Full factory resources"},
+  mid: {label:"MID-FIELD",  color:"#FFC906", startCap:15, capPerRound:4, desc:"Independent constructor · Focused development"},
+  low: {label:"BACKMARKER", color:"#778899", startCap:12, capPerRound:2, desc:"New or developing team · Limited budget"},
 };
 
 function initBudgets() {
@@ -70,62 +70,62 @@ function initBudgets() {
 // â•‘  Defines 8 race strategy archetypes. Each strategy carries numeric      â•‘
 // â•‘  directly into runRace() and runSprint(). Teams are assigned a default  â•‘
 // â•‘                                                                          â•‘
-// â•‘  Overcut Gamble Â· Fuel Saving Mode Â· Safety Car Hunter Â· Tyre Banker    â•‘
+// â•‘  Overcut Gamble · Fuel Saving Mode · Safety Car Hunter · Tyre Banker    â•‘
 // ===================== TEAM STRATEGIES =====================
 const TEAM_STRATEGIES = [
   {
     id:"one_stop",    name:"One-Stop Master",  icon:"ðŸŽ¯", color:"#44CC88",
     desc:"Commit to a single pit stop. Maximise track position, nurse tyres to the end.",
-    effects:"Pit stops: 1 Â· Tyre deg management +15% Â· Position gain from undercut âˆ’80% Â· Effective when safety car unlikely",
+    effects:"Pit stops: 1 · Tyre deg management +15% · Position gain from undercut âˆ’80% · Effective when safety car unlikely",
     mods:{pitStops:1,tyreBonus:1.15,undercutPenalty:0.2,overallPace:0.98,dnfRisk:-0.03,scBonus:1.2},
     lapNotes:["Managing the rubber carefully","Trying to make it to the end on this set","The long stints will define their race"],
   },
   {
     id:"aggressive_two","name":"Aggressive 2-Stop",icon:"ðŸ”¥",color:"#FF4444",
     desc:"Go fast, go often. Two stops, always on fresh rubber, always hunting the gap.",
-    effects:"Pit stops: 2 Â· Lap pace +4% Â· Undercut attack +30% Â· Tyre degradation ignored Â· High DNF risk",
+    effects:"Pit stops: 2 · Lap pace +4% · Undercut attack +30% · Tyre degradation ignored · High DNF risk",
     mods:{pitStops:2,tyreBonus:0.96,undercutPenalty:1.3,overallPace:1.04,dnfRisk:0.06,scBonus:0.9},
     lapNotes:["Pushing hard on fresh rubber","The pace is there â€” question is whether the car survives","Attack, attack, attack"],
   },
   {
     id:"undercut_king","name":"Undercut Specialist",icon:"âš”ï¸",color:"#E8002D",
     desc:"Always first to blink. Pit early, undercut the rival, use the fresh tyre delta to take the place.",
-    effects:"Undercut efficiency +40% Â· Pit timing perfect Â· Overtaking on track âˆ’30% Â· Requires clean airspace post-stop",
+    effects:"Undercut efficiency +40% · Pit timing perfect · Overtaking on track âˆ’30% · Requires clean airspace post-stop",
     mods:{pitStops:2,tyreBonus:1.0,undercutPenalty:1.4,overallPace:1.01,dnfRisk:0.02,scBonus:1.15},
     lapNotes:["Box this lap â€” undercut window is open","Out on fresh tyres, they need to deliver now","The out-lap will define this entire race"],
   },
   {
     id:"overcut",     name:"Overcut Gamble",    icon:"â™Ÿï¸",color:"#BB66FF",
     desc:"Stay out longer than everyone else. Bank the track position, make rivals come to you.",
-    effects:"Track position premium +20% Â· Later pitstop Â· Tyre pace degrades Â· Only works if traffic not an issue",
+    effects:"Track position premium +20% · Later pitstop · Tyre pace degrades · Only works if traffic not an issue",
     mods:{pitStops:1,tyreBonus:0.92,undercutPenalty:0.6,overallPace:0.99,dnfRisk:0.01,scBonus:1.3},
     lapNotes:["Staying out â€” the overcut is the plan","Old tyres, but track position is priceless here","They need the safety car to make this work"],
   },
   {
     id:"fuel_save",   name:"Fuel Saving Mode",  icon:"ðŸ’§",color:"#4488FF",
     desc:"Drop engine modes, save fuel, target a race-shaping deployment in the final stint.",
-    effects:"Final 20 laps pace +6% Â· First 60% of race pace âˆ’3% Â· DNF risk âˆ’25% Â· Excellent for unpredictable races",
+    effects:"Final 20 laps pace +6% · First 60% of race pace âˆ’3% · DNF risk âˆ’25% · Excellent for unpredictable races",
     mods:{pitStops:1,tyreBonus:1.05,undercutPenalty:0.8,overallPace:0.97,dnfRisk:-0.25,scBonus:1.1,lateBoost:1.06},
     lapNotes:["Saving fuel in the early phase","Targets are in the window â€” they'll deploy later","Patient race â€” the sting is in the tail"],
   },
   {
     id:"safety_car",  name:"Safety Car Hunter", icon:"ðŸš—",color:"#FFC906",
     desc:"Build a big gap, pit early under green, let a safety car close it back up for free.",
-    effects:"Pre-SC track position value +25% Â· Safety car timing bonus Â· Very high variance Â· Nothing happens without SC",
+    effects:"Pre-SC track position value +25% · Safety car timing bonus · Very high variance · Nothing happens without SC",
     mods:{pitStops:1,tyreBonus:1.1,undercutPenalty:0.5,overallPace:0.99,dnfRisk:-0.02,scBonus:1.5},
     lapNotes:["Waiting for the safety car window","Pitting very early â€” banking on a SC to close the gap","If the safety car doesn't come, this race is over"],
   },
   {
     id:"tyre_banker", name:"Tyre Banker",       icon:"ðŸ¦",color:"#FF8844",
     desc:"Qualify on softs, start race on used tyres, pit for a new set while rivals are struggling.",
-    effects:"Stint 1 pace âˆ’5% Â· Stint 2 pace +8% (fresh vs degraded) Â· Qualifying tyre preserved Â· Complex to execute",
+    effects:"Stint 1 pace âˆ’5% · Stint 2 pace +8% (fresh vs degraded) · Qualifying tyre preserved · Complex to execute",
     mods:{pitStops:2,tyreBonus:1.08,undercutPenalty:1.2,overallPace:1.0,dnfRisk:0.01,scBonus:0.95},
     lapNotes:["Used tyres in the first stint by design","They're banking tyre life for later","The gap to fresher tyres will tell the real story"],
   },
   {
     id:"reactive",    name:"Reactive Strategy", icon:"ðŸ”„",color:"#00D2BE",
     desc:"No fixed plan. Pit crew ready for anything. React to safety cars, rivals, and track conditions.",
-    effects:"Safety car reaction speed +35% Â· VSC pitstop efficiency +20% Â· Can execute any strategy mid-race Â· Slight execution risk",
+    effects:"Safety car reaction speed +35% · VSC pitstop efficiency +20% · Can execute any strategy mid-race · Slight execution risk",
     mods:{pitStops:2,tyreBonus:1.02,undercutPenalty:1.1,overallPace:1.0,dnfRisk:0.0,scBonus:1.35},
     lapNotes:["Keeping all options open","They'll react to whatever the race throws at them","The strategy call will be made lap by lap"],
   },
@@ -277,56 +277,56 @@ const _pick=(a)=>a[Math.floor(Math.random()*a.length)];
 
 // â•‘  8 driver style archetypes, each applying stat modifiers to the         â•‘
 // â•‘  race pace (overallPace), DNF risk, overtaking/defense weighting.       â•‘
-// â•‘  Styles: Aggressive Â· Smooth Â· Qualifier Â· Defender Â· Charger           â•‘
+// â•‘  Styles: Aggressive · Smooth · Qualifier · Defender · Charger           â•‘
 
 // ===================== DRIVING STYLES =====================
 const DRIVING_STYLES = [
   {
     id:"aggressive", name:"Aggressive", icon:"ðŸ”¥", color:"#FF4444",
     desc:"Leaves nothing on the table â€” brilliant in wheel-to-wheel battles, hard on tyres and equipment.",
-    effects:"Overtaking +6 Â· Pace +2 Â· Consistency âˆ’4 Â· Defence âˆ’4 Â· DNF risk +12%",
+    effects:"Overtaking +6 · Pace +2 · Consistency âˆ’4 · Defence âˆ’4 · DNF risk +12%",
     mods:{pace:2,consistency:-4,overtaking:6,defense:-4,wet:-1,experience:0,dnfRisk:0.12,qualBonus:1,racePace:1},
   },
   {
     id:"smooth", name:"Smooth", icon:"ðŸŽ¯", color:"#44CC88",
     desc:"Never a wasted movement. Extracts the maximum from every set of tyres across a full race distance.",
-    effects:"Consistency +6 Â· Wet +4 Â· Pace âˆ’2 Â· DNF risk âˆ’15%",
+    effects:"Consistency +6 · Wet +4 · Pace âˆ’2 · DNF risk âˆ’15%",
     mods:{pace:-2,consistency:6,overtaking:-2,defense:2,wet:4,experience:0,dnfRisk:-0.15,qualBonus:-1,racePace:2},
   },
   {
     id:"qualifier", name:"Qualifier", icon:"âš¡", color:"#FFC906",
     desc:"Electrifying over a single flying lap. Asks serious questions of the tyres in a race.",
-    effects:"Quali pace +5 Â· Race consistency âˆ’4 Â· Experience effect âˆ’2",
+    effects:"Quali pace +5 · Race consistency âˆ’4 · Experience effect âˆ’2",
     mods:{pace:0,consistency:-4,overtaking:1,defense:0,wet:-1,experience:-2,dnfRisk:0.04,qualBonus:5,racePace:-3},
   },
   {
     id:"defender", name:"Defender", icon:"ðŸ›¡ï¸", color:"#4488FF",
     desc:"Makes every overtake feel like climbing a wall. Clinical at managing gaps and holding positions.",
-    effects:"Defence +8 Â· Consistency +3 Â· Overtaking âˆ’6 Â· Pace âˆ’2",
+    effects:"Defence +8 · Consistency +3 · Overtaking âˆ’6 · Pace âˆ’2",
     mods:{pace:-2,consistency:3,overtaking:-6,defense:8,wet:1,experience:2,dnfRisk:-0.08,qualBonus:-2,racePace:0},
   },
   {
     id:"charger", name:"Charger", icon:"ðŸš€", color:"#FF8844",
     desc:"Comes alive in traffic. Finds gaps others don't see and thrives starting from the back.",
-    effects:"Overtaking +8 Â· Pace +3 (from low grid) Â· Consistency âˆ’3 Â· Defence âˆ’3",
+    effects:"Overtaking +8 · Pace +3 (from low grid) · Consistency âˆ’3 · Defence âˆ’3",
     mods:{pace:1,consistency:-3,overtaking:8,defense:-3,wet:1,experience:0,dnfRisk:0.06,qualBonus:-2,racePace:2},
   },
   {
     id:"strategist", name:"Strategist", icon:"â™Ÿï¸", color:"#BB66FF",
     desc:"Reads the race like a data feed. Timing is everything â€” under-cuts, safety cars, tyre windows.",
-    effects:"Experience +5 Â· Consistency +4 Â· Undercut bonus Â· Pace âˆ’1",
+    effects:"Experience +5 · Consistency +4 · Undercut bonus · Pace âˆ’1",
     mods:{pace:-1,consistency:4,overtaking:0,defense:2,wet:2,experience:5,dnfRisk:-0.1,qualBonus:-1,racePace:1},
   },
   {
     id:"technical", name:"Technical", icon:"ðŸ”¬", color:"#00D2BE",
     desc:"At home in the corners. Precision over raw pace â€” thrives at high-downforce and technical circuits.",
-    effects:"Wet +6 Â· Consistency +3 Â· Tech circuit +4 Â· High-speed âˆ’2",
+    effects:"Wet +6 · Consistency +3 · Tech circuit +4 · High-speed âˆ’2",
     mods:{pace:-1,consistency:3,overtaking:0,defense:1,wet:6,experience:2,dnfRisk:-0.05,qualBonus:0,racePace:1},
   },
   {
     id:"ironman", name:"Ironman", icon:"âš™ï¸", color:"#B6BABD",
     desc:"Still circulating on lap 70 when others have retired. The metronome. Points finisher extraordinaire.",
-    effects:"Consistency +7 Â· DNF risk âˆ’30% Â· Pace âˆ’3 Â· Overtaking âˆ’3",
+    effects:"Consistency +7 · DNF risk âˆ’30% · Pace âˆ’3 · Overtaking âˆ’3",
     mods:{pace:-3,consistency:7,overtaking:-3,defense:3,wet:1,experience:3,dnfRisk:-0.30,qualBonus:-2,racePace:0},
   },
 ];
@@ -639,7 +639,7 @@ function genQEvents(session, entries, track, elimLine) {
     // Lap time surprise
     if(Math.random()<0.4) {
       const darkHorse=_pick(sorted.slice(Math.floor(sorted.length*0.35),Math.floor(sorted.length*0.6)));
-      evts.push({type:"surprise",icon:"â­",driver:darkHorse.driver.name,team:darkHorse.team.name,
+      evts.push({type:"surprise",icon:"­",driver:darkHorse.driver.name,team:darkHorse.team.name,
         text:`${darkHorse.driver.name} has been quietly rapid all session â€” ${darkHorse.team.name} running a different front wing spec this weekend has been the subject of paddock whispers. Whatever they've done, ${_pick(["it's working","the lap time suggests it is","it has closed the gap to the front significantly"])}.`});
     }
   }
@@ -664,7 +664,7 @@ function genQEvents(session, entries, track, elimLine) {
       const pA=sorted.indexOf(a)+1;
       const pB=sorted.indexOf(b)+1;
       const gap=((a.score-b.score)*0.011).toFixed(3);
-      evts.push({type:"battle",icon:"â±ï¸",
+      evts.push({type:"battle",icon:"±ï¸",
         text:`THE CUT LINE: ${a.driver.name} (P${pA}) and ${b.driver.name} (P${pB}) â€” ${gap}s between them and the difference between Q3 and the garage. ${_pick([
           `Both teams have sent their drivers out for final runs. The tension in the pit wall is unbearable.`,
           `${c?c.driver.name+" is breathing down their necks from P"+(sorted.indexOf(c)+1)+" â€” three drivers, two spots.":" This is the last chance."}`,
@@ -833,7 +833,7 @@ function buildFPCaption(fpData, track) {
   return [
     _pick([
       `${label} â€” ${track.circuit.toUpperCase()}\n\n${fastest.driver.name} sets the pace in ${label} for ${topTeam.name}. ${gap}s covers the top two â€” but read nothing into it. Fuel loads, tyre compounds and aero configurations vary wildly between teams in practice.`,
-      `FREE PRACTICE ${sessionNum} Â· ${track.name.toUpperCase()}\n\n${fastest.driver.name} (${topTeam.name}) topped the ${label} timesheet at ${track.circuit}. Practice times are notoriously misleading â€” teams run different fuel quantities and programmes â€” but the ${topTeam.name} looked genuinely quick on every compound.`,
+      `FREE PRACTICE ${sessionNum} · ${track.name.toUpperCase()}\n\n${fastest.driver.name} (${topTeam.name}) topped the ${label} timesheet at ${track.circuit}. Practice times are notoriously misleading â€” teams run different fuel quantities and programmes â€” but the ${topTeam.name} looked genuinely quick on every compound.`,
     ]),
     _pick([
       `${second?.driver.name||"P2"} was ${gap}s back in second, though ${streetCtx}. The top ten is tightly packed â€” a tenth or two separates several cars through the midfield.`,
@@ -936,7 +936,7 @@ function buildSQCaption(session, entries, track) {
   return [
     _pick([
       `${session} â€” ${track.circuit.toUpperCase()} | SPRINT QUALIFYING\n\n${fastest.driver.name} (${fastest.team.name}) sets the pace in ${session} with ${gap}s over ${second?.driver.name||"P2"}. The ${sessionDesc} â€” shorter, sharper, less margin for error than standard qualifying.`,
-      `SPRINT QUALIFYING ${session} Â· ${track.name.toUpperCase()}\n\n${fastest.driver.name} leads ${session} for ${fastest.team.name}. ${gap}s covers P1 and P2 â€” in sprint qualifying every tenth matters because there are no second chances.`,
+      `SPRINT QUALIFYING ${session} · ${track.name.toUpperCase()}\n\n${fastest.driver.name} leads ${session} for ${fastest.team.name}. ${gap}s covers P1 and P2 â€” in sprint qualifying every tenth matters because there are no second chances.`,
     ]),
     session==="SQ3"
       ? _pick([
@@ -1653,7 +1653,7 @@ function downloadLeaderboardPNG(title,subtitle,entries,color,filename,opts={}){
     y+=ROW;
   });
   c.font="10px Arial"; c.fillStyle="#333";
-  c.fillText("Generated by F1 SIM Â· 2027 Season",PAD,H-10);
+  c.fillText("Generated by F1 SIM · 2027 Season",PAD,H-10);
   canvas.toBlob(blob=>{
     if(!blob)return;
     const url=URL.createObjectURL(blob);
@@ -1869,7 +1869,7 @@ function TrackPicker({goodTracks,badTracks,onChange}){
   return(
     <div style={{marginBottom:12}}>
       <div style={{fontSize:12,color:"#899",letterSpacing:1.5,marginBottom:6}}>
-        CLICK TO TOGGLE: ðŸŸ¢ GOOD TRACK (+5 PTS) Â· ðŸ”´ BAD TRACK (âˆ’5 PTS) Â· MAX 3 EACH
+        CLICK TO TOGGLE: ðŸŸ¢ GOOD TRACK (+5 PTS) · ðŸ”´ BAD TRACK (âˆ’5 PTS) · MAX 3 EACH
       </div>
       <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
         {TRACKS.map(t=>{
@@ -1881,7 +1881,7 @@ function TrackPicker({goodTracks,badTracks,onChange}){
           );
         })}
       </div>
-      <div style={{fontSize:12,color:"#899",marginTop:5}}>ðŸŸ¢ {goodTracks.length}/3 favourites Â· ðŸ”´ {badTracks.length}/3 tough circuits</div>
+      <div style={{fontSize:12,color:"#899",marginTop:5}}>ðŸŸ¢ {goodTracks.length}/3 favourites · ðŸ”´ {badTracks.length}/3 tough circuits</div>
     </div>
   );
 }
@@ -1964,7 +1964,7 @@ function RoundDetail({r, onBack}) {
         <button onClick={onBack} style={{background:"#2A2A30",color:"#ccc",border:"none",padding:"7px 14px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,borderRadius:3}}>â† BACK</button>
         <div>
           <div style={{fontSize:20,fontWeight:700}}>{r.trackFlag} {r.trackName} â€” Round {r.round}</div>
-          <div style={{fontSize:12,color:"#778",marginTop:2}}>{r.trackCircuit||""} {r.hasSprint?"Â· âš¡ Sprint Weekend":""} Â· Read-only snapshot</div>
+          <div style={{fontSize:12,color:"#778",marginTop:2}}>{r.trackCircuit||""} {r.hasSprint?"· âš¡ Sprint Weekend":""} · Read-only snapshot</div>
         </div>
       </div>
       {/* Sub-tabs */}
@@ -1980,7 +1980,7 @@ function RoundDetail({r, onBack}) {
       {detailTab==="race"&&snap.race&&(
         <div style={{display:"grid",gridTemplateColumns:"1fr 360px",gap:14,alignItems:"start"}}>
           <div>
-            <div style={{fontSize:11,color:"#778",letterSpacing:2,marginBottom:8}}>RACE CLASSIFICATION Â· {snap.race.totalLaps} LAPS</div>
+            <div style={{fontSize:11,color:"#778",letterSpacing:2,marginBottom:8}}>RACE CLASSIFICATION · {snap.race.totalLaps} LAPS</div>
             <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
               {snap.race.isWet&&<span style={{background:"#4488FF18",color:"#4488FF",fontSize:11,fontWeight:700,padding:"2px 7px",borderRadius:2}}>ðŸŒ§ï¸ WET</span>}
               {snap.race.hasSC&&<span style={{background:"#FFC90618",color:"#FFC906",fontSize:11,fontWeight:700,padding:"2px 7px",borderRadius:2}}>ðŸš— SC LAP {snap.race.scLap}</span>}
@@ -2139,7 +2139,7 @@ function EditModal({type,data,teams,drivers,onSave,onClose,teamBudgets,currentRo
                 <div style={{display:"flex",gap:8,alignItems:"center",marginTop:5}}>
                   <span style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:tier.color,background:tier.color+"18",padding:"2px 7px",borderRadius:2}}>{tier.label}</span>
                   <span style={{fontSize:12,color:"#aaa",display:"flex",alignItems:"center",gap:4}}>
-                    Budget cap: Â£<input
+                    Budget cap: £<input
                       type="number" min={1} max={999} value={cap}
                       onChange={e=>{const v=parseInt(e.target.value)||1;if(onSetBudget)onSetBudget(data.id,v);}}
                       style={{width:52,background:"#111115",border:"1px solid #FFC90644",borderRadius:3,color:"#FFC906",fontWeight:700,fontSize:13,padding:"1px 5px",fontFamily:"inherit",textAlign:"center"}}
@@ -2194,7 +2194,7 @@ function EditModal({type,data,teams,drivers,onSave,onClose,teamBudgets,currentRo
                 <span style={{fontSize:16,fontWeight:700,color:f.mental>=8?"#44CC88":f.mental>=6?"#FFC906":"#FF4444",fontFamily:"monospace"}}>{f.mental}/10</span>
               </div>
               <input type="range" min={1} max={10} step={1} value={f.mental} onChange={e=>setF(p=>({...p,mental:parseInt(e.target.value)}))} style={{width:"100%",accentColor:"#44CC88"}}/>
-              <div style={{fontSize:12,color:"#778",marginTop:2}}>1=Struggling Â· 5=Neutral Â· 10=Peak Focus</div>
+              <div style={{fontSize:12,color:"#778",marginTop:2}}>1=Struggling · 5=Neutral · 10=Peak Focus</div>
             </div>
             <div style={{marginBottom:14,padding:"10px 12px",background:"#111115",borderRadius:4,border:"1px solid #1E1E22"}}>
               <TrackPicker goodTracks={f.goodTracks} badTracks={f.badTracks} onChange={({goodTracks,badTracks})=>setF(p=>({...p,goodTracks,badTracks}))}/>
@@ -2660,7 +2660,7 @@ function buildQualifyingCaption(q1,q2,q3,grid,track){
   const nightStr=track.night?"under the floodlights":"";
   const streetStr=track.street?`the ${track.circuit} street circuit`:`${track.circuit}`;
   const altNote=track.alt>1500?` â€” the thin air at ${track.alt}m altitude flattered the high-downforce setups`:"";
-  const tempNote=track.temp>30?` in brutal ${track.temp}Â°C heat`:(track.temp<12?` in surprisingly cold ${track.temp}Â°C conditions`:"");
+  const tempNote=track.temp>30?` in brutal ${track.temp}°C heat`:(track.temp<12?` in surprisingly cold ${track.temp}°C conditions`:"");
 
   // --- Sky Sports style intro ---
   const intros=[
@@ -2731,7 +2731,7 @@ function buildSprintCaption(sprint,qual,track){
   const spLaps=sprint.sprintLaps;
   const rivalry=p2?getRivalry(winner.driver,p2.driver):null;
   const teamamateDuel=pos.find((e,i)=>i>0&&e.team?.id===pos[0].team?.id&&i<5);
-  const pts8=pos.filter(e=>!e.dnf).slice(0,8).map((e,i)=>`${e.driver.name.split(" ").pop()} +${SPRINT_PTS[i]}pts`).join(" Â· ");
+  const pts8=pos.filter(e=>!e.dnf).slice(0,8).map((e,i)=>`${e.driver.name.split(" ").pop()} +${SPRINT_PTS[i]}pts`).join(" · ");
 
   const intros=[
     `âš¡ SPRINT RACE â€” ${track.circuit.toUpperCase()} | ${spLaps} LAPS | ${_pick(["FULL ATTACK","NO MARGIN FOR ERROR","EVERY LAP COUNTS"])}\n\n${winner.driver.name} takes the sprint victory for ${winner.team.name}. ${spLaps} laps, no safety car buffer, no tyre conservation mindset â€” just eight points for the win and a pecking order established before the main event. ${winner.driver.name} ${_pick([
@@ -2741,7 +2741,7 @@ function buildSprintCaption(sprint,qual,track){
       "converted a perfect start into a lights-to-flag victory â€” the team could not have scripted it better.",
     ])}`,
     `${winner.driver.name.toUpperCase()} WINS THE SPRINT â€” ${track.name.toUpperCase()}\n\n${spLaps} laps of intensity and it is ${winner.driver.name} who pockets eight points. The sprint format offers no hiding places, no strategic options â€” raw pace and racing intelligence decide the outcome, and ${winner.driver.name} had both. ${p2?.driver.name||"P2"} pushed hard in the final laps but ${_pick(["could never find a way through","the gap was just too large to close","the DRS didn't deliver the attack needed","the tyre delta told the wrong story"])}.`,
-    `SPRINT RESULT: ${winner.driver.name} Â· ${p2?.driver.name||"P2"} Â· ${p3?.driver.name||"P3"}\n\nPoints scored: ${pts8}\n\n${winner.driver.name} builds their sprint-weekend record with another maximum haul. The ${winner.team.name} garage celebrates, but the real debrief starts immediately â€” tomorrow is what the points champions are built from.`,
+    `SPRINT RESULT: ${winner.driver.name} · ${p2?.driver.name||"P2"} · ${p3?.driver.name||"P3"}\n\nPoints scored: ${pts8}\n\n${winner.driver.name} builds their sprint-weekend record with another maximum haul. The ${winner.team.name} garage celebrates, but the real debrief starts immediately â€” tomorrow is what the points champions are built from.`,
   ];
 
   const drama=[];
@@ -3140,14 +3140,12 @@ const STAGE_DEFS=[
 
 
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-//  F1 SIM 2027 â€” PLATFORM UI
+// ============================================================================
+//  F1 SIM 2027 - PLATFORM UI
 //  Full roleplay & championship management simulator
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ============================================================================
 
-
-
-// â”€â”€ Supabase â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Supabase -----------------------------------------------------------------
 
 const SUPABASE_URL = "https://tdsmjrbuplbjnajdzjnu.supabase.co";
 const SUPABASE_KEY = "sb_publishable_XsC9JcwIvUb1ns7qeFegXw_CzsjStu2";
@@ -3178,7 +3176,7 @@ async function sbSignIn(username, password) {
 async function sbSignOut() { if (sbClient) await sbClient.auth.signOut(); }
 
 async function sbFetch(path, opts = {}) {
-  const { data: { session } } = await sbClient.auth.getSession();
+  const session = sbClient ? (await sbClient.auth.getSession()).data.session : null;
   const headers = { 'Content-Type': 'application/json', 'apikey': SUPABASE_KEY };
   if (session) headers['Authorization'] = `Bearer ${session.access_token}`;
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers, ...opts });
@@ -3187,7 +3185,7 @@ async function sbFetch(path, opts = {}) {
   return { data: text ? JSON.parse(text) : null, error: null };
 }
 
-// â”€â”€ Design tokens â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Design tokens ------------------------------------------------------------
 
 const C = {
   bg:        '#0A0A0C',
@@ -3212,21 +3210,22 @@ const C = {
 };
 
 const T = {
-  h1: { fontSize:28, fontWeight:700, letterSpacing:-0.5, color: C.text },
-  h2: { fontSize:20, fontWeight:700, color: C.text },
-  h3: { fontSize:15, fontWeight:600, color: C.text },
-  body: { fontSize:14, color: C.text },
-  sub: { fontSize:13, color: C.textSub },
-  cap: { fontSize:11, fontWeight:600, letterSpacing:1, textTransform:'uppercase', color: C.textMuted },
+  h1:   { fontSize:28, fontWeight:700, letterSpacing:-0.5, color:'#F0F0F5' },
+  h2:   { fontSize:20, fontWeight:700, color:'#F0F0F5' },
+  h3:   { fontSize:15, fontWeight:600, color:'#F0F0F5' },
+  body: { fontSize:14, color:'#F0F0F5' },
+  sub:  { fontSize:13, color:'#8888A0' },
+  cap:  { fontSize:11, fontWeight:600, letterSpacing:1, textTransform:'uppercase', color:'#55556A' },
 };
 
-// â”€â”€ Utility components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Utility components -------------------------------------------------------
 
-function Badge({ color = C.textMuted, bg, children, style = {} }) {
+function Badge({ color, bg, children, style={} }) {
+  const c = color || '#55556A';
   return (
     <span style={{ display:'inline-block', padding:'2px 8px', borderRadius:4,
       fontSize:11, fontWeight:600, letterSpacing:.5, textTransform:'uppercase',
-      color: color, background: bg || color+'22', ...style }}>
+      color: c, background: bg || c+'22', ...style }}>
       {children}
     </span>
   );
@@ -3234,25 +3233,25 @@ function Badge({ color = C.textMuted, bg, children, style = {} }) {
 
 function StatusBadge({ status }) {
   const map = {
-    draft:            { label:'Draft',            color: C.textMuted, bg: C.textMuted+'22' },
-    submitted:        { label:'Submitted',        color: C.blue,      bg: C.blue+'22' },
-    under_review:     { label:'Under Review',     color: C.amber,     bg: C.amber+'22' },
-    revision_requested:{ label:'Revision Needed', color: C.amber,     bg: C.amber+'22' },
-    approved:         { label:'Approved',         color: C.green,     bg: C.green+'22' },
-    rejected:         { label:'Rejected',         color: C.red,       bg: C.red+'22' },
-    archived:         { label:'Archived',         color: C.textMuted, bg: C.textMuted+'11' },
+    draft:              { label:'Draft',           color:'#55556A' },
+    submitted:          { label:'Submitted',       color:'#3B8EFF' },
+    under_review:       { label:'Under Review',    color:'#FF9500' },
+    revision_requested: { label:'Revision Needed', color:'#FF9500' },
+    approved:           { label:'Approved',        color:'#00C46A' },
+    rejected:           { label:'Rejected',        color:'#E8002D' },
+    archived:           { label:'Archived',        color:'#55556A' },
   };
   const s = map[status] || map.draft;
-  return <Badge color={s.color} bg={s.bg}>{s.label}</Badge>;
+  return <Badge color={s.color}>{s.label}</Badge>;
 }
 
-function Card({ children, style = {}, onClick }) {
+function Card({ children, style={}, onClick }) {
   const [hov, setHov] = useState(false);
   return (
     <div onClick={onClick}
       onMouseEnter={() => onClick && setHov(true)}
       onMouseLeave={() => setHov(false)}
-      style={{ background: C.card, border:`1px solid ${hov ? C.borderHov : C.border}`,
+      style={{ background:'#17171C', border:`1px solid ${hov ? '#3A3A48' : '#252530'}`,
         borderRadius:10, padding:20, cursor: onClick ? 'pointer' : 'default',
         transition:'border-color .15s', ...style }}>
       {children}
@@ -3264,20 +3263,22 @@ function Button({ children, onClick, variant='primary', disabled, style={}, size
   const [hov, setHov] = useState(false);
   const pad = size === 'sm' ? '6px 14px' : size === 'lg' ? '12px 28px' : '9px 20px';
   const fs  = size === 'sm' ? 12 : size === 'lg' ? 16 : 14;
-  const base = { border:'none', borderRadius:7, fontWeight:600, fontSize:fs,
-    cursor: disabled ? 'not-allowed' : 'pointer', padding:pad, transition:'all .15s',
-    opacity: disabled ? .5 : 1, ...style };
-  const styles = {
-    primary:   { background: hov ? C.redDark : C.red,       color:'#fff' },
-    secondary: { background: hov ? C.borderHov : C.border,  color: C.text },
-    ghost:     { background: hov ? C.border : 'transparent', color: C.textSub },
-    danger:    { background: hov ? '#900' : '#700',          color:'#fff' },
-    success:   { background: hov ? '#009950' : C.green,      color:'#fff' },
+  const bgMap = {
+    primary:   hov ? '#B00022' : '#E8002D',
+    secondary: hov ? '#3A3A48' : '#252530',
+    ghost:     hov ? '#252530' : 'transparent',
+    danger:    hov ? '#900020' : '#700018',
+    success:   hov ? '#009950' : '#00C46A',
+  };
+  const fgMap = {
+    primary:'#fff', secondary:'#F0F0F5', ghost:'#8888A0', danger:'#fff', success:'#fff'
   };
   return (
     <button disabled={disabled} onClick={onClick}
       onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{ ...base, ...styles[variant] }}>
+      style={{ border:'none', borderRadius:7, fontWeight:600, fontSize:fs,
+        cursor: disabled ? 'not-allowed' : 'pointer', padding:pad, transition:'all .15s',
+        opacity: disabled ? .5 : 1, background: bgMap[variant], color: fgMap[variant], ...style }}>
       {children}
     </button>
   );
@@ -3289,10 +3290,10 @@ function Input({ label, value, onChange, placeholder, type='text', error, style=
       {label && <div style={{ ...T.cap, marginBottom:5 }}>{label}</div>}
       <input type={type} value={value} onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
-        style={{ width:'100%', background: C.surface, border:`1px solid ${error ? C.red : C.border}`,
-          borderRadius:7, padding:'9px 12px', color: C.text, fontSize:14, outline:'none',
+        style={{ width:'100%', background:'#111114', border:`1px solid ${error ? '#E8002D' : '#252530'}`,
+          borderRadius:7, padding:'9px 12px', color:'#F0F0F5', fontSize:14, outline:'none',
           boxSizing:'border-box', ...style }} />
-      {error && <div style={{ fontSize:12, color: C.red, marginTop:4 }}>{error}</div>}
+      {error && <div style={{ fontSize:12, color:'#E8002D', marginTop:4 }}>{error}</div>}
     </div>
   );
 }
@@ -3303,8 +3304,8 @@ function Textarea({ label, value, onChange, placeholder, rows=4, style={} }) {
       {label && <div style={{ ...T.cap, marginBottom:5 }}>{label}</div>}
       <textarea rows={rows} value={value} onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
-        style={{ width:'100%', background: C.surface, border:`1px solid ${C.border}`,
-          borderRadius:7, padding:'9px 12px', color: C.text, fontSize:14, outline:'none',
+        style={{ width:'100%', background:'#111114', border:'1px solid #252530',
+          borderRadius:7, padding:'9px 12px', color:'#F0F0F5', fontSize:14, outline:'none',
           resize:'vertical', boxSizing:'border-box', ...style }} />
     </div>
   );
@@ -3315,47 +3316,45 @@ function Select({ label, value, onChange, options, style={} }) {
     <div style={{ marginBottom:14 }}>
       {label && <div style={{ ...T.cap, marginBottom:5 }}>{label}</div>}
       <select value={value} onChange={e => onChange(e.target.value)}
-        style={{ width:'100%', background: C.surface, border:`1px solid ${C.border}`,
-          borderRadius:7, padding:'9px 12px', color: C.text, fontSize:14, outline:'none', ...style }}>
+        style={{ width:'100%', background:'#111114', border:'1px solid #252530',
+          borderRadius:7, padding:'9px 12px', color:'#F0F0F5', fontSize:14, outline:'none', ...style }}>
         {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
     </div>
   );
 }
 
-function StatBar({ label, value, max=99, color=C.red }) {
+function StatBar({ label, value, max=99, color }) {
+  const c = color || '#E8002D';
   return (
     <div style={{ marginBottom:8 }}>
       <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
         <span style={{ ...T.cap }}>{label}</span>
-        <span style={{ fontSize:12, fontWeight:700, color }}>{value}</span>
+        <span style={{ fontSize:12, fontWeight:700, color: c }}>{value}</span>
       </div>
-      <div style={{ height:5, background: C.border, borderRadius:3 }}>
-        <div style={{ height:'100%', width:`${(value/max)*100}%`, background:color, borderRadius:3,
+      <div style={{ height:5, background:'#252530', borderRadius:3 }}>
+        <div style={{ height:'100%', width:`${(value/max)*100}%`, background:c, borderRadius:3,
           transition:'width .3s' }} />
       </div>
     </div>
   );
 }
 
-function Divider({ style={} }) {
-  return <div style={{ height:1, background: C.border, margin:'16px 0', ...style }} />;
-}
-
 function Spinner() {
   return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center', padding:40 }}>
-      <div style={{ width:28, height:28, border:`3px solid ${C.border}`, borderTopColor: C.red,
+      <div style={{ width:28, height:28, border:'3px solid #252530', borderTopColor:'#E8002D',
         borderRadius:'50%', animation:'spin 0.7s linear infinite' }} />
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 }
 
-function EmptyState({ icon='ðŸ', title, sub, action }) {
+function EmptyState({ title, sub, action }) {
   return (
     <div style={{ textAlign:'center', padding:'60px 20px' }}>
-      <div style={{ fontSize:48, marginBottom:12 }}>{icon}</div>
+      <div style={{ width:48, height:48, borderRadius:'50%', background:'#17171C',
+        margin:'0 auto 16px', border:'2px solid #252530' }} />
       <div style={{ ...T.h3, marginBottom:6 }}>{title}</div>
       {sub && <div style={{ ...T.sub, marginBottom:16 }}>{sub}</div>}
       {action}
@@ -3363,52 +3362,49 @@ function EmptyState({ icon='ðŸ', title, sub, action }) {
   );
 }
 
-// â”€â”€ Sidebar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Sidebar ------------------------------------------------------------------
 
 const NAV_ITEMS = [
-  { id:'dashboard',    label:'Dashboard',      icon:'â¬›', roles:['player','gm','admin'] },
-  { id:'characters',   label:'My Characters',  icon:'ðŸ‘¤', roles:['player','gm','admin'] },
-  { id:'apply',        label:'Apply',          icon:'ðŸ“‹', roles:['player','gm','admin'] },
-  { id:'teams',        label:'Teams',          icon:'ðŸŽï¸', roles:['player','gm','admin'] },
-  { id:'championship', label:'Championship',   icon:'ðŸ†', roles:['player','gm','admin'] },
-  { id:'calendar',     label:'Calendar',       icon:'ðŸ“…', roles:['player','gm','admin'] },
-  { id:'stats',        label:'Statistics',     icon:'ðŸ“Š', roles:['player','gm','admin'] },
-  { id:'notifications',label:'Notifications',  icon:'ðŸ””', roles:['player','gm','admin'] },
-  { id:'settings',     label:'Settings',       icon:'âš™ï¸', roles:['player','gm','admin'] },
-  null, // divider
-  { id:'gm',           label:'GM Control',     icon:'ðŸŽ®', roles:['gm','admin'] },
-  { id:'sandbox',      label:'Sandbox',        icon:'ðŸ”¬', roles:['player','gm','admin'] },
+  { id:'dashboard',    label:'Dashboard' },
+  { id:'characters',   label:'My Characters' },
+  { id:'apply',        label:'Apply' },
+  { id:'teams',        label:'Teams' },
+  { id:'championship', label:'Championship' },
+  { id:'calendar',     label:'Calendar' },
+  { id:'stats',        label:'Statistics' },
+  { id:'notifications',label:'Notifications' },
+  { id:'settings',     label:'Settings' },
+  null,
+  { id:'gm',           label:'GM Control',   gmOnly: true },
+  { id:'sandbox',      label:'Sandbox' },
 ];
 
 function Sidebar({ page, setPage, profile, unreadCount=0 }) {
-  const role = profile?.role || 'player';
+  const isGM = profile?.role === 'gm' || profile?.role === 'admin';
   return (
-    <div style={{ width: C.sideW, minWidth: C.sideW, background: C.sidebar,
-      borderRight:`1px solid ${C.border}`, display:'flex', flexDirection:'column',
+    <div style={{ width:220, minWidth:220, background:'#0D0D10',
+      borderRight:'1px solid #252530', display:'flex', flexDirection:'column',
       height:'100vh', position:'sticky', top:0, overflowY:'auto' }}>
-      {/* Logo */}
-      <div style={{ padding:'20px 16px 16px', borderBottom:`1px solid ${C.border}` }}>
-        <div style={{ fontSize:18, fontWeight:900, letterSpacing:1, color: C.red }}>F1 SIM</div>
-        <div style={{ fontSize:10, color: C.textMuted, letterSpacing:2, textTransform:'uppercase' }}>2027 League</div>
+      <div style={{ padding:'20px 16px 16px', borderBottom:'1px solid #252530' }}>
+        <div style={{ fontSize:18, fontWeight:900, letterSpacing:1, color:'#E8002D' }}>F1 SIM</div>
+        <div style={{ fontSize:10, color:'#55556A', letterSpacing:2, textTransform:'uppercase' }}>2027 League</div>
       </div>
-      {/* Nav */}
       <nav style={{ flex:1, padding:'8px 0' }}>
         {NAV_ITEMS.map((item, i) => {
-          if (!item) return <div key={i} style={{ height:1, background: C.border, margin:'6px 10px' }} />;
-          if (!item.roles.includes(role) && !(role === 'admin')) return null;
+          if (!item) return <div key={i} style={{ height:1, background:'#252530', margin:'6px 10px' }} />;
+          if (item.gmOnly && !isGM) return null;
           const active = page === item.id;
           return (
             <button key={item.id} onClick={() => setPage(item.id)}
-              style={{ display:'flex', alignItems:'center', gap:10, width:'100%', padding:'9px 16px',
-                border:'none', background: active ? C.redGlow : 'transparent',
-                borderLeft: `3px solid ${active ? C.red : 'transparent'}`,
-                color: active ? C.text : C.textSub, cursor:'pointer', fontSize:13,
-                fontWeight: active ? 600 : 400, textAlign:'left', transition:'all .15s',
-                borderRadius: active ? '0 6px 6px 0' : 0 }}>
-              <span style={{ width:18, textAlign:'center', fontSize:15 }}>{item.icon}</span>
+              style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+                width:'100%', padding:'9px 16px',
+                border:'none', borderLeft:`3px solid ${active ? '#E8002D' : 'transparent'}`,
+                background: active ? 'rgba(232,0,45,0.18)' : 'transparent',
+                color: active ? '#F0F0F5' : '#8888A0', cursor:'pointer', fontSize:13,
+                fontWeight: active ? 600 : 400, textAlign:'left', transition:'all .15s' }}>
               {item.label}
               {item.id === 'notifications' && unreadCount > 0 &&
-                <span style={{ marginLeft:'auto', background: C.red, color:'#fff',
+                <span style={{ background:'#E8002D', color:'#fff',
                   borderRadius:10, fontSize:10, fontWeight:700, padding:'2px 6px' }}>
                   {unreadCount}
                 </span>}
@@ -3416,19 +3412,20 @@ function Sidebar({ page, setPage, profile, unreadCount=0 }) {
           );
         })}
       </nav>
-      {/* Profile footer */}
       {profile && (
-        <div style={{ padding:'12px 16px', borderTop:`1px solid ${C.border}` }}>
+        <div style={{ padding:'12px 16px', borderTop:'1px solid #252530' }}>
           <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-            <div style={{ width:32, height:32, borderRadius:'50%', background: C.border,
-              display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:700, color: C.red }}>
+            <div style={{ width:32, height:32, borderRadius:'50%', background:'#252530',
+              display:'flex', alignItems:'center', justifyContent:'center',
+              fontSize:14, fontWeight:700, color:'#E8002D' }}>
               {(profile.username||'?')[0].toUpperCase()}
             </div>
             <div style={{ flex:1, minWidth:0 }}>
-              <div style={{ fontSize:13, fontWeight:600, color: C.text, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+              <div style={{ fontSize:13, fontWeight:600, color:'#F0F0F5',
+                overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                 {profile.username}
               </div>
-              <div style={{ fontSize:11, color: C.textMuted, textTransform:'uppercase', letterSpacing:.5 }}>
+              <div style={{ fontSize:11, color:'#55556A', textTransform:'uppercase', letterSpacing:.5 }}>
                 {profile.role}
               </div>
             </div>
@@ -3439,7 +3436,7 @@ function Sidebar({ page, setPage, profile, unreadCount=0 }) {
   );
 }
 
-// â”€â”€ Auth Screen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Auth Screen --------------------------------------------------------------
 
 function AuthScreen({ onLogin }) {
   const [mode, setMode] = useState('signin');
@@ -3448,12 +3445,13 @@ function AuthScreen({ onLogin }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const validateUsername = (u) => /^[a-zA-Z0-9_]{3,20}$/.test(u);
-
   async function submit(e) {
     e.preventDefault();
     setError('');
-    if (!validateUsername(username)) { setError('Username: 3-20 chars, letters/numbers/underscore only'); return; }
+    if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
+      setError('Username: 3-20 chars, letters/numbers/underscore only');
+      return;
+    }
     if (password.length < 6) { setError('Password must be at least 6 characters'); return; }
     setLoading(true);
     const fn = mode === 'signup' ? sbSignUp : sbSignIn;
@@ -3464,41 +3462,37 @@ function AuthScreen({ onLogin }) {
   }
 
   return (
-    <div style={{ minHeight:'100vh', background: C.bg, display:'flex', alignItems:'center', justifyContent:'center' }}>
+    <div style={{ minHeight:'100vh', background:'#0A0A0C', display:'flex',
+      alignItems:'center', justifyContent:'center', fontFamily:'-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif' }}>
       <div style={{ width:'100%', maxWidth:400, padding:20 }}>
-        {/* Logo */}
         <div style={{ textAlign:'center', marginBottom:40 }}>
-          <div style={{ fontSize:36, fontWeight:900, letterSpacing:2, color: C.red }}>F1 SIM</div>
-          <div style={{ fontSize:12, color: C.textMuted, letterSpacing:3, textTransform:'uppercase' }}>2027 Championship</div>
+          <div style={{ fontSize:36, fontWeight:900, letterSpacing:2, color:'#E8002D' }}>F1 SIM</div>
+          <div style={{ fontSize:12, color:'#55556A', letterSpacing:3, textTransform:'uppercase' }}>2027 Championship</div>
         </div>
-
         <Card>
-          <div style={{ display:'flex', gap:0, marginBottom:20, background: C.surface,
+          <div style={{ display:'flex', gap:0, marginBottom:20, background:'#111114',
             borderRadius:8, padding:4 }}>
             {['signin','signup'].map(m => (
               <button key={m} onClick={() => setMode(m)}
                 style={{ flex:1, padding:'8px 0', border:'none', borderRadius:6, fontSize:13,
                   fontWeight:600, cursor:'pointer',
-                  background: mode === m ? C.card : 'transparent',
-                  color: mode === m ? C.text : C.textMuted }}>
+                  background: mode === m ? '#17171C' : 'transparent',
+                  color: mode === m ? '#F0F0F5' : '#8888A0' }}>
                 {m === 'signin' ? 'Sign In' : 'Register'}
               </button>
             ))}
           </div>
-
           <form onSubmit={submit}>
-            <Input label="Username" value={username} onChange={setUsername}
-              placeholder="e.g. driver_27" />
+            <Input label="Username" value={username} onChange={setUsername} placeholder="e.g. driver_27" />
             <Input label="Password" type="password" value={password} onChange={setPassword}
               placeholder="Min 6 characters" error={error} />
             <Button disabled={loading} style={{ width:'100%' }} size='lg'>
-              {loading ? 'Loadingâ€¦' : mode === 'signup' ? 'Create Account' : 'Sign In'}
+              {loading ? 'Loading...' : mode === 'signup' ? 'Create Account' : 'Sign In'}
             </Button>
           </form>
-
           {mode === 'signup' && (
-            <div style={{ marginTop:12, fontSize:12, color: C.textMuted, textAlign:'center' }}>
-              Your email is never shown â€” only your username is visible to others.
+            <div style={{ marginTop:12, fontSize:12, color:'#55556A', textAlign:'center' }}>
+              Only your username is visible to others.
             </div>
           )}
         </Card>
@@ -3507,39 +3501,37 @@ function AuthScreen({ onLogin }) {
   );
 }
 
-// â”€â”€ Dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Dashboard ----------------------------------------------------------------
 
 function Dashboard({ profile, setPage }) {
   const isGM = profile?.role === 'gm' || profile?.role === 'admin';
+  const tiles = [
+    { label:'My Characters', sub:'Create and manage characters', page:'characters', color:'#3B8EFF' },
+    { label:'Apply',          sub:'Submit a character application', page:'apply',   color:'#FF9500' },
+    { label:'Teams',          sub:'View teams and rosters',         page:'teams',   color:'#E8002D' },
+    { label:'Championship',   sub:'Standings and points',           page:'championship', color:'#FFD700' },
+  ];
   return (
     <div>
       <div style={{ marginBottom:24 }}>
-        <div style={{ ...T.h1 }}>Welcome back, {profile?.username} ðŸ‘‹</div>
+        <div style={{ ...T.h1 }}>Welcome back, {profile?.username}</div>
         <div style={{ ...T.sub }}>Formula One 2027 Roleplay Championship</div>
       </div>
-
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))', gap:14, marginBottom:24 }}>
-        {[
-          { icon:'ðŸ‘¤', label:'My Characters', sub:'Create & manage characters', page:'characters', color: C.blue },
-          { icon:'ðŸ“‹', label:'Apply',          sub:'Submit a character application', page:'apply',   color: C.amber },
-          { icon:'ðŸŽï¸', label:'Teams',          sub:'View teams & rosters',         page:'teams',    color: C.red },
-          { icon:'ðŸ†', label:'Championship',   sub:'Standings & points',           page:'championship', color: C.gold },
-        ].map(item => (
-          <Card key={item.page} onClick={() => setPage(item.page)}
-            style={{ cursor:'pointer' }}>
-            <div style={{ fontSize:28, marginBottom:8 }}>{item.icon}</div>
-            <div style={{ ...T.h3, marginBottom:4, color: item.color }}>{item.label}</div>
+        {tiles.map(item => (
+          <Card key={item.page} onClick={() => setPage(item.page)}>
+            <div style={{ width:4, height:28, background:item.color, borderRadius:2, marginBottom:12 }} />
+            <div style={{ ...T.h3, marginBottom:4, color:item.color }}>{item.label}</div>
             <div style={{ ...T.sub }}>{item.sub}</div>
           </Card>
         ))}
       </div>
-
       {isGM && (
-        <Card onClick={() => setPage('gm')} style={{ cursor:'pointer', borderColor: C.red+'44' }}>
+        <Card onClick={() => setPage('gm')} style={{ borderColor:'rgba(232,0,45,0.4)' }}>
           <div style={{ display:'flex', alignItems:'center', gap:14 }}>
-            <div style={{ fontSize:32 }}>ðŸŽ®</div>
+            <div style={{ width:4, height:48, background:'#E8002D', borderRadius:2 }} />
             <div>
-              <div style={{ ...T.h3, color: C.red }}>GM Control Centre</div>
+              <div style={{ ...T.h3, color:'#E8002D' }}>GM Control Centre</div>
               <div style={{ ...T.sub }}>Manage players, approve applications, run races</div>
             </div>
           </div>
@@ -3549,30 +3541,26 @@ function Dashboard({ profile, setPage }) {
   );
 }
 
-// â”€â”€ Characters Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Characters Page ----------------------------------------------------------
 
-function CharactersPage({ profile, sbUser }) {
+function CharactersPage({ sbUser }) {
   const [chars, setChars] = useState(null);
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
 
   async function loadChars() {
-    if (!sbClient) { setLoading(false); return; }
-    setLoading(true);
+    if (!sbClient) { setChars([]); setLoading(false); return; }
     const { data } = await sbFetch(`characters?owner_id=eq.${sbUser.id}&order=created_at.desc&select=*`);
     setChars(data || []);
     setLoading(false);
   }
 
-  useState(() => { loadChars(); }, []);
-  // Using useEffect replacement pattern â€” load on mount
-  const [loaded, setLoaded] = useState(false);
   if (!loaded) { setLoaded(true); loadChars(); }
-
   if (loading) return <Spinner />;
 
   if (creating) return (
-    <CreateCharacterForm sbUser={sbUser} profile={profile}
+    <CreateCharacterForm sbUser={sbUser}
       onDone={() => { setCreating(false); loadChars(); }}
       onCancel={() => setCreating(false)} />
   );
@@ -3586,76 +3574,70 @@ function CharactersPage({ profile, sbUser }) {
         </div>
         <Button onClick={() => setCreating(true)}>+ New Character</Button>
       </div>
-
       {!chars || chars.length === 0 ? (
-        <EmptyState icon='ðŸ‘¤' title='No characters yet'
-          sub='Create a driver or staff character to get started'
+        <EmptyState title="No characters yet" sub="Create a driver or staff character to get started"
           action={<Button onClick={() => setCreating(true)}>Create Character</Button>} />
       ) : (
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:14 }}>
-          {chars.map(c => <CharacterCard key={c.id} char={c} />)}
+          {chars.map(c => (
+            <Card key={c.id}>
+              <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:12 }}>
+                <div style={{ width:44, height:44, borderRadius:'50%', background:'#252530',
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  fontSize:16, fontWeight:800, color:'#E8002D' }}>
+                  {c.number || (c.name||'?')[0].toUpperCase()}
+                </div>
+                <div style={{ flex:1 }}>
+                  <div style={{ ...T.h3 }}>{c.name}</div>
+                  <div style={{ ...T.sub }}>{c.type}{c.number ? ` - #${c.number}` : ''}</div>
+                </div>
+                <Badge color={c.is_active ? '#00C46A' : '#55556A'}>
+                  {c.is_active ? 'Active' : 'Inactive'}
+                </Badge>
+              </div>
+              {c.type === 'driver' && (
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 20px' }}>
+                  <StatBar label="Pace"        value={c.pace}        color="#E8002D" />
+                  <StatBar label="Consistency" value={c.consistency} color="#3B8EFF" />
+                  <StatBar label="Wet"         value={c.wet}         color="#3B8EFF" />
+                  <StatBar label="Overtaking"  value={c.overtaking}  color="#FF9500" />
+                </div>
+              )}
+              {c.bio && <div style={{ ...T.sub, fontSize:12, marginTop:8, fontStyle:'italic' }}>"{c.bio}"</div>}
+            </Card>
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-function CharacterCard({ char }) {
-  return (
-    <Card>
-      <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:12 }}>
-        <div style={{ width:48, height:48, borderRadius:'50%', background: C.border,
-          display:'flex', alignItems:'center', justifyContent:'center', fontSize:20 }}>
-          {char.flag || 'ðŸ'}
-        </div>
-        <div style={{ flex:1 }}>
-          <div style={{ ...T.h3 }}>{char.name}</div>
-          <div style={{ ...T.sub }}>{char.type} {char.number ? `Â· #${char.number}` : ''}</div>
-        </div>
-        <Badge color={char.is_active ? C.green : C.textMuted}>
-          {char.is_active ? 'Active' : 'Inactive'}
-        </Badge>
-      </div>
-      {char.type === 'driver' && (
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 20px' }}>
-          <StatBar label='Pace'       value={char.pace}       color={C.red} />
-          <StatBar label='Consistency' value={char.consistency} color={C.blue} />
-          <StatBar label='Wet'        value={char.wet}        color={C.blue} />
-          <StatBar label='Overtaking' value={char.overtaking} color={C.amber} />
-        </div>
-      )}
-      {char.bio && <div style={{ ...T.sub, fontSize:12, marginTop:8, fontStyle:'italic' }}>"{char.bio}"</div>}
-    </Card>
-  );
-}
-
-function CreateCharacterForm({ sbUser, profile, onDone, onCancel }) {
+function CreateCharacterForm({ sbUser, onDone, onCancel }) {
   const [step, setStep] = useState(0);
   const [type, setType] = useState('driver');
   const [form, setForm] = useState({
-    name:'', nationality:'', flag:'ðŸ', number:'', abbr:'', bio:'', backstory:'',
+    name:'', nationality:'', number:'', abbr:'', bio:'', backstory:'',
     pace:70, consistency:70, wet:70, overtaking:70, defense:70, experience:50, mental:7,
-    style:'balanced', good_tracks:[], bad_tracks:[],
+    style:'balanced',
     technical:70, strategy_skill:70, leadership:70, morale:70,
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   async function save() {
+    if (!form.name.trim()) { setError('Name is required'); return; }
     setSaving(true);
     setError('');
     const payload = {
       owner_id: sbUser.id, type,
-      name: form.name, nationality: form.nationality, flag: form.flag,
+      name: form.name, nationality: form.nationality,
       bio: form.bio, backstory: form.backstory,
       ...(type === 'driver' ? {
         number: parseInt(form.number) || null, abbr: form.abbr,
         pace: form.pace, consistency: form.consistency, wet: form.wet,
         overtaking: form.overtaking, defense: form.defense,
-        experience: form.experience, mental: form.mental,
-        style: form.style, good_tracks: form.good_tracks, bad_tracks: form.bad_tracks,
+        experience: form.experience, mental: form.mental, style: form.style,
       } : {
         technical: form.technical, strategy_skill: form.strategy_skill,
         leadership: form.leadership, morale: form.morale,
@@ -3677,54 +3659,48 @@ function CreateCharacterForm({ sbUser, profile, onDone, onCancel }) {
   return (
     <div style={{ maxWidth:600 }}>
       <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:24 }}>
-        <button onClick={onCancel} style={{ background:'none', border:'none', color: C.textSub, cursor:'pointer', fontSize:20 }}>â†</button>
+        <button onClick={onCancel} style={{ background:'none', border:'none',
+          color:'#8888A0', cursor:'pointer', fontSize:20, lineHeight:1 }}>{'<'}</button>
         <div>
           <div style={{ ...T.h1 }}>New Character</div>
           <div style={{ ...T.sub }}>Step {step+1} of {steps.length}: {steps[step]}</div>
         </div>
       </div>
-
-      {/* Step indicators */}
       <div style={{ display:'flex', gap:6, marginBottom:24 }}>
         {steps.map((s, i) => (
           <div key={i} style={{ flex:1, height:4, borderRadius:2,
-            background: i <= step ? C.red : C.border, transition:'background .2s' }} />
+            background: i <= step ? '#E8002D' : '#252530', transition:'background .2s' }} />
         ))}
       </div>
-
-      {error && <div style={{ background: C.red+'22', border:`1px solid ${C.red}`, borderRadius:7,
-        padding:'10px 14px', marginBottom:16, fontSize:13, color: C.red }}>{error}</div>}
-
+      {error && <div style={{ background:'rgba(232,0,45,0.1)', border:'1px solid #E8002D', borderRadius:7,
+        padding:'10px 14px', marginBottom:16, fontSize:13, color:'#E8002D' }}>{error}</div>}
       {step === 0 && (
         <Card>
-          <Select label='Character Type' value={type} onChange={setType}
+          <Select label="Character Type" value={type} onChange={setType}
             options={[{ value:'driver', label:'Driver' }, { value:'mechanic', label:'Mechanic' },
               { value:'engineer', label:'Engineer' }, { value:'team_principal', label:'Team Principal' }]} />
-          <Input label='Full Name' value={form.name} onChange={v => set('name',v)} placeholder='e.g. Alex Hendry' />
-          <Input label='Nationality' value={form.nationality} onChange={v => set('nationality',v)} placeholder='e.g. British' />
-          <Input label='Flag Emoji' value={form.flag} onChange={v => set('flag',v)} placeholder='ðŸ‡¬ðŸ‡§' />
+          <Input label="Full Name" value={form.name} onChange={v => set('name',v)} placeholder="e.g. Alex Hendry" />
+          <Input label="Nationality" value={form.nationality} onChange={v => set('nationality',v)} placeholder="e.g. British" />
           {type === 'driver' && <>
-            <Input label='Race Number' value={form.number} onChange={v => set('number',v)} placeholder='1-99' />
-            <Input label='Abbreviation' value={form.abbr} onChange={v => set('abbr',v)} placeholder='e.g. HEN' />
+            <Input label="Race Number" value={form.number} onChange={v => set('number',v)} placeholder="1-99" />
+            <Input label="Abbreviation (3 letters)" value={form.abbr} onChange={v => set('abbr',v)} placeholder="e.g. HEN" />
           </>}
         </Card>
       )}
-
       {step === 1 && (
         <Card>
-          <Textarea label='Bio (public)' value={form.bio} onChange={v => set('bio',v)}
-            placeholder='A few sentences about your character...' rows={3} />
-          <Textarea label='Backstory' value={form.backstory} onChange={v => set('backstory',v)}
-            placeholder='Their history, motivations, journey to F1...' rows={6} />
+          <Textarea label="Bio (shown publicly)" value={form.bio} onChange={v => set('bio',v)}
+            placeholder="A few sentences about your character..." rows={3} />
+          <Textarea label="Backstory" value={form.backstory} onChange={v => set('backstory',v)}
+            placeholder="Their history, motivations, journey to F1..." rows={6} />
         </Card>
       )}
-
       {step === 2 && type === 'driver' && (
         <Card>
           <div style={{ ...T.sub, marginBottom:16, fontSize:12 }}>
             Note: Final stats are set by the GM. These are your proposed starting values.
           </div>
-          <Select label='Driving Style' value={form.style} onChange={v => set('style',v)}
+          <Select label="Driving Style" value={form.style} onChange={v => set('style',v)}
             options={[{ value:'aggressive', label:'Aggressive' }, { value:'smooth', label:'Smooth' },
               { value:'balanced', label:'Balanced' }, { value:'defensive', label:'Defensive' },
               { value:'wet_weather', label:'Wet Weather Specialist' }]} />
@@ -3733,77 +3709,76 @@ function CreateCharacterForm({ sbUser, profile, onDone, onCancel }) {
             <div key={k} style={{ marginBottom:14 }}>
               <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
                 <span style={{ ...T.cap }}>{l}</span>
-                <span style={{ fontSize:13, fontWeight:700, color: C.red }}>{form[k]}</span>
+                <span style={{ fontSize:13, fontWeight:700, color:'#E8002D' }}>{form[k]}</span>
               </div>
-              <input type='range' min={40} max={99} value={form[k]}
+              <input type="range" min={40} max={99} value={form[k]}
                 onChange={e => set(k, parseInt(e.target.value))}
-                style={{ width:'100%', accentColor: C.red }} />
+                style={{ width:'100%', accentColor:'#E8002D' }} />
             </div>
           ))}
           <div style={{ marginBottom:14 }}>
             <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
               <span style={{ ...T.cap }}>Mental Strength</span>
-              <span style={{ fontSize:13, fontWeight:700, color: C.red }}>{form.mental}/10</span>
+              <span style={{ fontSize:13, fontWeight:700, color:'#E8002D' }}>{form.mental}/10</span>
             </div>
-            <input type='range' min={1} max={10} value={form.mental}
+            <input type="range" min={1} max={10} value={form.mental}
               onChange={e => set('mental', parseInt(e.target.value))}
-              style={{ width:'100%', accentColor: C.red }} />
+              style={{ width:'100%', accentColor:'#E8002D' }} />
           </div>
         </Card>
       )}
-
       {step === 2 && type !== 'driver' && (
         <Card>
-          <div style={{ ...T.sub, marginBottom:16, fontSize:12 }}>
-            Proposed starting stats for your staff character.
-          </div>
+          <div style={{ ...T.sub, marginBottom:16, fontSize:12 }}>Proposed starting stats for your staff character.</div>
           {[['technical','Technical Skill'],['strategy_skill','Strategy'],
             ['leadership','Leadership'],['morale','Morale']].map(([k,l]) => (
             <div key={k} style={{ marginBottom:14 }}>
               <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
                 <span style={{ ...T.cap }}>{l}</span>
-                <span style={{ fontSize:13, fontWeight:700, color: C.blue }}>{form[k]}</span>
+                <span style={{ fontSize:13, fontWeight:700, color:'#3B8EFF' }}>{form[k]}</span>
               </div>
-              <input type='range' min={40} max={99} value={form[k]}
+              <input type="range" min={40} max={99} value={form[k]}
                 onChange={e => set(k, parseInt(e.target.value))}
-                style={{ width:'100%', accentColor: C.blue }} />
+                style={{ width:'100%', accentColor:'#3B8EFF' }} />
             </div>
           ))}
         </Card>
       )}
-
       <div style={{ display:'flex', gap:10, marginTop:16 }}>
-        {step > 0 && <Button variant='secondary' onClick={() => setStep(s => s-1)}>Back</Button>}
+        {step > 0 && <Button variant="secondary" onClick={() => setStep(s => s-1)}>Back</Button>}
         {step < steps.length-1
-          ? <Button onClick={() => setStep(s => s+1)} style={{ flex:1 }}>Next â†’</Button>
+          ? <Button onClick={() => setStep(s => s+1)} style={{ flex:1 }}>Next</Button>
           : <Button onClick={save} disabled={saving} style={{ flex:1 }}>
-              {saving ? 'Savingâ€¦' : 'Create Character'}
+              {saving ? 'Saving...' : 'Create Character'}
             </Button>}
       </div>
     </div>
   );
 }
 
-// â”€â”€ Applications Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Applications Page --------------------------------------------------------
 
-function ApplyPage({ sbUser, profile }) {
+function ApplyPage({ sbUser }) {
   const [apps, setApps] = useState(null);
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
 
   async function loadApps() {
-    if (!sbClient) { setLoading(false); return; }
-    const { data } = await sbFetch(`applications?applicant_id=eq.${sbUser.id}&order=created_at.desc&select=*,characters(name,type,flag),league_teams(name,color)`);
-    setApps(data || []);
-    setLoading(false);
+    if (!sbClient) { setApps([]); setLoading(false); return; }
+    const { data } = await sbFetch(
+      `applications?applicant_id=eq.${sbUser.id}&order=created_at.desc` +
+      `&select=*,characters(name,type),league_teams(name)`
+    );
+    setApps(data || []); setLoading(false);
   }
 
   if (!loaded) { setLoaded(true); loadApps(); }
   if (loading) return <Spinner />;
 
   if (creating) return (
-    <ApplicationForm sbUser={sbUser} onDone={() => { setCreating(false); loadApps(); }}
+    <ApplicationForm sbUser={sbUser}
+      onDone={() => { setCreating(false); loadApps(); }}
       onCancel={() => setCreating(false)} />
   );
 
@@ -3816,10 +3791,8 @@ function ApplyPage({ sbUser, profile }) {
         </div>
         <Button onClick={() => setCreating(true)}>+ New Application</Button>
       </div>
-
       {!apps || apps.length === 0 ? (
-        <EmptyState icon='ðŸ“‹' title='No applications yet'
-          sub='Apply to join a team as a driver or staff member'
+        <EmptyState title="No applications yet" sub="Apply to join a team as a driver or staff member"
           action={<Button onClick={() => setCreating(true)}>Apply Now</Button>} />
       ) : (
         <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
@@ -3828,19 +3801,17 @@ function ApplyPage({ sbUser, profile }) {
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
                 <div>
                   <div style={{ ...T.h3, marginBottom:4 }}>
-                    {app.characters?.flag} {app.characters?.name}
+                    {app.characters?.name}
                     <span style={{ ...T.sub, marginLeft:8 }}>({app.characters?.type})</span>
                   </div>
-                  {app.league_teams && (
-                    <div style={{ ...T.sub }}>Applying to: {app.league_teams.name}</div>
-                  )}
+                  {app.league_teams && <div style={{ ...T.sub }}>Applying to: {app.league_teams.name}</div>}
                   <div style={{ ...T.cap, marginTop:4 }}>{new Date(app.created_at).toLocaleDateString()}</div>
                 </div>
                 <StatusBadge status={app.status} />
               </div>
               {app.revision_note && (
-                <div style={{ marginTop:12, padding:'10px 12px', background: C.amber+'11',
-                  border:`1px solid ${C.amber}44`, borderRadius:7, fontSize:13, color: C.amber }}>
+                <div style={{ marginTop:12, padding:'10px 12px', background:'rgba(255,149,0,0.1)',
+                  border:'1px solid rgba(255,149,0,0.4)', borderRadius:7, fontSize:13, color:'#FF9500' }}>
                   <strong>Revision needed:</strong> {app.revision_note}
                 </div>
               )}
@@ -3863,8 +3834,8 @@ function ApplicationForm({ sbUser, onDone, onCancel }) {
   if (!loaded) {
     setLoaded(true);
     Promise.all([
-      sbFetch(`characters?owner_id=eq.${sbUser.id}&is_active=eq.false&select=id,name,type,flag`),
-      sbFetch(`league_teams?select=id,name,color`),
+      sbFetch(`characters?owner_id=eq.${sbUser.id}&select=id,name,type`),
+      sbFetch(`league_teams?select=id,name`),
     ]).then(([c, t]) => { setChars(c.data || []); setTeams(t.data || []); });
   }
 
@@ -3890,31 +3861,30 @@ function ApplicationForm({ sbUser, onDone, onCancel }) {
   return (
     <div style={{ maxWidth:600 }}>
       <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:24 }}>
-        <button onClick={onCancel} style={{ background:'none', border:'none', color: C.textSub, cursor:'pointer', fontSize:20 }}>â†</button>
+        <button onClick={onCancel} style={{ background:'none', border:'none', color:'#8888A0', cursor:'pointer', fontSize:20 }}>{'<'}</button>
         <div style={{ ...T.h1 }}>New Application</div>
       </div>
-
       <Card>
-        {error && <div style={{ color: C.red, fontSize:13, marginBottom:12 }}>{error}</div>}
-        <Select label='Character' value={form.character_id} onChange={v => set('character_id',v)}
+        {error && <div style={{ color:'#E8002D', fontSize:13, marginBottom:12 }}>{error}</div>}
+        <Select label="Character" value={form.character_id} onChange={v => set('character_id',v)}
           options={[{ value:'', label:'Select a character...' },
-            ...chars.map(c => ({ value: c.id, label: `${c.flag} ${c.name} (${c.type})` }))]} />
-        <Select label='Desired Team (optional)' value={form.team_id} onChange={v => set('team_id',v)}
+            ...chars.map(c => ({ value: c.id, label: `${c.name} (${c.type})` }))]} />
+        <Select label="Desired Team (optional)" value={form.team_id} onChange={v => set('team_id',v)}
           options={[{ value:'', label:'No preference' },
             ...teams.map(t => ({ value: t.id, label: t.name }))]} />
-        <Textarea label='Motivation' value={form.motivation} onChange={v => set('motivation',v)}
-          placeholder='Why do you want to join this team? What drives your character?' rows={4} />
-        <Textarea label='Relevant Experience / Background' value={form.experience} onChange={v => set('experience',v)}
-          placeholder='Any relevant experience, skills, or background your character brings...' rows={4} />
+        <Textarea label="Motivation" value={form.motivation} onChange={v => set('motivation',v)}
+          placeholder="Why do you want to join this team? What drives your character?" rows={4} />
+        <Textarea label="Relevant Experience / Background" value={form.experience} onChange={v => set('experience',v)}
+          placeholder="Any relevant experience, skills, or background your character brings..." rows={4} />
         <Button onClick={submit} disabled={saving} style={{ width:'100%' }}>
-          {saving ? 'Submittingâ€¦' : 'Submit Application'}
+          {saving ? 'Submitting...' : 'Submit Application'}
         </Button>
       </Card>
     </div>
   );
 }
 
-// â”€â”€ Teams Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Teams Page ---------------------------------------------------------------
 
 function TeamsPage() {
   const [teams, setTeams] = useState(null);
@@ -3925,65 +3895,40 @@ function TeamsPage() {
   if (!loaded) {
     setLoaded(true);
     if (sbClient) {
-      sbFetch('league_teams?select=*,league_drivers(id,name,number,flag,pace,consistency)&order=name').then(({ data }) => {
-        setTeams(data || []); setLoading(false);
-      });
+      sbFetch('league_teams?select=*,league_drivers(id,name,number,pace,consistency)&order=name')
+        .then(({ data }) => { setTeams(data || []); setLoading(false); });
     } else { setLoading(false); setTeams([]); }
   }
 
   if (loading) return <Spinner />;
 
   if (selected) {
-    const t = teams.find(t => t.id === selected);
+    const t = (teams||[]).find(x => x.id === selected);
     if (!t) { setSelected(null); return null; }
     return <TeamDetail team={t} onBack={() => setSelected(null)} />;
   }
 
-  if (!teams || teams.length === 0) {
-    // Show static TEAMS data as fallback
-    return (
-      <div>
-        <div style={{ ...T.h1, marginBottom:8 }}>Teams</div>
-        <div style={{ ...T.sub, marginBottom:24 }}>No active season teams found</div>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:14 }}>
-          {TEAMS.map(t => (
-            <Card key={t.id}>
-              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
-                <div style={{ width:4, height:40, background: t.color, borderRadius:2 }} />
-                <div>
-                  <div style={{ ...T.h3 }}>{t.name}</div>
-                  <div style={{ ...T.sub }}>{t.tier} tier</div>
-                </div>
-              </div>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:4 }}>
-                <StatBar label='Car Pace'    value={t.carPace}    color={t.color} />
-                <StatBar label='Reliability' value={t.reliability} color={t.color} />
-              </div>
-            </Card>
-          ))}
-        </div>
-      </div>
-    );
-  }
+  const displayTeams = (teams && teams.length > 0) ? teams : TEAMS.map(t => ({
+    id: t.id, name: t.name, color: t.color, tier: t.tier,
+    car_pace: t.carPace, reliability: t.reliability, league_drivers: []
+  }));
 
   return (
     <div>
       <div style={{ ...T.h1, marginBottom:8 }}>Teams</div>
       <div style={{ ...T.sub, marginBottom:24 }}>Active teams and rosters</div>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:14 }}>
-        {teams.map(t => (
-          <Card key={t.id} onClick={() => setSelected(t.id)}>
+        {displayTeams.map(t => (
+          <Card key={t.id} onClick={() => t.id && typeof t.id === 'string' && t.id.includes('-') ? setSelected(t.id) : null}>
             <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
-              <div style={{ width:4, height:40, background: t.color || C.red, borderRadius:2 }} />
+              <div style={{ width:4, height:40, background: t.color || '#E8002D', borderRadius:2 }} />
               <div>
                 <div style={{ ...T.h3 }}>{t.name}</div>
-                <div style={{ ...T.sub }}>{t.tier} tier Â· {(t.league_drivers||[]).length} drivers</div>
+                <div style={{ ...T.sub }}>{t.tier} tier</div>
               </div>
             </div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:4 }}>
-              <StatBar label='Car Pace'    value={t.car_pace}   color={t.color || C.red} />
-              <StatBar label='Reliability' value={t.reliability} color={t.color || C.red} />
-            </div>
+            <StatBar label="Car Pace"    value={t.car_pace || t.carPace || 75} color={t.color || '#E8002D'} />
+            <StatBar label="Reliability" value={t.reliability || 75}            color={t.color || '#E8002D'} />
           </Card>
         ))}
       </div>
@@ -3996,42 +3941,40 @@ function TeamDetail({ team, onBack }) {
   return (
     <div>
       <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:24 }}>
-        <button onClick={onBack} style={{ background:'none', border:'none', color: C.textSub, cursor:'pointer', fontSize:20 }}>â†</button>
-        <div style={{ width:6, height:48, background: team.color || C.red, borderRadius:3 }} />
+        <button onClick={onBack} style={{ background:'none', border:'none', color:'#8888A0', cursor:'pointer', fontSize:20 }}>{'<'}</button>
+        <div style={{ width:6, height:48, background: team.color || '#E8002D', borderRadius:3 }} />
         <div>
           <div style={{ ...T.h1 }}>{team.name}</div>
           <div style={{ ...T.sub }}>{team.tier} tier</div>
         </div>
       </div>
-
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:24 }}>
-        {[['Car Pace',team.car_pace],['Reliability',team.reliability],['Pit Speed',team.pit_speed],['Tyre Life',team.tyre_life]].map(([l,v]) => (
-          <Card key={l} style={{ textAlign:'center' }}>
-            <div style={{ fontSize:22, fontWeight:800, color: team.color || C.red }}>{v}</div>
+        {[['Car Pace',team.car_pace],['Reliability',team.reliability],
+          ['Pit Speed',team.pit_speed],['Tyre Life',team.tyre_life]].map(([l,v]) => (
+          <Card key={l} style={{ textAlign:'center', padding:14 }}>
+            <div style={{ fontSize:22, fontWeight:800, color: team.color || '#E8002D' }}>{v}</div>
             <div style={{ ...T.cap }}>{l}</div>
           </Card>
         ))}
       </div>
-
       <div style={{ ...T.h2, marginBottom:14 }}>Drivers</div>
       {drivers.length === 0 ? (
-        <EmptyState icon='ðŸŽï¸' title='No drivers assigned' sub='Check back after the GM assigns seats' />
+        <EmptyState title="No drivers assigned" sub="Check back after the GM assigns seats" />
       ) : (
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:12 }}>
           {drivers.map(d => (
             <Card key={d.id}>
               <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
-                <div style={{ width:36, height:36, borderRadius:'50%', background: team.color+'33',
-                  display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, fontWeight:700,
-                  color: team.color || C.red }}>
+                <div style={{ width:36, height:36, borderRadius:'50%',
+                  background:(team.color||'#E8002D')+'33',
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  fontSize:16, fontWeight:700, color: team.color || '#E8002D' }}>
                   {d.number}
                 </div>
-                <div>
-                  <div style={{ ...T.h3 }}>{d.flag} {d.name}</div>
-                </div>
+                <div style={{ ...T.h3 }}>{d.name}</div>
               </div>
-              <StatBar label='Pace'       value={d.pace}        color={team.color || C.red} />
-              <StatBar label='Consistency' value={d.consistency} color={team.color || C.red} />
+              <StatBar label="Pace"        value={d.pace}        color={team.color || '#E8002D'} />
+              <StatBar label="Consistency" value={d.consistency} color={team.color || '#E8002D'} />
             </Card>
           ))}
         </div>
@@ -4040,7 +3983,7 @@ function TeamDetail({ team, onBack }) {
   );
 }
 
-// â”€â”€ Championship Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Championship Page --------------------------------------------------------
 
 function ChampionshipPage() {
   const [standings, setStandings] = useState(null);
@@ -4050,36 +3993,30 @@ function ChampionshipPage() {
   if (!loaded) {
     setLoaded(true);
     if (sbClient) {
-      sbFetch('standings?order=driver_points.desc&limit=50').then(({ data }) => {
-        setStandings(data || []); setLoading(false);
-      });
+      sbFetch('standings?order=driver_points.desc&limit=50')
+        .then(({ data }) => { setStandings(data || []); setLoading(false); });
     } else { setLoading(false); setStandings([]); }
   }
 
   if (loading) return <Spinner />;
-
-  const medalColor = i => i === 0 ? C.gold : i === 1 ? C.silver : i === 2 ? C.bronze : C.textMuted;
-
   if (!standings || standings.length === 0) {
-    return <EmptyState icon='ðŸ†' title='No standings yet' sub='Race results will appear here once the season begins' />;
+    return <EmptyState title="No standings yet" sub="Race results will appear here once the season begins" />;
   }
+
+  const medalColor = i => i === 0 ? '#FFD700' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : '#55556A';
 
   return (
     <div>
       <div style={{ ...T.h1, marginBottom:8 }}>Championship</div>
       <div style={{ ...T.sub, marginBottom:24 }}>Driver standings</div>
-
       <Card style={{ padding:0, overflow:'hidden' }}>
         <div style={{ display:'grid', gridTemplateColumns:'48px 1fr auto auto', padding:'10px 16px',
-          background: C.surface, borderBottom:`1px solid ${C.border}` }}>
-          <span style={{ ...T.cap }}>Pos</span>
-          <span style={{ ...T.cap }}>Driver</span>
-          <span style={{ ...T.cap }}>Team</span>
-          <span style={{ ...T.cap, textAlign:'right' }}>Pts</span>
+          background:'#111114', borderBottom:'1px solid #252530' }}>
+          {['Pos','Driver','Team','Pts'].map(h => <span key={h} style={{ ...T.cap }}>{h}</span>)}
         </div>
         {standings.map((s, i) => (
           <div key={s.driver_id} style={{ display:'grid', gridTemplateColumns:'48px 1fr auto auto',
-            padding:'12px 16px', borderBottom: i < standings.length-1 ? `1px solid ${C.border}` : 'none',
+            padding:'12px 16px', borderBottom: i < standings.length-1 ? '1px solid #252530' : 'none',
             alignItems:'center' }}>
             <div style={{ fontWeight:800, fontSize:18, color: medalColor(i) }}>{i+1}</div>
             <div>
@@ -4095,7 +4032,7 @@ function ChampionshipPage() {
   );
 }
 
-// â”€â”€ Calendar Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Calendar Page ------------------------------------------------------------
 
 function CalendarPage() {
   const [rounds, setRounds] = useState(null);
@@ -4105,32 +4042,26 @@ function CalendarPage() {
   if (!loaded) {
     setLoaded(true);
     if (sbClient) {
-      sbFetch('rounds?order=number&select=*').then(({ data }) => {
-        setRounds(data || []); setLoading(false);
-      });
+      sbFetch('rounds?order=number&select=*').then(({ data }) => { setRounds(data || []); setLoading(false); });
     } else { setLoading(false); setRounds([]); }
   }
 
   if (loading) return <Spinner />;
 
-  const stateColor = s => ({ scheduled: C.textMuted, orders_open: C.blue, locked: C.amber,
-    in_progress: C.red, complete: C.green })[s] || C.textMuted;
-
   if (!rounds || rounds.length === 0) {
-    // Fallback: show TRACKS list
     return (
       <div>
         <div style={{ ...T.h1, marginBottom:8 }}>Race Calendar</div>
-        <div style={{ ...T.sub, marginBottom:24 }}>No season schedule set â€” showing circuit list</div>
+        <div style={{ ...T.sub, marginBottom:24 }}>No season schedule set - showing circuit list</div>
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:12 }}>
           {TRACKS.map((t, i) => (
             <Card key={t.id}>
               <div style={{ display:'flex', gap:10 }}>
-                <div style={{ width:28, fontWeight:800, color: C.textMuted, paddingTop:2 }}>{i+1}</div>
+                <div style={{ minWidth:28, fontWeight:800, color:'#55556A', paddingTop:2 }}>{i+1}</div>
                 <div>
                   <div style={{ ...T.h3 }}>{t.name}</div>
                   <div style={{ ...T.sub }}>{t.country}</div>
-                  {t.sprint && <Badge color={C.amber} style={{ marginTop:4 }}>Sprint</Badge>}
+                  {t.sprint && <Badge color="#FF9500" style={{ marginTop:4 }}>Sprint</Badge>}
                 </div>
               </div>
             </Card>
@@ -4139,6 +4070,9 @@ function CalendarPage() {
       </div>
     );
   }
+
+  const stateColor = s => ({ scheduled:'#55556A', orders_open:'#3B8EFF', locked:'#FF9500',
+    in_progress:'#E8002D', complete:'#00C46A' })[s] || '#55556A';
 
   return (
     <div>
@@ -4149,15 +4083,15 @@ function CalendarPage() {
           <Card key={r.id}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
               <div style={{ display:'flex', gap:14, alignItems:'center' }}>
-                <div style={{ fontWeight:800, fontSize:20, color: C.textMuted, minWidth:28 }}>R{r.number}</div>
+                <div style={{ fontWeight:800, fontSize:20, color:'#55556A', minWidth:36 }}>R{r.number}</div>
                 <div>
                   <div style={{ ...T.h3 }}>{r.circuit_name || r.circuit_id}</div>
                   <div style={{ ...T.sub }}>{r.scheduled_for ? new Date(r.scheduled_for).toDateString() : 'TBD'}</div>
                 </div>
               </div>
-              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                {r.is_sprint && <Badge color={C.amber}>Sprint</Badge>}
-                <Badge color={stateColor(r.state)}>{r.state.replace('_',' ')}</Badge>
+              <div style={{ display:'flex', gap:8 }}>
+                {r.is_sprint && <Badge color="#FF9500">Sprint</Badge>}
+                <Badge color={stateColor(r.state)}>{r.state.replace(/_/g,' ')}</Badge>
               </div>
             </div>
           </Card>
@@ -4167,20 +4101,20 @@ function CalendarPage() {
   );
 }
 
-// â”€â”€ Stats Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Statistics Page ----------------------------------------------------------
 
 function StatsPage() {
   return (
     <div>
       <div style={{ ...T.h1, marginBottom:8 }}>Statistics</div>
       <div style={{ ...T.sub, marginBottom:24 }}>Season statistics and records</div>
-      <EmptyState icon='ðŸ“Š' title='Statistics coming soon'
-        sub='Detailed stats will be available after race results are published' />
+      <EmptyState title="Statistics coming soon"
+        sub="Detailed stats will be available after race results are published" />
     </div>
   );
 }
 
-// â”€â”€ Notifications Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Notifications Page -------------------------------------------------------
 
 function NotificationsPage({ sbUser, onRead }) {
   const [notifs, setNotifs] = useState(null);
@@ -4190,10 +4124,8 @@ function NotificationsPage({ sbUser, onRead }) {
   if (!loaded) {
     setLoaded(true);
     if (sbClient && sbUser) {
-      sbFetch(`notifications?recipient_id=eq.${sbUser.id}&order=created_at.desc&limit=50`).then(({ data }) => {
-        setNotifs(data || []); setLoading(false);
-        onRead && onRead();
-      });
+      sbFetch(`notifications?recipient_id=eq.${sbUser.id}&order=created_at.desc&limit=50`)
+        .then(({ data }) => { setNotifs(data || []); setLoading(false); onRead && onRead(); });
     } else { setLoading(false); setNotifs([]); }
   }
 
@@ -4206,7 +4138,7 @@ function NotificationsPage({ sbUser, onRead }) {
 
   if (loading) return <Spinner />;
   if (!notifs || notifs.length === 0) {
-    return <EmptyState icon='ðŸ””' title='No notifications' sub='You are all caught up!' />;
+    return <EmptyState title="No notifications" sub="You are all caught up!" />;
   }
 
   return (
@@ -4221,9 +4153,7 @@ function NotificationsPage({ sbUser, onRead }) {
                 {n.payload?.message && <div style={{ ...T.sub, marginTop:4 }}>{n.payload.message}</div>}
                 <div style={{ ...T.cap, marginTop:6 }}>{new Date(n.created_at).toLocaleString()}</div>
               </div>
-              {!n.read_at && (
-                <Button variant='ghost' size='sm' onClick={() => markRead(n.id)}>Mark Read</Button>
-              )}
+              {!n.read_at && <Button variant="ghost" size="sm" onClick={() => markRead(n.id)}>Mark Read</Button>}
             </div>
           </Card>
         ))}
@@ -4232,10 +4162,14 @@ function NotificationsPage({ sbUser, onRead }) {
   );
 }
 
-// â”€â”€ Settings Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Settings Page ------------------------------------------------------------
 
 function SettingsPage({ profile, sbUser, onProfileUpdate }) {
-  const [form, setForm] = useState({ display_name: profile?.display_name||'', bio: profile?.bio||'', social_handle: profile?.social_handle||'' });
+  const [form, setForm] = useState({
+    display_name: profile?.display_name||'',
+    bio: profile?.bio||'',
+    social_handle: profile?.social_handle||''
+  });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const set = (k,v) => setForm(f => ({ ...f, [k]:v }));
@@ -4254,7 +4188,6 @@ function SettingsPage({ profile, sbUser, onProfileUpdate }) {
     <div style={{ maxWidth:500 }}>
       <div style={{ ...T.h1, marginBottom:8 }}>Settings</div>
       <div style={{ ...T.sub, marginBottom:24 }}>Manage your profile</div>
-
       <Card style={{ marginBottom:16 }}>
         <div style={{ ...T.cap, marginBottom:12 }}>Account</div>
         <div style={{ display:'flex', gap:10, marginBottom:8 }}>
@@ -4263,32 +4196,25 @@ function SettingsPage({ profile, sbUser, onProfileUpdate }) {
         </div>
         <div style={{ display:'flex', gap:10 }}>
           <span style={{ ...T.sub }}>Role:</span>
-          <Badge color={profile?.role === 'gm' ? C.red : C.blue}>
-            {profile?.role}
-          </Badge>
+          <Badge color={profile?.role === 'gm' ? '#E8002D' : '#3B8EFF'}>{profile?.role}</Badge>
         </div>
       </Card>
-
-      <Card>
+      <Card style={{ marginBottom:16 }}>
         <div style={{ ...T.cap, marginBottom:12 }}>Profile</div>
-        <Input label='Display Name' value={form.display_name} onChange={v => set('display_name',v)} />
-        <Textarea label='Bio' value={form.bio} onChange={v => set('bio',v)}
-          placeholder='Tell the league about yourself...' rows={3} />
-        <Input label='Social Handle' value={form.social_handle} onChange={v => set('social_handle',v)}
-          placeholder='@handle' />
+        <Input label="Display Name" value={form.display_name} onChange={v => set('display_name',v)} />
+        <Textarea label="Bio" value={form.bio} onChange={v => set('bio',v)}
+          placeholder="Tell the league about yourself..." rows={3} />
+        <Input label="Social Handle" value={form.social_handle} onChange={v => set('social_handle',v)} placeholder="@handle" />
         <Button onClick={save} disabled={saving} variant={saved ? 'success' : 'primary'}>
-          {saved ? 'âœ“ Saved' : saving ? 'Savingâ€¦' : 'Save Changes'}
+          {saved ? 'Saved!' : saving ? 'Saving...' : 'Save Changes'}
         </Button>
       </Card>
-
-      <div style={{ marginTop:16 }}>
-        <Button variant='danger' onClick={sbSignOut}>Sign Out</Button>
-      </div>
+      <Button variant="danger" onClick={sbSignOut}>Sign Out</Button>
     </div>
   );
 }
 
-// â”€â”€ GM Control Centre â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- GM Control Centre --------------------------------------------------------
 
 function GMControlPage({ sbUser }) {
   const [tab, setTab] = useState('applications');
@@ -4299,28 +4225,25 @@ function GMControlPage({ sbUser }) {
     { id:'race',         label:'Race Control' },
     { id:'audit',        label:'Audit Log' },
   ];
-
   return (
     <div>
       <div style={{ ...T.h1, marginBottom:8 }}>GM Control Centre</div>
       <div style={{ ...T.sub, marginBottom:16 }}>League management tools</div>
-
       <div style={{ display:'flex', gap:4, marginBottom:24, flexWrap:'wrap' }}>
         {tabs.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{ padding:'8px 16px', border:'none', borderRadius:6, fontSize:13, fontWeight:600,
-              cursor:'pointer', background: tab === t.id ? C.red : C.surface,
-              color: tab === t.id ? '#fff' : C.textSub, transition:'all .15s' }}>
+              cursor:'pointer', background: tab === t.id ? '#E8002D' : '#111114',
+              color: tab === t.id ? '#fff' : '#8888A0', transition:'all .15s' }}>
             {t.label}
           </button>
         ))}
       </div>
-
       {tab === 'applications' && <GMApplications />}
-      {tab === 'players' && <GMPlayers />}
-      {tab === 'stats' && <GMStats />}
-      {tab === 'race' && <GMRaceControl sbUser={sbUser} />}
-      {tab === 'audit' && <GMAuditLog />}
+      {tab === 'players'      && <GMPlayers />}
+      {tab === 'stats'        && <GMStats />}
+      {tab === 'race'         && <GMRaceControl sbUser={sbUser} />}
+      {tab === 'audit'        && <GMAuditLog />}
     </div>
   );
 }
@@ -4331,18 +4254,21 @@ function GMApplications() {
   const [loaded, setLoaded] = useState(false);
 
   async function loadApps() {
-    const { data } = await sbFetch('applications?order=created_at.desc&select=*,characters(name,type,flag),profiles!applicant_id(username),league_teams(name)');
+    const { data } = await sbFetch(
+      'applications?order=created_at.desc' +
+      '&select=*,characters(name,type),profiles!applicant_id(username),league_teams(name)'
+    );
     setApps(data || []); setLoading(false);
   }
 
   if (!loaded) { setLoaded(true); if (sbClient) loadApps(); else setLoading(false); }
   if (loading) return <Spinner />;
-  if (!apps || apps.length === 0) return <EmptyState icon='ðŸ“‹' title='No applications' sub='None submitted yet' />;
+  if (!apps || apps.length === 0) return <EmptyState title="No applications" sub="None submitted yet" />;
 
-  async function decide(id, status, note='') {
+  async function decide(id, status) {
     await sbFetch(`applications?id=eq.${id}`, {
       method:'PATCH',
-      body: JSON.stringify({ status, gm_notes: note, decided_at: new Date().toISOString() })
+      body: JSON.stringify({ status, decided_at: new Date().toISOString() })
     });
     loadApps();
   }
@@ -4360,23 +4286,24 @@ function GMApplications() {
               <Card key={app.id}>
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
                   <div>
-                    <div style={{ ...T.h3 }}>{app.characters?.flag} {app.characters?.name}
+                    <div style={{ ...T.h3 }}>
+                      {app.characters?.name}
                       <span style={{ ...T.sub, marginLeft:8 }}>({app.characters?.type})</span>
                     </div>
-                    <div style={{ ...T.sub }}>by {app.profiles?.username} Â· {app.league_teams?.name || 'No team preference'}</div>
+                    <div style={{ ...T.sub }}>by {app.profiles?.username} - {app.league_teams?.name || 'No team preference'}</div>
                   </div>
                   <StatusBadge status={app.status} />
                 </div>
                 {app.form_data?.motivation && (
                   <div style={{ ...T.sub, fontSize:12, marginBottom:12,
-                    padding:'8px 10px', background: C.surface, borderRadius:6 }}>
+                    padding:'8px 10px', background:'#111114', borderRadius:6 }}>
                     {app.form_data.motivation}
                   </div>
                 )}
                 <div style={{ display:'flex', gap:8 }}>
-                  <Button size='sm' variant='success' onClick={() => decide(app.id,'approved')}>Approve</Button>
-                  <Button size='sm' variant='secondary' onClick={() => decide(app.id,'under_review')}>Mark Review</Button>
-                  <Button size='sm' variant='danger' onClick={() => decide(app.id,'rejected')}>Reject</Button>
+                  <Button size="sm" variant="success" onClick={() => decide(app.id,'approved')}>Approve</Button>
+                  <Button size="sm" variant="secondary" onClick={() => decide(app.id,'under_review')}>Mark Review</Button>
+                  <Button size="sm" variant="danger" onClick={() => decide(app.id,'rejected')}>Reject</Button>
                 </div>
               </Card>
             ))}
@@ -4390,7 +4317,7 @@ function GMApplications() {
             {others.map(app => (
               <Card key={app.id} style={{ opacity:.7 }}>
                 <div style={{ display:'flex', justifyContent:'space-between' }}>
-                  <div style={{ ...T.body }}>{app.characters?.flag} {app.characters?.name} â€” by {app.profiles?.username}</div>
+                  <div style={{ ...T.body }}>{app.characters?.name} - by {app.profiles?.username}</div>
                   <StatusBadge status={app.status} />
                 </div>
               </Card>
@@ -4410,19 +4337,15 @@ function GMPlayers() {
   if (!loaded) {
     setLoaded(true);
     if (sbClient) {
-      sbFetch('profiles?order=created_at&select=*').then(({ data }) => {
-        setPlayers(data || []); setLoading(false);
-      });
+      sbFetch('profiles?order=created_at&select=*').then(({ data }) => { setPlayers(data || []); setLoading(false); });
     } else setLoading(false);
   }
 
   if (loading) return <Spinner />;
-  if (!players || players.length === 0) return <EmptyState icon='ðŸ‘¤' title='No players' />;
+  if (!players || players.length === 0) return <EmptyState title="No players" />;
 
   async function setRole(id, role) {
-    await sbFetch(`profiles?id=eq.${id}`, {
-      method:'PATCH', body: JSON.stringify({ role })
-    });
+    await sbFetch(`profiles?id=eq.${id}`, { method:'PATCH', body: JSON.stringify({ role }) });
     setPlayers(p => p.map(x => x.id === id ? { ...x, role } : x));
   }
 
@@ -4432,9 +4355,9 @@ function GMPlayers() {
       <Card style={{ padding:0, overflow:'hidden' }}>
         {players.map((p, i) => (
           <div key={p.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 16px',
-            borderBottom: i < players.length-1 ? `1px solid ${C.border}` : 'none' }}>
-            <div style={{ width:34, height:34, borderRadius:'50%', background: C.border,
-              display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, color: C.red }}>
+            borderBottom: i < players.length-1 ? '1px solid #252530' : 'none' }}>
+            <div style={{ width:34, height:34, borderRadius:'50%', background:'#252530',
+              display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, color:'#E8002D' }}>
               {p.username[0].toUpperCase()}
             </div>
             <div style={{ flex:1 }}>
@@ -4442,11 +4365,11 @@ function GMPlayers() {
               <div style={{ ...T.cap }}>{new Date(p.created_at).toLocaleDateString()}</div>
             </div>
             <select value={p.role} onChange={e => setRole(p.id, e.target.value)}
-              style={{ background: C.surface, border:`1px solid ${C.border}`, borderRadius:6,
-                padding:'4px 8px', color: C.text, fontSize:12 }}>
-              <option value='player'>Player</option>
-              <option value='gm'>GM</option>
-              <option value='admin'>Admin</option>
+              style={{ background:'#111114', border:'1px solid #252530', borderRadius:6,
+                padding:'4px 8px', color:'#F0F0F5', fontSize:12 }}>
+              <option value="player">Player</option>
+              <option value="gm">GM</option>
+              <option value="admin">Admin</option>
             </select>
           </div>
         ))}
@@ -4466,13 +4389,15 @@ function GMStats() {
   if (!loaded) {
     setLoaded(true);
     if (sbClient) {
-      sbFetch('characters?type=eq.driver&order=name&select=*').then(({ data }) => {
-        setChars(data || []); setLoading(false);
-      });
+      sbFetch('characters?type=eq.driver&order=name&select=*').then(({ data }) => { setChars(data || []); setLoading(false); });
     } else setLoading(false);
   }
 
-  function selectChar(c) { setSelected(c); setEditForm({ pace:c.pace, consistency:c.consistency, wet:c.wet, overtaking:c.overtaking, defense:c.defense, experience:c.experience, mental:c.mental }); }
+  function selectChar(c) {
+    setSelected(c);
+    setEditForm({ pace:c.pace, consistency:c.consistency, wet:c.wet,
+      overtaking:c.overtaking, defense:c.defense, experience:c.experience, mental:c.mental });
+  }
 
   async function saveStats() {
     setSaving(true);
@@ -4489,52 +4414,53 @@ function GMStats() {
   if (selected) return (
     <div style={{ maxWidth:500 }}>
       <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
-        <button onClick={() => setSelected(null)} style={{ background:'none', border:'none', color: C.textSub, cursor:'pointer', fontSize:20 }}>â†</button>
+        <button onClick={() => setSelected(null)} style={{ background:'none', border:'none', color:'#8888A0', cursor:'pointer', fontSize:20 }}>{'<'}</button>
         <div style={{ ...T.h2 }}>Edit: {selected.name}</div>
       </div>
       <Card>
-        {[['pace','Pace'],['consistency','Consistency'],['wet','Wet'],['overtaking','Overtaking'],['defense','Defense'],['experience','Experience']].map(([k,l]) => (
+        {[['pace','Pace'],['consistency','Consistency'],['wet','Wet'],
+          ['overtaking','Overtaking'],['defense','Defense'],['experience','Experience']].map(([k,l]) => (
           <div key={k} style={{ marginBottom:14 }}>
             <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
               <span style={{ ...T.cap }}>{l}</span>
-              <span style={{ fontSize:13, fontWeight:700, color: C.red }}>{editForm[k]}</span>
+              <span style={{ fontSize:13, fontWeight:700, color:'#E8002D' }}>{editForm[k]}</span>
             </div>
-            <input type='range' min={40} max={99} value={editForm[k]}
+            <input type="range" min={40} max={99} value={editForm[k]}
               onChange={e => setEditForm(f => ({ ...f, [k]: parseInt(e.target.value) }))}
-              style={{ width:'100%', accentColor: C.red }} />
+              style={{ width:'100%', accentColor:'#E8002D' }} />
           </div>
         ))}
         <div style={{ marginBottom:14 }}>
           <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
             <span style={{ ...T.cap }}>Mental</span>
-            <span style={{ fontSize:13, fontWeight:700, color: C.red }}>{editForm.mental}/10</span>
+            <span style={{ fontSize:13, fontWeight:700, color:'#E8002D' }}>{editForm.mental}/10</span>
           </div>
-          <input type='range' min={1} max={10} value={editForm.mental}
+          <input type="range" min={1} max={10} value={editForm.mental}
             onChange={e => setEditForm(f => ({ ...f, mental: parseInt(e.target.value) }))}
-            style={{ width:'100%', accentColor: C.red }} />
+            style={{ width:'100%', accentColor:'#E8002D' }} />
         </div>
         <div style={{ display:'flex', gap:10 }}>
-          <Button onClick={saveStats} disabled={saving}>{saving ? 'Savingâ€¦' : 'Save Stats'}</Button>
-          <Button variant='secondary' onClick={() => setSelected(null)}>Cancel</Button>
+          <Button onClick={saveStats} disabled={saving}>{saving ? 'Saving...' : 'Save Stats'}</Button>
+          <Button variant="secondary" onClick={() => setSelected(null)}>Cancel</Button>
         </div>
       </Card>
     </div>
   );
 
-  if (!chars || chars.length === 0) return <EmptyState icon='ðŸ“Š' title='No driver characters' />;
+  if (!chars || chars.length === 0) return <EmptyState title="No driver characters" />;
 
   return (
     <div>
       <div style={{ ...T.h2, marginBottom:14 }}>Driver Stats</div>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:12 }}>
         {chars.map(c => (
-          <Card key={c.id} onClick={() => selectChar(c)} style={{ cursor:'pointer' }}>
+          <Card key={c.id} onClick={() => selectChar(c)}>
             <div style={{ display:'flex', justifyContent:'space-between', marginBottom:10 }}>
-              <div style={{ ...T.h3 }}>{c.flag} {c.name}</div>
-              <Button size='sm' variant='secondary'>Edit</Button>
+              <div style={{ ...T.h3 }}>{c.name}</div>
+              <Button size="sm" variant="secondary">Edit</Button>
             </div>
-            <StatBar label='Pace'       value={c.pace}        color={C.red} />
-            <StatBar label='Consistency' value={c.consistency} color={C.blue} />
+            <StatBar label="Pace"        value={c.pace}        color="#E8002D" />
+            <StatBar label="Consistency" value={c.consistency} color="#3B8EFF" />
           </Card>
         ))}
       </div>
@@ -4550,28 +4476,28 @@ function GMAuditLog() {
   if (!loaded) {
     setLoaded(true);
     if (sbClient) {
-      sbFetch('audit_log?order=at.desc&limit=100&select=*,profiles!actor_id(username)').then(({ data }) => {
-        setLog(data || []); setLoading(false);
-      });
+      sbFetch('audit_log?order=at.desc&limit=100&select=*,profiles!actor_id(username)')
+        .then(({ data }) => { setLog(data || []); setLoading(false); });
     } else setLoading(false);
   }
 
   if (loading) return <Spinner />;
-  if (!log || log.length === 0) return <EmptyState icon='ðŸ“' title='No audit entries' />;
+  if (!log || log.length === 0) return <EmptyState title="No audit entries" />;
 
   return (
     <div>
       <div style={{ ...T.h2, marginBottom:14 }}>Audit Log</div>
       <Card style={{ padding:0, overflow:'hidden' }}>
         {log.map((e, i) => (
-          <div key={e.id} style={{ padding:'10px 16px', borderBottom: i < log.length-1 ? `1px solid ${C.border}` : 'none',
-            display:'grid', gridTemplateColumns:'auto 1fr auto', gap:12, alignItems:'center' }}>
-            <div style={{ ...T.cap, color: C.textMuted }}>{new Date(e.at).toLocaleString()}</div>
+          <div key={e.id} style={{ padding:'10px 16px',
+            borderBottom: i < log.length-1 ? '1px solid #252530' : 'none',
+            display:'grid', gridTemplateColumns:'160px 1fr auto', gap:12, alignItems:'center' }}>
+            <div style={{ ...T.cap }}>{new Date(e.at).toLocaleString()}</div>
             <div>
               <span style={{ ...T.body, fontWeight:600 }}>{e.action}</span>
-              <span style={{ ...T.sub }}> Â· {e.entity}{e.entity_id ? ` (${e.entity_id.slice(0,8)}â€¦)` : ''}</span>
+              <span style={{ ...T.sub }}> - {e.entity}{e.entity_id ? ` (${e.entity_id.slice(0,8)}...)` : ''}</span>
             </div>
-            <div style={{ ...T.sub }}>{e.profiles?.username || 'â€”'}</div>
+            <div style={{ ...T.sub }}>{e.profiles?.username || '-'}</div>
           </div>
         ))}
       </Card>
@@ -4579,7 +4505,7 @@ function GMAuditLog() {
   );
 }
 
-// â”€â”€ GM Race Control â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- GM Race Control ----------------------------------------------------------
 
 function GMRaceControl({ sbUser }) {
   const [track, setTrack] = useState(TRACKS[0]);
@@ -4594,22 +4520,20 @@ function GMRaceControl({ sbUser }) {
   if (!loaded) {
     setLoaded(true);
     if (sbClient) {
-      sbFetch('rounds?state=in.(locked,orders_open)&order=number&select=id,number,circuit_id,circuit_name').then(({ data }) => {
-        setRounds(data || []);
-      });
+      sbFetch('rounds?state=in.(locked,orders_open)&order=number&select=id,number,circuit_id,circuit_name')
+        .then(({ data }) => setRounds(data || []));
     }
   }
 
   function runSim() {
     setRunning(true);
     setTimeout(() => {
-      const t = track;
       let res;
       if (mode === 'qualifying') {
-        res = aggQual(n, DRIVERS, TEAMS, t);
+        res = aggQual(n, DRIVERS, TEAMS, track);
       } else {
-        const grid = aggQual(1, DRIVERS, TEAMS, t).map(r => r.driver);
-        res = aggRace(n, grid, TEAMS, t);
+        const grid = aggQual(1, DRIVERS, TEAMS, track).map(r => r.driver);
+        res = aggRace(n, grid, TEAMS, track);
       }
       setResults(res);
       setRunning(false);
@@ -4618,71 +4542,64 @@ function GMRaceControl({ sbUser }) {
 
   async function publishResults() {
     if (!selectedRound || !results) return;
-    const session = mode === 'qualifying' ? 'qualifying' : 'race';
     await sbFetch('session_runs', {
       method:'POST',
       body: JSON.stringify({
-        round_id: selectedRound, session, attempt:1,
+        round_id: selectedRound, session: mode, attempt:1,
         seed: Date.now(), mode: n > 1 ? 'averaged' : 'single',
         run_count: n, result: { placements: results }, status:'provisional', run_by: sbUser.id
       })
     });
-    alert('Results published as provisional!');
+    alert('Published as provisional!');
   }
 
   return (
     <div>
       <div style={{ ...T.h2, marginBottom:16 }}>Race Control</div>
-
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:16 }}>
         <Card>
           <div style={{ ...T.cap, marginBottom:10 }}>Session Settings</div>
-          <Select label='Mode' value={mode} onChange={setMode}
+          <Select label="Mode" value={mode} onChange={setMode}
             options={[{ value:'qualifying', label:'Qualifying' }, { value:'race', label:'Race' }]} />
-          <Select label='Circuit' value={track.id} onChange={id => setTrack(TRACKS.find(t => t.id === id) || TRACKS[0])}
-            options={TRACKS.map(t => ({ value:t.id, label:`${t.name}` }))} />
+          <Select label="Circuit" value={track.id} onChange={id => setTrack(TRACKS.find(t => t.id === id) || TRACKS[0])}
+            options={TRACKS.map(t => ({ value:t.id, label:t.name }))} />
           <div style={{ marginBottom:14 }}>
             <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
-              <span style={{ ...T.cap }}>Simulations ({n})</span>
+              <span style={{ ...T.cap }}>Simulations: {n}</span>
             </div>
-            <input type='range' min={1} max={25} value={n}
+            <input type="range" min={1} max={25} value={n}
               onChange={e => setN(parseInt(e.target.value))}
-              style={{ width:'100%', accentColor: C.red }} />
+              style={{ width:'100%', accentColor:'#E8002D' }} />
           </div>
           <Button onClick={runSim} disabled={running} style={{ width:'100%' }}>
-            {running ? 'Runningâ€¦' : `â–¶ Run ${mode}`}
+            {running ? 'Running...' : `Run ${mode}`}
           </Button>
         </Card>
-
         <Card>
           <div style={{ ...T.cap, marginBottom:10 }}>Publish</div>
           {rounds.length > 0 ? (
-            <Select label='Link to Round' value={selectedRound} onChange={setSelectedRound}
-              options={[{ value:'', label:'Select roundâ€¦' },
-                ...rounds.map(r => ({ value:r.id, label:`R${r.number} â€” ${r.circuit_name||r.circuit_id}` }))]} />
+            <Select label="Link to Round" value={selectedRound} onChange={setSelectedRound}
+              options={[{ value:'', label:'Select round...' },
+                ...rounds.map(r => ({ value:r.id, label:`R${r.number} - ${r.circuit_name||r.circuit_id}` }))]} />
           ) : (
-            <div style={{ ...T.sub, fontSize:12 }}>No active rounds found</div>
+            <div style={{ ...T.sub, fontSize:12, marginBottom:14 }}>No active rounds found</div>
           )}
-          <Button variant='secondary' disabled={!results || !selectedRound} onClick={publishResults}>
+          <Button variant="secondary" disabled={!results || !selectedRound} onClick={publishResults}>
             Publish as Provisional
           </Button>
         </Card>
       </div>
-
       {results && (
         <Card style={{ padding:0, overflow:'hidden' }}>
-          <div style={{ padding:'10px 16px', background: C.surface, borderBottom:`1px solid ${C.border}`,
-            ...T.cap }}>
-            Results â€” {track.name} {mode === 'qualifying' ? 'Qualifying' : 'Race'}
+          <div style={{ padding:'10px 16px', background:'#111114', borderBottom:'1px solid #252530', ...T.cap }}>
+            Results - {track.name} {mode}
           </div>
           {results.map((r, i) => (
-            <div key={r.driver || r.name || i}
-              style={{ display:'grid', gridTemplateColumns:'40px 1fr auto auto',
-                padding:'10px 16px', borderBottom:`1px solid ${C.border}`, alignItems:'center' }}>
-              <div style={{ fontWeight:800, color: i<3 ? [C.gold,C.silver,C.bronze][i] : C.textMuted }}>P{i+1}</div>
-              <div style={{ ...T.body }}>{r.driver || r.name || r.abbr}</div>
-              <div style={{ ...T.sub, marginRight:16 }}>{r.team || r.teamId || ''}</div>
-              <div style={{ fontWeight:700, color: C.text }}>{r.time || r.lapTime || ''}</div>
+            <div key={i} style={{ display:'grid', gridTemplateColumns:'40px 1fr auto',
+              padding:'10px 16px', borderBottom:'1px solid #252530', alignItems:'center' }}>
+              <div style={{ fontWeight:800, color: i<3 ? ['#FFD700','#C0C0C0','#CD7F32'][i] : '#55556A' }}>P{i+1}</div>
+              <div style={{ ...T.body }}>{r.driver || r.name || r.abbr || ''}</div>
+              <div style={{ ...T.sub }}>{r.time || r.lapTime || r.teamId || ''}</div>
             </div>
           ))}
         </Card>
@@ -4691,7 +4608,7 @@ function GMRaceControl({ sbUser }) {
   );
 }
 
-// â”€â”€ Sandbox (original simulator) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Sandbox ------------------------------------------------------------------
 
 function SandboxPage() {
   const [track, setTrack] = useState(TRACKS[0]);
@@ -4716,36 +4633,32 @@ function SandboxPage() {
     <div>
       <div style={{ ...T.h1, marginBottom:8 }}>Sandbox</div>
       <div style={{ ...T.sub, marginBottom:24 }}>Test the simulation engine with default data</div>
-
       <div style={{ display:'flex', gap:14, flexWrap:'wrap', marginBottom:16 }}>
         <Card style={{ flex:'0 0 280px' }}>
-          <Select label='Mode' value={mode} onChange={setMode}
+          <Select label="Mode" value={mode} onChange={setMode}
             options={[{ value:'qualifying', label:'Qualifying' }, { value:'race', label:'Race' }]} />
-          <Select label='Circuit' value={track.id} onChange={id => setTrack(TRACKS.find(t => t.id === id) || TRACKS[0])}
+          <Select label="Circuit" value={track.id} onChange={id => setTrack(TRACKS.find(t => t.id === id) || TRACKS[0])}
             options={TRACKS.map(t => ({ value:t.id, label:t.name }))} />
           <div style={{ marginBottom:14 }}>
-            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
-              <span style={{ ...T.cap }}>Runs: {n}</span>
-            </div>
-            <input type='range' min={1} max={25} value={n}
+            <div style={{ ...T.cap, marginBottom:4 }}>Runs: {n}</div>
+            <input type="range" min={1} max={25} value={n}
               onChange={e => setN(parseInt(e.target.value))}
-              style={{ width:'100%', accentColor: C.red }} />
+              style={{ width:'100%', accentColor:'#E8002D' }} />
           </div>
           <Button onClick={run} disabled={running} style={{ width:'100%' }}>
-            {running ? 'Runningâ€¦' : 'â–¶ Run Simulation'}
+            {running ? 'Running...' : 'Run Simulation'}
           </Button>
         </Card>
-
         {results && (
           <Card style={{ flex:'1 1 300px', padding:0, overflow:'hidden' }}>
-            <div style={{ padding:'10px 16px', background: C.surface, borderBottom:`1px solid ${C.border}`, ...T.cap }}>
-              {track.name} â€” {mode}
+            <div style={{ padding:'10px 16px', background:'#111114', borderBottom:'1px solid #252530', ...T.cap }}>
+              {track.name} - {mode}
             </div>
-            {results.slice(0,20).map((r,i) => (
+            {results.slice(0,20).map((r, i) => (
               <div key={i} style={{ display:'grid', gridTemplateColumns:'36px 1fr auto',
-                padding:'9px 16px', borderBottom:`1px solid ${C.border}`, alignItems:'center' }}>
-                <div style={{ fontWeight:800, fontSize:14, color: i<3 ? [C.gold,C.silver,C.bronze][i] : C.textMuted }}>P{i+1}</div>
-                <div style={{ ...T.body }}>{r.driver || r.name || r.abbr || JSON.stringify(r).slice(0,40)}</div>
+                padding:'9px 16px', borderBottom:'1px solid #252530', alignItems:'center' }}>
+                <div style={{ fontWeight:800, fontSize:14, color: i<3 ? ['#FFD700','#C0C0C0','#CD7F32'][i] : '#55556A' }}>P{i+1}</div>
+                <div style={{ ...T.body }}>{r.driver || r.name || r.abbr || ''}</div>
                 <div style={{ ...T.sub }}>{r.time || r.lapTime || r.teamId || ''}</div>
               </div>
             ))}
@@ -4756,7 +4669,7 @@ function SandboxPage() {
   );
 }
 
-// â”€â”€ Main App â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -- Main App -----------------------------------------------------------------
 
 export default function F1Sim() {
   const [sbUser, setSbUser] = useState(null);
@@ -4764,42 +4677,42 @@ export default function F1Sim() {
   const [page, setPage] = useState('dashboard');
   const [authLoading, setAuthLoading] = useState(!!sbClient);
   const [unreadCount, setUnreadCount] = useState(0);
+  const authInitRef = useRef(false);
 
-  // Listen for auth state
-  if (sbClient && authLoading) {
+  if (sbClient && !authInitRef.current) {
+    authInitRef.current = true;
     sbClient.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setSbUser(session.user);
         loadProfile(session.user.id);
+      } else {
+        setAuthLoading(false);
       }
-      setAuthLoading(false);
-    });
+    }).catch(() => setAuthLoading(false));
   }
 
   async function loadProfile(uid) {
-    const { data } = await sbFetch(`profiles?id=eq.${uid}&select=*&limit=1`);
-    if (data && data[0]) {
-      setProfile(data[0]);
-      // Count unread notifications
-      const { data: notifs } = await sbFetch(`notifications?recipient_id=eq.${uid}&read_at=is.null&select=id`);
-      setUnreadCount((notifs || []).length);
+    try {
+      const { data } = await sbFetch(`profiles?id=eq.${uid}&select=*&limit=1`);
+      if (data && data[0]) {
+        setProfile(data[0]);
+        const { data: notifs } = await sbFetch(`notifications?recipient_id=eq.${uid}&read_at=is.null&select=id`);
+        setUnreadCount((notifs || []).length);
+      }
+    } finally {
+      setAuthLoading(false);
     }
   }
 
-  function handleLogin(user, session) {
+  function handleLogin(user) {
     setSbUser(user);
     loadProfile(user.id);
   }
 
-  async function handleSignOut() {
-    await sbSignOut();
-    setSbUser(null);
-    setProfile(null);
-    setPage('dashboard');
-  }
-
   if (authLoading) return (
-    <div style={{ minHeight:'100vh', background: C.bg, display:'flex', alignItems:'center', justifyContent:'center' }}>
+    <div style={{ minHeight:'100vh', background:'#0A0A0C', display:'flex',
+      alignItems:'center', justifyContent:'center',
+      fontFamily:'-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif' }}>
       <Spinner />
     </div>
   );
@@ -4818,7 +4731,7 @@ export default function F1Sim() {
       case 'calendar':      return <CalendarPage />;
       case 'stats':         return <StatsPage />;
       case 'notifications': return <NotificationsPage {...pageProps} onRead={() => setUnreadCount(0)} />;
-      case 'settings':      return <SettingsPage {...pageProps} onProfileUpdate={setProfile} />;
+      case 'settings':      return <SettingsPage {...pageProps} />;
       case 'gm':            return <GMControlPage {...pageProps} />;
       case 'sandbox':       return <SandboxPage />;
       default:              return <Dashboard {...pageProps} />;
@@ -4826,7 +4739,8 @@ export default function F1Sim() {
   };
 
   return (
-    <div style={{ display:'flex', minHeight:'100vh', background: C.bg, fontFamily:'-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif', color: C.text }}>
+    <div style={{ display:'flex', minHeight:'100vh', background:'#0A0A0C',
+      fontFamily:'-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif', color:'#F0F0F5' }}>
       <Sidebar page={page} setPage={setPage} profile={profile} unreadCount={unreadCount} />
       <main style={{ flex:1, padding:'28px 32px', overflowY:'auto', maxHeight:'100vh' }}>
         {renderPage()}
@@ -4834,7 +4748,3 @@ export default function F1Sim() {
     </div>
   );
 }
-
-
-
-
