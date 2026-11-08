@@ -4328,9 +4328,18 @@ function CharacterEditForm({ char, onDone }) {
     const patch = {};
     Object.entries(fd).forEach(([k,v]) => { patch[k] = v || null; });
     patch.mental = Number(fd.mental) || null;
-    const { error } = await sbFetch(`characters?id=eq.${char.id}`, { method:'PATCH', body:JSON.stringify(patch) });
+
+    // Try full patch first; if schema cache error strip the unknown column and retry
+    let res = await sbFetch(`characters?id=eq.${char.id}`, { method:'PATCH', body:JSON.stringify(patch) });
+    if (res.error && String(res.error).includes('Could not find')) {
+      const missing = String(res.error).match(/'(\w+)' column/)?.[1];
+      if (missing) {
+        delete patch[missing];
+        res = await sbFetch(`characters?id=eq.${char.id}`, { method:'PATCH', body:JSON.stringify(patch) });
+      }
+    }
     setSaving(false);
-    if (error) { setErr(String(error)); return; }
+    if (res.error) { setErr(String(res.error)); return; }
     onDone({ ...char, ...patch });
   }
 

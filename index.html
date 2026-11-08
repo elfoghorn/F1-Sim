@@ -21579,9 +21579,18 @@ function CharacterEditForm({ char, onDone }) {
     const patch = {};
     Object.entries(fd).forEach(([k,v]) => { patch[k] = v || null; });
     patch.mental = Number(fd.mental) || null;
-    const { error } = await sbFetch(`characters?id=eq.${char.id}`, { method:'PATCH', body:JSON.stringify(patch) });
+
+    // Try full patch first; if schema cache error strip the unknown column and retry
+    let res = await sbFetch(`characters?id=eq.${char.id}`, { method:'PATCH', body:JSON.stringify(patch) });
+    if (res.error && String(res.error).includes('Could not find')) {
+      const missing = _optionalChain([String, 'call', _141 => _141(res.error), 'access', _142 => _142.match, 'call', _143 => _143(/'(\w+)' column/), 'optionalAccess', _144 => _144[1]]);
+      if (missing) {
+        delete patch[missing];
+        res = await sbFetch(`characters?id=eq.${char.id}`, { method:'PATCH', body:JSON.stringify(patch) });
+      }
+    }
     setSaving(false);
-    if (error) { setErr(String(error)); return; }
+    if (res.error) { setErr(String(res.error)); return; }
     onDone({ ...char, ...patch });
   }
 
@@ -21991,8 +22000,8 @@ function ApplyPage({ sbUser }) {
               , React.createElement('div', { style: { display:'flex', justifyContent:'space-between', alignItems:'flex-start' },}
                 , React.createElement('div', null
                   , React.createElement('div', { style: { ...T.h3, marginBottom:4 },}
-                    , _optionalChain([app, 'access', _141 => _141.characters, 'optionalAccess', _142 => _142.name])
-                    , React.createElement('span', { style: { ...T.sub, marginLeft:8 },}, "(", _optionalChain([app, 'access', _143 => _143.characters, 'optionalAccess', _144 => _144.type]), ")")
+                    , _optionalChain([app, 'access', _145 => _145.characters, 'optionalAccess', _146 => _146.name])
+                    , React.createElement('span', { style: { ...T.sub, marginLeft:8 },}, "(", _optionalChain([app, 'access', _147 => _147.characters, 'optionalAccess', _148 => _148.type]), ")")
                   )
                   , app.league_teams && React.createElement('div', { style: { ...T.sub },}, "Applying to: "  , app.league_teams.name)
                   , React.createElement('div', { style: { ...T.cap, marginTop:4 },}, new Date(app.created_at).toLocaleDateString())
@@ -22050,7 +22059,7 @@ function ApplicationForm({ sbUser, onDone, onCancel }) {
         (ld.data||[]).forEach(d => {
           const tid = d.team_id;
           if (!slotMap[tid]) slotMap[tid] = 0;
-          if ((_optionalChain([d, 'access', _145 => _145.characters, 'optionalAccess', _146 => _146.type]) || 'driver') === 'driver') slotMap[tid]++;
+          if ((_optionalChain([d, 'access', _149 => _149.characters, 'optionalAccess', _150 => _150.type]) || 'driver') === 'driver') slotMap[tid]++;
         });
         const teamsWithSlots = (t.data||[]).map(team => ({
           ...team,
@@ -22092,7 +22101,7 @@ function ApplicationForm({ sbUser, onDone, onCancel }) {
     });
     if (charRes.error) { setSaving(false); setError(charRes.error); return; }
     const newChar = Array.isArray(charRes.data) ? charRes.data[0] : charRes.data;
-    if (!_optionalChain([newChar, 'optionalAccess', _147 => _147.id])) { setSaving(false); setError('Failed to create character'); return; }
+    if (!_optionalChain([newChar, 'optionalAccess', _151 => _151.id])) { setSaving(false); setError('Failed to create character'); return; }
     const { error: err } = await sbFetch('applications', {
       method:'POST',
       body: JSON.stringify({
@@ -22171,7 +22180,7 @@ function ApplicationForm({ sbUser, onDone, onCancel }) {
                 label: t.driversFull ? `${t.name} (Full)` : t.name,
                 disabled: t.driversFull,
               }))],} )
-          , fd.team_id && _optionalChain([teams, 'access', _148 => _148.find, 'call', _149 => _149(t => t.id === fd.team_id), 'optionalAccess', _150 => _150.driversFull]) && (
+          , fd.team_id && _optionalChain([teams, 'access', _152 => _152.find, 'call', _153 => _153(t => t.id === fd.team_id), 'optionalAccess', _154 => _154.driversFull]) && (
             React.createElement('div', { style: { fontSize:12, color:'#FF9500', marginTop:-8, marginBottom:8 },}, "This team's driver slots are currently full."
 
             )
@@ -22392,8 +22401,8 @@ function MyTeamPage({ sbUser }) {
   }
 
   const { team, assignment, roster } = data;
-  const drivers  = roster.filter(r => _optionalChain([r, 'access', _151 => _151.characters, 'optionalAccess', _152 => _152.type]) === 'driver');
-  const staff    = roster.filter(r => _optionalChain([r, 'access', _153 => _153.characters, 'optionalAccess', _154 => _154.type]) !== 'driver');
+  const drivers  = roster.filter(r => _optionalChain([r, 'access', _155 => _155.characters, 'optionalAccess', _156 => _156.type]) === 'driver');
+  const staff    = roster.filter(r => _optionalChain([r, 'access', _157 => _157.characters, 'optionalAccess', _158 => _158.type]) !== 'driver');
 
   return (
     React.createElement('div', null
@@ -22436,17 +22445,17 @@ function MyTeamPage({ sbUser }) {
                       background:(team.color||'#E8002D')+'22',
                       display:'flex', alignItems:'center', justifyContent:'center',
                       fontSize:14, fontWeight:800, color: team.color||'#E8002D', fontFamily:FONT_HEAD },}
-                      , d.number || (_optionalChain([d, 'access', _155 => _155.characters, 'optionalAccess', _156 => _156.name])||'?')[0].toUpperCase()
+                      , d.number || (_optionalChain([d, 'access', _159 => _159.characters, 'optionalAccess', _160 => _160.name])||'?')[0].toUpperCase()
                     )
                     , React.createElement('div', { style: { flex:1 },}
-                      , React.createElement('div', { style: { ...T.h3 },}, _optionalChain([d, 'access', _157 => _157.characters, 'optionalAccess', _158 => _158.name]) || d.name || 'Driver')
-                      , React.createElement(Badge, { color: _optionalChain([d, 'access', _159 => _159.characters, 'optionalAccess', _160 => _160.is_active]) ? '#00C46A' : '#55556A',}
-                        , _optionalChain([d, 'access', _161 => _161.characters, 'optionalAccess', _162 => _162.is_active]) ? 'Active' : 'Reserve'
+                      , React.createElement('div', { style: { ...T.h3 },}, _optionalChain([d, 'access', _161 => _161.characters, 'optionalAccess', _162 => _162.name]) || d.name || 'Driver')
+                      , React.createElement(Badge, { color: _optionalChain([d, 'access', _163 => _163.characters, 'optionalAccess', _164 => _164.is_active]) ? '#00C46A' : '#55556A',}
+                        , _optionalChain([d, 'access', _165 => _165.characters, 'optionalAccess', _166 => _166.is_active]) ? 'Active' : 'Reserve'
                       )
                     )
                   )
-                  , React.createElement(StatBar, { label: "Pace",        value: _optionalChain([d, 'access', _163 => _163.characters, 'optionalAccess', _164 => _164.pace])||0,        color: team.color||'#E8002D',} )
-                  , React.createElement(StatBar, { label: "Consistency", value: _optionalChain([d, 'access', _165 => _165.characters, 'optionalAccess', _166 => _166.consistency])||0, color: team.color||'#E8002D',} )
+                  , React.createElement(StatBar, { label: "Pace",        value: _optionalChain([d, 'access', _167 => _167.characters, 'optionalAccess', _168 => _168.pace])||0,        color: team.color||'#E8002D',} )
+                  , React.createElement(StatBar, { label: "Consistency", value: _optionalChain([d, 'access', _169 => _169.characters, 'optionalAccess', _170 => _170.consistency])||0, color: team.color||'#E8002D',} )
                 )
               ))
             )
@@ -22466,11 +22475,11 @@ function MyTeamPage({ sbUser }) {
                     , React.createElement('div', { style: { width:36, height:36, borderRadius:'50%', background:'#252530',
                       display:'flex', alignItems:'center', justifyContent:'center',
                       fontSize:13, fontWeight:700, color:'#8888A0' },}
-                      , (_optionalChain([s, 'access', _167 => _167.characters, 'optionalAccess', _168 => _168.name])||'?')[0].toUpperCase()
+                      , (_optionalChain([s, 'access', _171 => _171.characters, 'optionalAccess', _172 => _172.name])||'?')[0].toUpperCase()
                     )
                     , React.createElement('div', null
-                      , React.createElement('div', { style: { ...T.h3 },}, _optionalChain([s, 'access', _169 => _169.characters, 'optionalAccess', _170 => _170.name]) || s.name || 'Staff')
-                      , React.createElement('div', { style: { ...T.cap },}, _optionalChain([s, 'access', _171 => _171.characters, 'optionalAccess', _172 => _172.type]) || 'staff')
+                      , React.createElement('div', { style: { ...T.h3 },}, _optionalChain([s, 'access', _173 => _173.characters, 'optionalAccess', _174 => _174.name]) || s.name || 'Staff')
+                      , React.createElement('div', { style: { ...T.cap },}, _optionalChain([s, 'access', _175 => _175.characters, 'optionalAccess', _176 => _176.type]) || 'staff')
                     )
                   )
                 )
@@ -22561,7 +22570,7 @@ function TeamDetail({ team, onBack }) {
         const myNames = new Set(chars.map(c => c.name));
         let wins = 0, podiums = 0;
         (sr.data || []).forEach(s => {
-          (_optionalChain([s, 'access', _173 => _173.result, 'optionalAccess', _174 => _174.placements]) || []).slice(0, 3).forEach((p, pos) => {
+          (_optionalChain([s, 'access', _177 => _177.result, 'optionalAccess', _178 => _178.placements]) || []).slice(0, 3).forEach((p, pos) => {
             const n = p.driver || p.name || '';
             if (myNames.has(n)) { if (pos === 0) wins++; podiums++; }
           });
@@ -22759,19 +22768,19 @@ function ChampionshipPage({ profile }) {
     const key = s.team_name || 'Unknown';
     if (!ctorMap[key]) {
       const t = teams.find(t => t.name === key);
-      ctorMap[key] = { name:key, points:0, color:_optionalChain([t, 'optionalAccess', _175 => _175.color])||'#55556A', drivers:[] };
+      ctorMap[key] = { name:key, points:0, color:_optionalChain([t, 'optionalAccess', _179 => _179.color])||'#55556A', drivers:[] };
     }
     ctorMap[key].points += s.driver_points || 0;
     ctorMap[key].drivers.push(s.driver_name);
   });
   const ctorRows = Object.values(ctorMap).sort((a,b) => b.points - a.points);
 
-  const leader = _optionalChain([standings, 'optionalAccess', _176 => _176[0]]);
+  const leader = _optionalChain([standings, 'optionalAccess', _180 => _180[0]]);
   const medalColor = i => i === 0 ? '#FFD700' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : '#55556A';
 
   const teamColor = name => {
     const t = teams.find(t => t.name === name);
-    return _optionalChain([t, 'optionalAccess', _177 => _177.color]) || '#55556A';
+    return _optionalChain([t, 'optionalAccess', _181 => _181.color]) || '#55556A';
   };
 
   if (!standings || standings.length === 0) {
@@ -22910,9 +22919,9 @@ function RoundDetail({ round, onBack }) {
 
   const qual        = (sessions||[]).find(s => s.session === 'qualifying' && s.status === 'final');
   const race        = (sessions||[]).find(s => s.session === 'race'      && s.status === 'final');
-  const qualGrid    = _optionalChain([qual, 'optionalAccess', _178 => _178.result, 'optionalAccess', _179 => _179.placements]) || _optionalChain([qual, 'optionalAccess', _180 => _180.result, 'optionalAccess', _181 => _181.grid]) || [];
-  const racePlaces  = _optionalChain([race, 'optionalAccess', _182 => _182.result, 'optionalAccess', _183 => _183.placements]) || [];
-  const fastest     = _optionalChain([race, 'optionalAccess', _184 => _184.result, 'optionalAccess', _185 => _185.fastestLap]);
+  const qualGrid    = _optionalChain([qual, 'optionalAccess', _182 => _182.result, 'optionalAccess', _183 => _183.placements]) || _optionalChain([qual, 'optionalAccess', _184 => _184.result, 'optionalAccess', _185 => _185.grid]) || [];
+  const racePlaces  = _optionalChain([race, 'optionalAccess', _186 => _186.result, 'optionalAccess', _187 => _187.placements]) || [];
+  const fastest     = _optionalChain([race, 'optionalAccess', _188 => _188.result, 'optionalAccess', _189 => _189.fastestLap]);
   const F1_PTS      = [25,18,15,12,10,8,6,4,2,1];
   const medalColor  = i => i === 0 ? '#FFD700' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : '#55556A';
 
@@ -23023,7 +23032,7 @@ function CalendarPage({ profile }) {
   if (selected) return React.createElement(RoundDetail, { round: selected, onBack: () => setSelected(null),} );
   if (loading) return React.createElement(Spinner, null );
 
-  const isGM = _optionalChain([profile, 'optionalAccess', _186 => _186.role]) === 'gm' || _optionalChain([profile, 'optionalAccess', _187 => _187.role]) === 'admin';
+  const isGM = _optionalChain([profile, 'optionalAccess', _190 => _190.role]) === 'gm' || _optionalChain([profile, 'optionalAccess', _191 => _191.role]) === 'admin';
 
   const STATE_PIPELINE = ['scheduled','orders_open','locked','in_progress','complete'];
   const STATE_LABEL    = { scheduled:'Scheduled', orders_open:'Orders Open', locked:'Locked',
@@ -23216,7 +23225,7 @@ function StatsPage({ sbUser }) {
   const finalRace = (sessions||[]).filter(s => s.status === 'final' && s.session === 'race');
   const winsMap   = {};
   finalRace.forEach(s => {
-    (_optionalChain([s, 'access', _188 => _188.result, 'optionalAccess', _189 => _189.placements]) || []).slice(0,3).forEach((p, pos) => {
+    (_optionalChain([s, 'access', _192 => _192.result, 'optionalAccess', _193 => _193.placements]) || []).slice(0,3).forEach((p, pos) => {
       const name = p.driver || p.name || '';
       if (!name) return;
       if (!winsMap[name]) winsMap[name] = { name, wins:0, podiums:0, races:0, bestFinish:99 };
@@ -23226,7 +23235,7 @@ function StatsPage({ sbUser }) {
   });
   // Count appearances
   finalRace.forEach(s => {
-    (_optionalChain([s, 'access', _190 => _190.result, 'optionalAccess', _191 => _191.placements]) || []).forEach((p, pos) => {
+    (_optionalChain([s, 'access', _194 => _194.result, 'optionalAccess', _195 => _195.placements]) || []).forEach((p, pos) => {
       const name = p.driver || p.name || '';
       if (!name) return;
       if (!winsMap[name]) winsMap[name] = { name, wins:0, podiums:0, races:0, bestFinish:99 };
@@ -23242,7 +23251,7 @@ function StatsPage({ sbUser }) {
     let appearances = 0, wins = 0, podiums = 0, bestFinish = 99, totalPoints = 0;
     const F1_PTS = [25,18,15,12,10,8,6,4,2,1];
     finalRace.forEach(s => {
-      (_optionalChain([s, 'access', _192 => _192.result, 'optionalAccess', _193 => _193.placements])||[]).forEach((p, pos) => {
+      (_optionalChain([s, 'access', _196 => _196.result, 'optionalAccess', _197 => _197.placements])||[]).forEach((p, pos) => {
         const pname = p.driver || p.name || '';
         if (pname !== name) return;
         appearances++;
@@ -23295,7 +23304,7 @@ function StatsPage({ sbUser }) {
                     , s.status
                   )
                 )
-                , _optionalChain([s, 'access', _194 => _194.result, 'optionalAccess', _195 => _195.placements]) && (
+                , _optionalChain([s, 'access', _198 => _198.result, 'optionalAccess', _199 => _199.placements]) && (
                   React.createElement('div', { style: { display:'flex', flexDirection:'column', gap:3 },}
                     , s.result.placements.slice(0,5).map((p,pi) => (
                       React.createElement('div', { key: pi, style: { display:'flex', gap:10, fontSize:12, alignItems:'center' },}
@@ -23614,7 +23623,7 @@ function SearchPage({ setPage, setNavTarget }) {
 // -- Public Profile Page ------------------------------------------------------
 
 function PublicProfilePage({ navTarget, setPage }) {
-  const profileId = _optionalChain([navTarget, 'optionalAccess', _196 => _196.profileId]);
+  const profileId = _optionalChain([navTarget, 'optionalAccess', _200 => _200.profileId]);
   const [data,    setData]    = useState(null);
   const [chars,   setChars]   = useState([]);
   const [loading, setLoading] = useState(true);
@@ -23849,13 +23858,13 @@ function NotificationsPage({ sbUser, onRead }) {
                           React.createElement('div', { style: { width:7, height:7, borderRadius:'50%', background:color, flexShrink:0 },} )
                         )
                         , React.createElement('div', { style: { ...T.cap, color },}
-                          , NOTIF_ICON[n.kind] || '[!]', " " , _optionalChain([n, 'access', _197 => _197.kind, 'optionalAccess', _198 => _198.replace, 'call', _199 => _199(/_/g,' ')])
+                          , NOTIF_ICON[n.kind] || '[!]', " " , _optionalChain([n, 'access', _201 => _201.kind, 'optionalAccess', _202 => _202.replace, 'call', _203 => _203(/_/g,' ')])
                         )
                       )
-                      , _optionalChain([n, 'access', _200 => _200.payload, 'optionalAccess', _201 => _201.message]) && (
+                      , _optionalChain([n, 'access', _204 => _204.payload, 'optionalAccess', _205 => _205.message]) && (
                         React.createElement('div', { style: { ...T.body, marginBottom:4 },}, n.payload.message)
                       )
-                      , _optionalChain([n, 'access', _202 => _202.payload, 'optionalAccess', _203 => _203.character_name]) && (
+                      , _optionalChain([n, 'access', _206 => _206.payload, 'optionalAccess', _207 => _207.character_name]) && (
                         React.createElement('div', { style: { ...T.sub, fontSize:12 },}, "Character: " , n.payload.character_name)
                       )
                       , React.createElement('div', { style: { ...T.cap, marginTop:6 },}
@@ -23905,7 +23914,7 @@ function NotificationsPage({ sbUser, onRead }) {
                     , post.body
                   )
                   , React.createElement('div', { style: { ...T.cap, color:'#55556A' },}, "Posted by "
-                      , _optionalChain([post, 'access', _204 => _204.profiles, 'optionalAccess', _205 => _205.display_name]) || _optionalChain([post, 'access', _206 => _206.profiles, 'optionalAccess', _207 => _207.username]) || 'GM'
+                      , _optionalChain([post, 'access', _208 => _208.profiles, 'optionalAccess', _209 => _209.display_name]) || _optionalChain([post, 'access', _210 => _210.profiles, 'optionalAccess', _211 => _211.username]) || 'GM'
                     , ' ', "— " , new Date(post.created_at).toLocaleString()
                   )
                 )
@@ -23922,9 +23931,9 @@ function NotificationsPage({ sbUser, onRead }) {
 
 function SettingsPage({ profile, sbUser, onProfileUpdate }) {
   const [form, setForm] = useState({
-    display_name: _optionalChain([profile, 'optionalAccess', _208 => _208.display_name])||'',
-    bio: _optionalChain([profile, 'optionalAccess', _209 => _209.bio])||'',
-    social_handle: _optionalChain([profile, 'optionalAccess', _210 => _210.social_handle])||''
+    display_name: _optionalChain([profile, 'optionalAccess', _212 => _212.display_name])||'',
+    bio: _optionalChain([profile, 'optionalAccess', _213 => _213.bio])||'',
+    social_handle: _optionalChain([profile, 'optionalAccess', _214 => _214.social_handle])||''
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -23948,11 +23957,11 @@ function SettingsPage({ profile, sbUser, onProfileUpdate }) {
         , React.createElement('div', { style: { ...T.cap, marginBottom:12 },}, "Account")
         , React.createElement('div', { style: { display:'flex', gap:10, marginBottom:8 },}
           , React.createElement('span', { style: { ...T.sub },}, "Username:")
-          , React.createElement('span', { style: { ...T.body, fontWeight:600 },}, _optionalChain([profile, 'optionalAccess', _211 => _211.username]))
+          , React.createElement('span', { style: { ...T.body, fontWeight:600 },}, _optionalChain([profile, 'optionalAccess', _215 => _215.username]))
         )
         , React.createElement('div', { style: { display:'flex', gap:10 },}
           , React.createElement('span', { style: { ...T.sub },}, "Role:")
-          , React.createElement(Badge, { color: _optionalChain([profile, 'optionalAccess', _212 => _212.role]) === 'gm' ? '#E8002D' : '#3B8EFF',}, _optionalChain([profile, 'optionalAccess', _213 => _213.role]))
+          , React.createElement(Badge, { color: _optionalChain([profile, 'optionalAccess', _216 => _216.role]) === 'gm' ? '#E8002D' : '#3B8EFF',}, _optionalChain([profile, 'optionalAccess', _217 => _217.role]))
         )
       )
       , React.createElement(Card, { style: { marginBottom:16 },}
@@ -24088,7 +24097,7 @@ function GMOverview({ setPage }) {
       )
 
       /* Season summary */
-      , _optionalChain([S, 'optionalAccess', _214 => _214.nextRound]) && (
+      , _optionalChain([S, 'optionalAccess', _218 => _218.nextRound]) && (
         React.createElement(Card, { style: { marginTop:20 },}
           , React.createElement('div', { style: { ...T.cap, color:'#E8002D', marginBottom:10 },}, "Next Race" )
           , React.createElement('div', { style: { display:'flex', alignItems:'center', gap:16 },}
@@ -24195,7 +24204,7 @@ function GMApplications() {
       method:'PATCH',
       body: JSON.stringify({ status, decided_at: new Date().toISOString() })
     });
-    if (status === 'approved' && _optionalChain([app, 'access', _215 => _215.characters, 'optionalAccess', _216 => _216.id])) {
+    if (status === 'approved' && _optionalChain([app, 'access', _219 => _219.characters, 'optionalAccess', _220 => _220.id])) {
       // Copy bio fields from form_data back to character record
       const fd = app.form_data || {};
       const charPatch = {};
@@ -24223,7 +24232,7 @@ function GMApplications() {
     }
     // Send notification to applicant
     if (app.applicant_id) {
-      const charName = _optionalChain([app, 'access', _217 => _217.characters, 'optionalAccess', _218 => _218.name]) || 'your character';
+      const charName = _optionalChain([app, 'access', _221 => _221.characters, 'optionalAccess', _222 => _222.name]) || 'your character';
       await sendNotification(app.applicant_id, 'application_decided', {
         message: status === 'approved'
           ? `Your application for ${charName} has been APPROVED. Welcome to the league!`
@@ -24313,19 +24322,19 @@ function GMApplications() {
       , React.createElement('div', { style: { display:'flex', flexDirection:'column', gap:12 },}
         , filtered.map(app => {
           const isExp = expanded === app.id;
-          const isApp = _optionalChain([approving, 'optionalAccess', _219 => _219.appId]) === app.id;
+          const isApp = _optionalChain([approving, 'optionalAccess', _223 => _223.appId]) === app.id;
           return (
             React.createElement(Card, { key: app.id,}
               /* Header row */
               , React.createElement('div', { style: { display:'flex', justifyContent:'space-between', alignItems:'flex-start' },}
                 , React.createElement('div', { style: { flex:1 },}
                   , React.createElement('div', { style: { display:'flex', alignItems:'center', gap:10, marginBottom:4 },}
-                    , React.createElement('div', { style: { ...T.h3 },}, _optionalChain([app, 'access', _220 => _220.characters, 'optionalAccess', _221 => _221.name]))
-                    , React.createElement('span', { style: { ...T.cap, color:'#8888A0' },}, _optionalChain([app, 'access', _222 => _222.characters, 'optionalAccess', _223 => _223.type]))
+                    , React.createElement('div', { style: { ...T.h3 },}, _optionalChain([app, 'access', _224 => _224.characters, 'optionalAccess', _225 => _225.name]))
+                    , React.createElement('span', { style: { ...T.cap, color:'#8888A0' },}, _optionalChain([app, 'access', _226 => _226.characters, 'optionalAccess', _227 => _227.type]))
                   )
                   , React.createElement('div', { style: { ...T.sub, fontSize:12 },}, "by "
-                     , React.createElement('strong', { style: { color:'#F0F0F5' },}, _optionalChain([app, 'access', _224 => _224.profiles, 'optionalAccess', _225 => _225.username]))
-                    , _optionalChain([app, 'access', _226 => _226.league_teams, 'optionalAccess', _227 => _227.name]) && React.createElement('span', null, " · preferred: "   , app.league_teams.name)
+                     , React.createElement('strong', { style: { color:'#F0F0F5' },}, _optionalChain([app, 'access', _228 => _228.profiles, 'optionalAccess', _229 => _229.username]))
+                    , _optionalChain([app, 'access', _230 => _230.league_teams, 'optionalAccess', _231 => _231.name]) && React.createElement('span', null, " · preferred: "   , app.league_teams.name)
                     , React.createElement('span', null, " · "  , new Date(app.created_at || Date.now()).toLocaleDateString())
                   )
                 )
@@ -24353,7 +24362,7 @@ function GMApplications() {
               , ['submitted','under_review'].includes(app.status) && !isApp && (
                 React.createElement('div', { style: { display:'flex', gap:8, marginTop:12 },}
                   , React.createElement(Button, { size: "sm", variant: "success", onClick: () =>
-                    setApproving({ appId: app.id, charId: _optionalChain([app, 'access', _228 => _228.characters, 'optionalAccess', _229 => _229.id]), teamId: _optionalChain([app, 'access', _230 => _230.form_data, 'optionalAccess', _231 => _231.team_id]) || '', tier: 'regular' }),}, "Approve"
+                    setApproving({ appId: app.id, charId: _optionalChain([app, 'access', _232 => _232.characters, 'optionalAccess', _233 => _233.id]), teamId: _optionalChain([app, 'access', _234 => _234.form_data, 'optionalAccess', _235 => _235.team_id]) || '', tier: 'regular' }),}, "Approve"
 
                   )
                   , React.createElement(Button, { size: "sm", variant: "secondary", onClick: () => decide(app,'under_review'),}, "Mark Review"
@@ -24780,7 +24789,7 @@ function GMCharacters() {
                   , c.is_active ? 'Active' : 'Inactive'
                 )
               )
-              , React.createElement('div', { style: { ...T.cap },}, c.type, _optionalChain([c, 'access', _232 => _232.profiles, 'optionalAccess', _233 => _233.username]) ? ` - ${c.profiles.username}` : '')
+              , React.createElement('div', { style: { ...T.cap },}, c.type, _optionalChain([c, 'access', _236 => _236.profiles, 'optionalAccess', _237 => _237.username]) ? ` - ${c.profiles.username}` : '')
             )
             , React.createElement('div', { style: { display:'flex', gap:8 },}
               , React.createElement(Button, { size: "sm", variant: "secondary", onClick: () => startEdit(c),}, "Edit")
@@ -24965,7 +24974,7 @@ function GMNews({ sbUser }) {
     setSaving(true);
     await sbFetch('news_posts', {
       method:'POST',
-      body: JSON.stringify({ ...form, author_id: _optionalChain([sbUser, 'optionalAccess', _234 => _234.id]) })
+      body: JSON.stringify({ ...form, author_id: _optionalChain([sbUser, 'optionalAccess', _238 => _238.id]) })
     });
     setSaving(false);
     setCreating(false);
@@ -25032,7 +25041,7 @@ function GMNews({ sbUser }) {
                   React.createElement('div', { style: { ...T.cap, color:'#FFD700', marginBottom:4 },}, "PINNED")
                 )
                 , React.createElement(Badge, { color: catColor(post.category), style: { marginBottom:6 },}
-                  , _optionalChain([post, 'access', _235 => _235.category, 'optionalAccess', _236 => _236.replace, 'call', _237 => _237(/_/g,' ')])
+                  , _optionalChain([post, 'access', _239 => _239.category, 'optionalAccess', _240 => _240.replace, 'call', _241 => _241(/_/g,' ')])
                 )
                 , React.createElement('div', { style: { ...T.h3, marginBottom:6 },}, post.title)
                 , post.body && (
@@ -25041,7 +25050,7 @@ function GMNews({ sbUser }) {
                   )
                 )
                 , React.createElement('div', { style: { ...T.cap, color:'#55556A' },}
-                  , _optionalChain([post, 'access', _238 => _238.profiles, 'optionalAccess', _239 => _239.username]) || 'GM', " · "  , new Date(post.created_at).toLocaleString()
+                  , _optionalChain([post, 'access', _242 => _242.profiles, 'optionalAccess', _243 => _243.username]) || 'GM', " · "  , new Date(post.created_at).toLocaleString()
                 )
               )
               , React.createElement('div', { style: { display:'flex', flexDirection:'column', gap:6 },}
@@ -25084,7 +25093,7 @@ function GMContracts() {
   (drivers||[]).forEach(d => {
     const tid = d.team_id;
     if (!teamSlots[tid]) teamSlots[tid] = { drivers:0, staff:0 };
-    if (_optionalChain([d, 'access', _240 => _240.characters, 'optionalAccess', _241 => _241.type]) === 'driver') teamSlots[tid].drivers++;
+    if (_optionalChain([d, 'access', _244 => _244.characters, 'optionalAccess', _245 => _245.type]) === 'driver') teamSlots[tid].drivers++;
     else teamSlots[tid].staff++;
   });
 
@@ -25157,7 +25166,7 @@ function GMContracts() {
           )
           , React.createElement(Card, { style: { padding:0, overflow:'hidden' },}
             , members.map((d, i) => {
-              const isTrans = _optionalChain([transferring, 'optionalAccess', _242 => _242.driverId]) === d.id;
+              const isTrans = _optionalChain([transferring, 'optionalAccess', _246 => _246.driverId]) === d.id;
               return (
                 React.createElement('div', { key: d.id,}
                   , React.createElement('div', { style: { display:'flex', alignItems:'center', gap:12, padding:'11px 16px',
@@ -25166,18 +25175,18 @@ function GMContracts() {
                       background:(team.color||'#55556A')+'22',
                       display:'flex', alignItems:'center', justifyContent:'center',
                       fontSize:13, fontWeight:800, color:team.color||'#55556A', fontFamily:FONT_HEAD },}
-                      , d.number || (_optionalChain([d, 'access', _243 => _243.characters, 'optionalAccess', _244 => _244.name])||'?')[0].toUpperCase()
+                      , d.number || (_optionalChain([d, 'access', _247 => _247.characters, 'optionalAccess', _248 => _248.name])||'?')[0].toUpperCase()
                     )
                     , React.createElement('div', { style: { flex:1 },}
                       , React.createElement('div', { style: { display:'flex', alignItems:'center', gap:8 },}
                         , React.createElement('span', { style: { ...T.body, fontWeight:600 },}
-                          , _optionalChain([d, 'access', _245 => _245.characters, 'optionalAccess', _246 => _246.name]) || d.name || 'Unknown'
+                          , _optionalChain([d, 'access', _249 => _249.characters, 'optionalAccess', _250 => _250.name]) || d.name || 'Unknown'
                         )
-                        , React.createElement(Badge, { color: _optionalChain([d, 'access', _247 => _247.characters, 'optionalAccess', _248 => _248.type])==='driver'?'#3B8EFF':'#FF9500',}
-                          , _optionalChain([d, 'access', _249 => _249.characters, 'optionalAccess', _250 => _250.type]) || 'unknown'
+                        , React.createElement(Badge, { color: _optionalChain([d, 'access', _251 => _251.characters, 'optionalAccess', _252 => _252.type])==='driver'?'#3B8EFF':'#FF9500',}
+                          , _optionalChain([d, 'access', _253 => _253.characters, 'optionalAccess', _254 => _254.type]) || 'unknown'
                         )
                       )
-                      , _optionalChain([d, 'access', _251 => _251.characters, 'optionalAccess', _252 => _252.nationality]) && (
+                      , _optionalChain([d, 'access', _255 => _255.characters, 'optionalAccess', _256 => _256.nationality]) && (
                         React.createElement('div', { style: { ...T.cap },}, d.characters.nationality)
                       )
                     )
@@ -25225,8 +25234,8 @@ function GMContracts() {
               React.createElement('div', { key: d.id, style: { display:'flex', alignItems:'center', gap:12, padding:'11px 16px',
                 borderBottom: i < freeAgents.length-1 ? '1px solid #252530' : 'none' },}
                 , React.createElement('div', { style: { flex:1 },}
-                  , React.createElement('span', { style: { ...T.body },}, _optionalChain([d, 'access', _253 => _253.characters, 'optionalAccess', _254 => _254.name]) || 'Unknown')
-                  , React.createElement(Badge, { color: "#55556A", style: { marginLeft:8 },}, _optionalChain([d, 'access', _255 => _255.characters, 'optionalAccess', _256 => _256.type]))
+                  , React.createElement('span', { style: { ...T.body },}, _optionalChain([d, 'access', _257 => _257.characters, 'optionalAccess', _258 => _258.name]) || 'Unknown')
+                  , React.createElement(Badge, { color: "#55556A", style: { marginLeft:8 },}, _optionalChain([d, 'access', _259 => _259.characters, 'optionalAccess', _260 => _260.type]))
                 )
               )
             ))
@@ -25402,7 +25411,7 @@ function GMAuditLog() {
               , React.createElement('span', { style: { ...T.body, fontWeight:600 },}, e.action)
               , React.createElement('span', { style: { ...T.sub },}, " - "  , e.entity, e.entity_id ? ` (${e.entity_id.slice(0,8)}...)` : '')
             )
-            , React.createElement('div', { style: { ...T.sub },}, _optionalChain([e, 'access', _257 => _257.profiles, 'optionalAccess', _258 => _258.username]) || '-')
+            , React.createElement('div', { style: { ...T.sub },}, _optionalChain([e, 'access', _261 => _261.profiles, 'optionalAccess', _262 => _262.username]) || '-')
           )
         ))
       )
@@ -25492,7 +25501,7 @@ function GMRaceControl({ sbUser }) {
 
     const engDrivers = rawDrivers.map(d => {
       const c   = d.characters;
-      const tid = _optionalChain([d, 'access', _259 => _259.league_teams, 'optionalAccess', _260 => _260.id]) || d.team_id;
+      const tid = _optionalChain([d, 'access', _263 => _263.league_teams, 'optionalAccess', _264 => _264.id]) || d.team_id;
       return {
         id:          d.id.slice(0, 8),
         name:        c.name,
@@ -25552,8 +25561,8 @@ function GMRaceControl({ sbUser }) {
           const raw = aggQual(n, driverList, teamList, track);
           setResults((raw.grid || []).map((e, i) => ({
             pos: i+1,
-            driver: _optionalChain([e, 'access', _261 => _261.driver, 'optionalAccess', _262 => _262.name]) || '',
-            team:   _optionalChain([e, 'access', _263 => _263.team, 'optionalAccess', _264 => _264.name])   || '',
+            driver: _optionalChain([e, 'access', _265 => _265.driver, 'optionalAccess', _266 => _266.name]) || '',
+            team:   _optionalChain([e, 'access', _267 => _267.team, 'optionalAccess', _268 => _268.name])   || '',
             time:   e.score ? e.score.toFixed(3) : '',
           })));
         } else {
@@ -25561,14 +25570,14 @@ function GMRaceControl({ sbUser }) {
           const raw = aggRace(n, qualResult.grid, teamList, track);
           setResults((raw.positions || []).map((e, i) => ({
             pos:    i+1,
-            driver: _optionalChain([e, 'access', _265 => _265.driver, 'optionalAccess', _266 => _266.name]) || '',
-            team:   _optionalChain([e, 'access', _267 => _267.team, 'optionalAccess', _268 => _268.name])   || '',
+            driver: _optionalChain([e, 'access', _269 => _269.driver, 'optionalAccess', _270 => _270.name]) || '',
+            team:   _optionalChain([e, 'access', _271 => _271.team, 'optionalAccess', _272 => _272.name])   || '',
             dnf:    e.dnf || false,
             time:   e.dnf ? 'DNF' : (i === 0 ? 'WINNER' : (e.gap != null ? `+${e.gap.toFixed(3)}s` : '')),
           })));
         }
       } catch(err) {
-        setSimError(String(_optionalChain([err, 'optionalAccess', _269 => _269.message]) || err));
+        setSimError(String(_optionalChain([err, 'optionalAccess', _273 => _273.message]) || err));
       }
       setRunning(false);
     }, 50);
@@ -25603,7 +25612,7 @@ function GMRaceControl({ sbUser }) {
       body: JSON.stringify({
         number:        parseInt(newRound.number),
         circuit_id:    newRound.circuit_id,
-        circuit_name:  _optionalChain([track, 'optionalAccess', _270 => _270.name]) || newRound.circuit_id,
+        circuit_name:  _optionalChain([track, 'optionalAccess', _274 => _274.name]) || newRound.circuit_id,
         state:         'scheduled',
         is_sprint:     newRound.is_sprint,
         scheduled_for: newRound.scheduled_for || null,
@@ -25846,20 +25855,20 @@ function SandboxPage() {
         if (mode === 'qualifying') {
           const raw = aggQual(n, DRIVERS, TEAMS, track);
           setResults((raw.grid||[]).map((e,i) => ({
-            pos:i+1, driver:_optionalChain([e, 'access', _271 => _271.driver, 'optionalAccess', _272 => _272.name])||'', team:_optionalChain([e, 'access', _273 => _273.team, 'optionalAccess', _274 => _274.name])||'',
+            pos:i+1, driver:_optionalChain([e, 'access', _275 => _275.driver, 'optionalAccess', _276 => _276.name])||'', team:_optionalChain([e, 'access', _277 => _277.team, 'optionalAccess', _278 => _278.name])||'',
             time:e.score?e.score.toFixed(3):'',
           })));
         } else {
           const qr = aggQual(1, DRIVERS, TEAMS, track);
           const raw = aggRace(n, qr.grid, TEAMS, track);
           setResults((raw.positions||[]).map((e,i) => ({
-            pos:i+1, driver:_optionalChain([e, 'access', _275 => _275.driver, 'optionalAccess', _276 => _276.name])||'', team:_optionalChain([e, 'access', _277 => _277.team, 'optionalAccess', _278 => _278.name])||'',
+            pos:i+1, driver:_optionalChain([e, 'access', _279 => _279.driver, 'optionalAccess', _280 => _280.name])||'', team:_optionalChain([e, 'access', _281 => _281.team, 'optionalAccess', _282 => _282.name])||'',
             dnf:e.dnf||false,
             time:e.dnf?'DNF':(i===0?'WINNER':(e.gap!=null?`+${e.gap.toFixed(3)}s`:'')),
           })));
         }
       } catch(err) {
-        setSimError(String(_optionalChain([err, 'optionalAccess', _279 => _279.message]) || err));
+        setSimError(String(_optionalChain([err, 'optionalAccess', _283 => _283.message]) || err));
       }
       setRunning(false);
     }, 50);
@@ -25926,7 +25935,7 @@ function F1Sim() {
   if (sbClient && !authInitRef.current) {
     authInitRef.current = true;
     sbClient.auth.getSession().then(({ data: { session } }) => {
-      if (_optionalChain([session, 'optionalAccess', _280 => _280.user])) {
+      if (_optionalChain([session, 'optionalAccess', _284 => _284.user])) {
         setSbUser(session.user);
         loadProfile(session.user.id);
       } else {
