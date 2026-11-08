@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'supabase/migrations/**'
+  workflow_dispatch:
 
 jobs:
   migrate:
@@ -20,16 +21,10 @@ jobs:
 
       - name: Run all migrations in order
         env:
-          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           for f in $(ls supabase/migrations/*.sql | sort); do
             echo "▸ Running $f"
-            psql \
-              --host="${{ secrets.SUPABASE_DB_HOST }}" \
-              --port=5432 \
-              --username="postgres" \
-              --dbname="postgres" \
-              -v ON_ERROR_STOP=1 \
-              -f "$f"
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
             echo "  ✓ Done"
           done
