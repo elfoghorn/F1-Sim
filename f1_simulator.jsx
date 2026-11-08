@@ -5036,6 +5036,8 @@ function GMControlPage({ sbUser, setPage: _setPage }) {
     { id:'overview',      label:'Overview' },
     { id:'applications',  label:'Applications' },
     { id:'players',       label:'Players' },
+    { id:'characters',    label:'Characters' },
+    { id:'teams',         label:'Teams' },
     { id:'stats',         label:'Edit Stats' },
     { id:'race',          label:'Race Control' },
     { id:'audit',         label:'Audit Log' },
@@ -5065,6 +5067,8 @@ function GMControlPage({ sbUser, setPage: _setPage }) {
       {tab === 'overview'     && <GMOverview setPage={goTab} />}
       {tab === 'applications' && <GMApplications />}
       {tab === 'players'      && <GMPlayers />}
+      {tab === 'characters'    && <GMCharacters />}
+      {tab === 'teams'         && <GMTeams />}
       {tab === 'stats'        && <GMStats />}
       {tab === 'race'         && <GMRaceControl sbUser={sbUser} />}
       {tab === 'audit'        && <GMAuditLog />}
@@ -5073,82 +5077,211 @@ function GMControlPage({ sbUser, setPage: _setPage }) {
 }
 
 function GMApplications() {
-  const [apps, setApps] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [loaded, setLoaded] = useState(false);
+  const [apps,     setApps]     = useState(null);
+  const [teams,    setTeams]    = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [loaded,   setLoaded]   = useState(false);
+  const [expanded, setExpanded] = useState(null);
+  const [approving,setApproving]= useState(null); // { appId, charId, teamId: '' }
+  const [filter,   setFilter]   = useState('pending');
 
-  async function loadApps() {
-    const { data } = await sbFetch(
-      'applications?order=created_at.desc' +
-      '&select=*,characters(name,type),profiles!applicant_id(username),league_teams(name)'
-    );
-    setApps(data || []); setLoading(false);
+  async function load() {
+    const [appsRes, teamsRes] = await Promise.all([
+      sbFetch(
+        'applications?order=created_at.desc' +
+        '&select=*,characters(id,name,type),profiles!applicant_id(username),league_teams(name)'
+      ),
+      sbFetch('league_teams?order=name&select=id,name'),
+    ]);
+    setApps(appsRes.data || []);
+    setTeams(teamsRes.data || []);
+    setLoading(false);
   }
 
-  if (!loaded) { setLoaded(true); if (sbClient) loadApps(); else setLoading(false); }
+  if (!loaded) { setLoaded(true); if (sbClient) load(); else setLoading(false); }
   if (loading) return <Spinner />;
-  if (!apps || apps.length === 0) return <EmptyState title="No applications" sub="None submitted yet" />;
 
-  async function decide(id, status) {
-    await sbFetch(`applications?id=eq.${id}`, {
+  async function decide(app, status, teamId) {
+    await sbFetch(`applications?id=eq.${app.id}`, {
       method:'PATCH',
       body: JSON.stringify({ status, decided_at: new Date().toISOString() })
     });
-    loadApps();
+    if (status === 'approved' && teamId && app.characters?.id) {
+      await sbFetch('league_drivers', {
+        method:'POST',
+        headers:{ Prefer:'resolution=merge-duplicates' },
+        body: JSON.stringify({ character_id: app.characters.id, team_id: teamId,
+          name: app.characters.name, number: null })
+      });
+    }
+    setApproving(null);
+    setExpanded(null);
+    load();
   }
 
-  const pending = apps.filter(a => ['submitted','under_review'].includes(a.status));
-  const others  = apps.filter(a => !['submitted','under_review'].includes(a.status));
+  const filters = ['pending','under_review','approved','rejected','all'];
+  const filtered = !apps ? [] : filter === 'all' ? apps :
+    filter === 'pending' ? apps.filter(a => ['submitted','under_review'].includes(a.status)) :
+    apps.filter(a => a.status === filter);
+
+  const FD_SECTIONS = [
+    ['Character Details',       ['nationality','age','height']],
+    ['Driver Profile',          ['driving_style','strengths','weaknesses']],
+    ['Professional Profile',    ['specialisation','work_style','known_for']],
+    ['Career History',          ['career_background','career_path','achievements']],
+    ['Personal Backstory',      ['backstory_origin','backstory_journey','backstory_motivation']],
+    ['Public Image / Relations',['media_persona','paddock_reputation','paddock_relations','personal_life']],
+    ['Stat Requests',           ['pace','consistency','wet','overtaking','defense','experience','mental']],
+    ['Quote & OOC',             ['iconic_quote','ooc_notes']],
+  ];
+
+  const STAT_KEYS = new Set(['pace','consistency','wet','overtaking','defense','experience','mental']);
+
+  function renderFD(fd) {
+    if (!fd || typeof fd !== 'object') return null;
+    return FD_SECTIONS.map(([title, keys]) => {
+      const filled = keys.filter(k => fd[k] !== undefined && fd[k] !== '' && fd[k] !== null);
+      if (!filled.length) return null;
+      return (
+        <div key={title} style={{ marginBottom:14 }}>
+          <div style={{ ...T.cap, color:'#E8002D', marginBottom:6 }}>{title}</div>
+          {filled.map(k => {
+            const v = fd[k];
+            const label = k.replace(/_/g,' ');
+            if (STAT_KEYS.has(k)) {
+              return (
+                <div key={k} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:4 }}>
+                  <div style={{ ...T.cap, width:120 }}>{label}</div>
+                  <div style={{ flex:1, height:4, background:'#252530', borderRadius:2 }}>
+                    <div style={{ height:'100%', background:'#E8002D', borderRadius:2,
+                      width:`${k === 'mental' ? (v||0)*10 : (v||0)}%` }} />
+                  </div>
+                  <div style={{ fontSize:12, fontWeight:700, color:'#E8002D', width:30 }}>{v}</div>
+                </div>
+              );
+            }
+            return (
+              <div key={k} style={{ marginBottom:6 }}>
+                <div style={{ ...T.cap }}>{label}</div>
+                <div style={{ ...T.sub, fontSize:12, padding:'4px 0' }}>{String(v)}</div>
+              </div>
+            );
+          })}
+        </div>
+      );
+    });
+  }
+
+  if (!apps || apps.length === 0) return <EmptyState title="No applications" sub="None submitted yet" />;
 
   return (
     <div>
-      {pending.length > 0 && (
-        <>
-          <div style={{ ...T.h2, marginBottom:14 }}>Pending ({pending.length})</div>
-          <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:24 }}>
-            {pending.map(app => (
-              <Card key={app.id}>
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
-                  <div>
-                    <div style={{ ...T.h3 }}>
-                      {app.characters?.name}
-                      <span style={{ ...T.sub, marginLeft:8 }}>({app.characters?.type})</span>
-                    </div>
-                    <div style={{ ...T.sub }}>by {app.profiles?.username} - {app.league_teams?.name || 'No team preference'}</div>
+      {/* Filter bar */}
+      <div style={{ display:'flex', gap:6, marginBottom:20, flexWrap:'wrap' }}>
+        {filters.map(f => (
+          <button key={f} onClick={() => setFilter(f)}
+            style={{ padding:'5px 12px', border:'none', borderRadius:5, fontSize:11, fontWeight:600,
+              cursor:'pointer', textTransform:'uppercase', letterSpacing:'0.8px',
+              background: filter === f ? '#E8002D' : '#111114',
+              color: filter === f ? '#fff' : '#8888A0', fontFamily:FONT_MONO }}>
+            {f === 'pending' ? `Pending (${apps.filter(a=>['submitted','under_review'].includes(a.status)).length})` : f}
+          </button>
+        ))}
+      </div>
+
+      {filtered.length === 0 && <EmptyState title={`No ${filter} applications`} />}
+
+      <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+        {filtered.map(app => {
+          const isExp = expanded === app.id;
+          const isApp = approving?.appId === app.id;
+          return (
+            <Card key={app.id}>
+              {/* Header row */}
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
+                <div style={{ flex:1 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:4 }}>
+                    <div style={{ ...T.h3 }}>{app.characters?.name}</div>
+                    <span style={{ ...T.cap, color:'#8888A0' }}>{app.characters?.type}</span>
                   </div>
-                  <StatusBadge status={app.status} />
-                </div>
-                {app.form_data?.motivation && (
-                  <div style={{ ...T.sub, fontSize:12, marginBottom:12,
-                    padding:'8px 10px', background:'#111114', borderRadius:6 }}>
-                    {app.form_data.motivation}
+                  <div style={{ ...T.sub, fontSize:12 }}>
+                    by <strong style={{ color:'#F0F0F5' }}>{app.profiles?.username}</strong>
+                    {app.league_teams?.name && <span> &middot; preferred: {app.league_teams.name}</span>}
+                    <span> &middot; {new Date(app.created_at || Date.now()).toLocaleDateString()}</span>
                   </div>
-                )}
-                <div style={{ display:'flex', gap:8 }}>
-                  <Button size="sm" variant="success" onClick={() => decide(app.id,'approved')}>Approve</Button>
-                  <Button size="sm" variant="secondary" onClick={() => decide(app.id,'under_review')}>Mark Review</Button>
-                  <Button size="sm" variant="danger" onClick={() => decide(app.id,'rejected')}>Reject</Button>
                 </div>
-              </Card>
-            ))}
-          </div>
-        </>
-      )}
-      {others.length > 0 && (
-        <>
-          <div style={{ ...T.h2, marginBottom:14 }}>Decided</div>
-          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-            {others.map(app => (
-              <Card key={app.id} style={{ opacity:.7 }}>
-                <div style={{ display:'flex', justifyContent:'space-between' }}>
-                  <div style={{ ...T.body }}>{app.characters?.name} - by {app.profiles?.username}</div>
+                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                   <StatusBadge status={app.status} />
+                  <button onClick={() => setExpanded(isExp ? null : app.id)}
+                    style={{ background:'#111114', border:'none', borderRadius:5, padding:'4px 10px',
+                      color:'#8888A0', cursor:'pointer', fontSize:11, fontFamily:FONT_MONO }}>
+                    {isExp ? 'Collapse' : 'View Form'}
+                  </button>
                 </div>
-              </Card>
-            ))}
-          </div>
-        </>
-      )}
+              </div>
+
+              {/* Expanded form data */}
+              {isExp && (
+                <div style={{ marginTop:16, paddingTop:16, borderTop:'1px solid #252530' }}>
+                  {renderFD(app.form_data)}
+                  {(!app.form_data || Object.keys(app.form_data).length === 0) && (
+                    <div style={{ ...T.sub }}>No form data recorded (legacy submission).</div>
+                  )}
+                </div>
+              )}
+
+              {/* Action buttons for pending apps */}
+              {['submitted','under_review'].includes(app.status) && !isApp && (
+                <div style={{ display:'flex', gap:8, marginTop:12 }}>
+                  <Button size="sm" variant="success" onClick={() =>
+                    setApproving({ appId: app.id, charId: app.characters?.id, teamId: app.form_data?.team_id || '' })}>
+                    Approve
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => decide(app,'under_review')}>
+                    Mark Review
+                  </Button>
+                  <Button size="sm" variant="danger" onClick={() => decide(app,'rejected')}>
+                    Reject
+                  </Button>
+                </div>
+              )}
+
+              {/* Inline approve panel */}
+              {isApp && (
+                <div style={{ marginTop:12, padding:'12px 14px', background:'#111114', borderRadius:8,
+                  border:'1px solid #E8002D55' }}>
+                  <div style={{ ...T.cap, color:'#00C46A', marginBottom:8 }}>Confirm Approval</div>
+                  <div style={{ ...T.sub, fontSize:12, marginBottom:10 }}>
+                    Optionally assign this character to a team and confirm:
+                  </div>
+                  <Select label="Assign to Team" value={approving.teamId}
+                    onChange={v => setApproving(a => ({...a, teamId:v}))}
+                    options={[{value:'',label:'No team assignment yet'},
+                      ...teams.map(t => ({value:t.id,label:t.name}))]} />
+                  <div style={{ display:'flex', gap:8, marginTop:10 }}>
+                    <Button size="sm" variant="success"
+                      onClick={() => decide(app,'approved', approving.teamId)}>
+                      Confirm Approve
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => setApproving(null)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Reopen decided apps */}
+              {['approved','rejected'].includes(app.status) && (
+                <div style={{ marginTop:12 }}>
+                  <Button size="sm" variant="secondary" onClick={() => decide(app,'submitted')}>
+                    Reopen
+                  </Button>
+                </div>
+              )}
+            </Card>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -5203,28 +5336,42 @@ function GMPlayers() {
 }
 
 function GMStats() {
-  const [chars, setChars] = useState(null);
+  const [chars,    setChars]    = useState(null);
   const [selected, setSelected] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [loaded, setLoaded] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [loading,  setLoading]  = useState(true);
+  const [loaded,   setLoaded]   = useState(false);
+  const [saving,   setSaving]   = useState(false);
   const [editForm, setEditForm] = useState({});
+  const [history,  setHistory]  = useState([]);  // change log this session
+  const [charType, setCharType] = useState('driver');
 
-  if (!loaded) {
-    setLoaded(true);
-    if (sbClient) {
-      sbFetch('characters?type=eq.driver&order=name&select=*').then(({ data }) => { setChars(data || []); setLoading(false); });
-    } else setLoading(false);
+  function reload() {
+    if (!sbClient) { setLoading(false); return; }
+    const q = charType === 'all' ? 'characters?order=name&select=*' :
+              `characters?type=eq.${charType}&order=name&select=*`;
+    sbFetch(q).then(({ data }) => { setChars(data || []); setLoading(false); });
   }
+
+  if (!loaded) { setLoaded(true); reload(); }
 
   function selectChar(c) {
     setSelected(c);
-    setEditForm({ pace:c.pace, consistency:c.consistency, wet:c.wet,
-      overtaking:c.overtaking, defense:c.defense, experience:c.experience, mental:c.mental });
+    setEditForm({ pace:c.pace||70, consistency:c.consistency||70, wet:c.wet||70,
+      overtaking:c.overtaking||70, defense:c.defense||70,
+      experience:c.experience||50, mental:c.mental||7 });
   }
 
   async function saveStats() {
     setSaving(true);
+    // Record changes
+    const changes = Object.entries(editForm).filter(([k,v]) => selected[k] !== v);
+    if (changes.length > 0) {
+      setHistory(h => [{
+        charName: selected.name,
+        at: new Date().toLocaleTimeString(),
+        changes: changes.map(([k,v]) => ({ field:k, from:selected[k], to:v }))
+      }, ...h.slice(0,19)]);
+    }
     await sbFetch(`characters?id=eq.${selected.id}`, {
       method:'PATCH', body: JSON.stringify({ ...editForm, updated_at: new Date().toISOString() })
     });
@@ -5233,58 +5380,433 @@ function GMStats() {
     setSelected(null);
   }
 
+  function reloadType(t) {
+    setCharType(t); setChars(null); setLoading(true); setLoaded(false);
+  }
+
   if (loading) return <Spinner />;
 
-  if (selected) return (
-    <div style={{ maxWidth:500 }}>
-      <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
-        <button onClick={() => setSelected(null)} style={{ background:'none', border:'none', color:'#8888A0', cursor:'pointer', fontSize:20 }}>{'<'}</button>
-        <div style={{ ...T.h2 }}>Edit: {selected.name}</div>
-      </div>
-      <Card>
-        {[['pace','Pace'],['consistency','Consistency'],['wet','Wet'],
-          ['overtaking','Overtaking'],['defense','Defense'],['experience','Experience']].map(([k,l]) => (
-          <div key={k} style={{ marginBottom:14 }}>
-            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
-              <span style={{ ...T.cap }}>{l}</span>
-              <span style={{ fontSize:13, fontWeight:700, color:'#E8002D' }}>{editForm[k]}</span>
+  if (selected) {
+    const isDriver = selected.type === 'driver';
+    const changed = Object.entries(editForm).filter(([k,v]) => selected[k] !== v);
+    return (
+      <div style={{ maxWidth:540 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
+          <button onClick={() => setSelected(null)}
+            style={{ background:'none', border:'none', color:'#8888A0', cursor:'pointer',
+              fontSize:14, fontFamily:FONT_BODY, padding:0 }}>
+            &lt; Back
+          </button>
+          <div style={{ flex:1 }}>
+            <div style={{ ...T.cap, color:'#E8002D', marginBottom:2 }}>{selected.type}</div>
+            <div style={{ ...T.h2 }}>{selected.name}</div>
+          </div>
+          {changed.length > 0 && (
+            <div style={{ ...T.cap, color:'#FF9500' }}>{changed.length} change{changed.length>1?'s':''} pending</div>
+          )}
+        </div>
+
+        {/* Change preview */}
+        {changed.length > 0 && (
+          <div style={{ background:'#FF950010', border:'1px solid #FF950033', borderRadius:8,
+            padding:'10px 14px', marginBottom:16 }}>
+            <div style={{ ...T.cap, color:'#FF9500', marginBottom:6 }}>Pending changes</div>
+            {changed.map(([k,v]) => (
+              <div key={k} style={{ display:'flex', gap:8, fontSize:12, marginBottom:3 }}>
+                <span style={{ color:'#8888A0', width:110 }}>{k}</span>
+                <span style={{ color:'#E8002D' }}>{selected[k]}</span>
+                <span style={{ color:'#55556A' }}>-&gt;</span>
+                <span style={{ color:'#00C46A' }}>{v}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <Card>
+          {isDriver && [
+            ['pace',       'Pace',        '#E8002D'],
+            ['consistency','Consistency', '#3B8EFF'],
+            ['wet',        'Wet Skill',   '#3B8EFF'],
+            ['overtaking', 'Overtaking',  '#FF9500'],
+            ['defense',    'Defense',     '#FF9500'],
+            ['experience', 'Experience',  '#55556A'],
+          ].map(([k,l,c]) => (
+            <div key={k} style={{ marginBottom:14 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
+                <span style={{ ...T.cap, color: editForm[k] !== selected[k] ? '#FF9500' : undefined }}>{l}</span>
+                <span style={{ fontSize:13, fontWeight:700, color:c }}>{editForm[k]}</span>
+              </div>
+              <input type="range" min={40} max={99} value={editForm[k]}
+                onChange={e => setEditForm(f => ({ ...f, [k]: parseInt(e.target.value) }))}
+                style={{ width:'100%', accentColor:c }} />
             </div>
-            <input type="range" min={40} max={99} value={editForm[k]}
-              onChange={e => setEditForm(f => ({ ...f, [k]: parseInt(e.target.value) }))}
-              style={{ width:'100%', accentColor:'#E8002D' }} />
+          ))}
+          {isDriver && (
+            <div style={{ marginBottom:14 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
+                <span style={{ ...T.cap, color: editForm.mental !== selected.mental ? '#FF9500' : undefined }}>
+                  Mental
+                </span>
+                <span style={{ fontSize:13, fontWeight:700, color:'#00C46A' }}>{editForm.mental}/10</span>
+              </div>
+              <input type="range" min={1} max={10} value={editForm.mental}
+                onChange={e => setEditForm(f => ({ ...f, mental: parseInt(e.target.value) }))}
+                style={{ width:'100%', accentColor:'#00C46A' }} />
+            </div>
+          )}
+          {!isDriver && (
+            <div style={{ ...T.sub }}>
+              Staff stat editing coming in a future update.
+            </div>
+          )}
+          <div style={{ display:'flex', gap:10, marginTop:4 }}>
+            <Button onClick={saveStats} disabled={saving || changed.length === 0}>
+              {saving ? 'Saving...' : `Save${changed.length ? ` (${changed.length})` : ''}`}
+            </Button>
+            <Button variant="secondary" onClick={() => setSelected(null)}>Cancel</Button>
           </div>
-        ))}
-        <div style={{ marginBottom:14 }}>
-          <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
-            <span style={{ ...T.cap }}>Mental</span>
-            <span style={{ fontSize:13, fontWeight:700, color:'#E8002D' }}>{editForm.mental}/10</span>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display:'grid', gridTemplateColumns:'1fr 300px', gap:20, alignItems:'start' }}>
+      <div>
+        {/* Type filter */}
+        <div style={{ display:'flex', gap:6, marginBottom:16 }}>
+          {['driver','staff','all'].map(t => (
+            <button key={t} onClick={() => reloadType(t)}
+              style={{ padding:'5px 12px', border:'none', borderRadius:5, fontSize:11, fontWeight:600,
+                cursor:'pointer', textTransform:'uppercase', letterSpacing:'0.8px',
+                background: charType === t ? '#E8002D' : '#111114',
+                color: charType === t ? '#fff' : '#8888A0', fontFamily:FONT_MONO }}>
+              {t}
+            </button>
+          ))}
+        </div>
+        {(!chars || chars.length === 0) && <EmptyState title="No characters" />}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:12 }}>
+          {(chars||[]).map(c => (
+            <Card key={c.id} onClick={() => selectChar(c)}>
+              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
+                <div>
+                  <div style={{ ...T.h3 }}>{c.name}</div>
+                  <div style={{ ...T.cap }}>{c.type}</div>
+                </div>
+                <Button size="sm" variant="secondary">Edit</Button>
+              </div>
+              {c.type === 'driver' && (
+                <>
+                  <StatBar label="Pace"        value={c.pace||0}        color="#E8002D" />
+                  <StatBar label="Consistency" value={c.consistency||0} color="#3B8EFF" />
+                </>
+              )}
+            </Card>
+          ))}
+        </div>
+      </div>
+
+      {/* Change history sidebar */}
+      <div>
+        <div style={{ ...T.h3, marginBottom:12 }}>Change History</div>
+        {history.length === 0 ? (
+          <div style={{ ...T.sub }}>No changes this session yet.</div>
+        ) : (
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {history.map((entry, i) => (
+              <Card key={i} style={{ padding:'10px 12px' }}>
+                <div style={{ ...T.cap, color:'#E8002D', marginBottom:4 }}>{entry.charName}</div>
+                <div style={{ ...T.cap, marginBottom:6 }}>{entry.at}</div>
+                {entry.changes.map(ch => (
+                  <div key={ch.field} style={{ display:'flex', gap:6, fontSize:11, marginBottom:2 }}>
+                    <span style={{ color:'#8888A0', width:90, flexShrink:0 }}>{ch.field}</span>
+                    <span style={{ color:'#E8002D' }}>{ch.from}</span>
+                    <span style={{ color:'#55556A' }}>&gt;</span>
+                    <span style={{ color:'#00C46A' }}>{ch.to}</span>
+                  </div>
+                ))}
+              </Card>
+            ))}
           </div>
-          <input type="range" min={1} max={10} value={editForm.mental}
-            onChange={e => setEditForm(f => ({ ...f, mental: parseInt(e.target.value) }))}
-            style={{ width:'100%', accentColor:'#E8002D' }} />
-        </div>
-        <div style={{ display:'flex', gap:10 }}>
-          <Button onClick={saveStats} disabled={saving}>{saving ? 'Saving...' : 'Save Stats'}</Button>
-          <Button variant="secondary" onClick={() => setSelected(null)}>Cancel</Button>
-        </div>
-      </Card>
+        )}
+      </div>
     </div>
   );
+}
 
-  if (!chars || chars.length === 0) return <EmptyState title="No driver characters" />;
+function GMCharacters() {
+  const [chars,    setChars]    = useState(null);
+  const [loading,  setLoading]  = useState(true);
+  const [loaded,   setLoaded]   = useState(false);
+  const [editing,  setEditing]  = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [saving,   setSaving]   = useState(false);
+  const [charType, setCharType] = useState('all');
+
+  async function load() {
+    const q = charType === 'all' ? 'characters?order=name&select=*,profiles!owner_id(username)'
+              : `characters?type=eq.${charType}&order=name&select=*,profiles!owner_id(username)`;
+    const { data } = await sbFetch(q);
+    setChars(data||[]); setLoading(false);
+  }
+
+  if (!loaded) { setLoaded(true); if (sbClient) load(); else setLoading(false); }
+  if (loading) return <Spinner />;
+
+  function startEdit(c) {
+    setEditing(c);
+    setEditForm({ name:c.name||'', nationality:c.nationality||'', bio:c.bio||'',
+      backstory:c.backstory||'', is_active:c.is_active, number:c.number||'',
+      abbr:c.abbr||'', style:c.style||'' });
+  }
+
+  async function saveChar() {
+    setSaving(true);
+    await sbFetch(`characters?id=eq.${editing.id}`, {
+      method:'PATCH', body: JSON.stringify({ ...editForm, updated_at:new Date().toISOString() })
+    });
+    setSaving(false);
+    setEditing(null);
+    setLoaded(false); setLoading(true); load();
+  }
+
+  async function toggleActive(c) {
+    await sbFetch(`characters?id=eq.${c.id}`, {
+      method:'PATCH', body: JSON.stringify({ is_active: !c.is_active })
+    });
+    setChars(ch => ch.map(x => x.id === c.id ? {...x, is_active:!x.is_active} : x));
+  }
+
+  function reloadType(t) {
+    setCharType(t); setChars(null); setLoading(true); setLoaded(false);
+  }
+
+  if (editing) {
+    const set = (k,v) => setEditForm(f => ({...f,[k]:v}));
+    return (
+      <div style={{ maxWidth:580 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
+          <button onClick={() => setEditing(null)}
+            style={{ background:'none', border:'none', color:'#8888A0',
+              cursor:'pointer', fontSize:14, fontFamily:FONT_BODY, padding:0 }}>
+            &lt; Back
+          </button>
+          <div style={{ ...T.h2 }}>Edit: {editing.name}</div>
+        </div>
+        <Card>
+          <Input label="Name" value={editForm.name} onChange={v => set('name',v)} />
+          <Input label="Nationality" value={editForm.nationality} onChange={v => set('nationality',v)} />
+          {editing.type === 'driver' && (
+            <>
+              <Input label="Number" value={editForm.number} onChange={v => set('number',v)} placeholder="e.g. 44" />
+              <Input label="Abbreviation" value={editForm.abbr} onChange={v => set('abbr',v)} placeholder="e.g. HAM" />
+              <Input label="Driving Style" value={editForm.style} onChange={v => set('style',v)} />
+            </>
+          )}
+          <Textarea label="Bio / Quote" value={editForm.bio} onChange={v => set('bio',v)} rows={3} />
+          <Textarea label="Backstory" value={editForm.backstory} onChange={v => set('backstory',v)} rows={5} />
+          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
+            <label style={{ ...T.cap }}>Active</label>
+            <input type="checkbox" checked={!!editForm.is_active}
+              onChange={e => set('is_active', e.target.checked)}
+              style={{ width:16, height:16, accentColor:'#E8002D' }} />
+          </div>
+          <div style={{ display:'flex', gap:10 }}>
+            <Button onClick={saveChar} disabled={saving}>{saving ? 'Saving...' : 'Save Changes'}</Button>
+            <Button variant="secondary" onClick={() => setEditing(null)}>Cancel</Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div>
-      <div style={{ ...T.h2, marginBottom:14 }}>Driver Stats</div>
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:12 }}>
-        {chars.map(c => (
-          <Card key={c.id} onClick={() => selectChar(c)}>
-            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:10 }}>
-              <div style={{ ...T.h3 }}>{c.name}</div>
-              <Button size="sm" variant="secondary">Edit</Button>
+      <div style={{ display:'flex', gap:6, marginBottom:16 }}>
+        {['all','driver','staff'].map(t => (
+          <button key={t} onClick={() => reloadType(t)}
+            style={{ padding:'5px 12px', border:'none', borderRadius:5, fontSize:11, fontWeight:600,
+              cursor:'pointer', textTransform:'uppercase', letterSpacing:'0.8px',
+              background: charType === t ? '#E8002D' : '#111114',
+              color: charType === t ? '#fff' : '#8888A0', fontFamily:FONT_MONO }}>
+            {t}
+          </button>
+        ))}
+      </div>
+      {(!chars || chars.length === 0) && <EmptyState title="No characters" />}
+      <Card style={{ padding:0, overflow:'hidden' }}>
+        {(chars||[]).map((c, i) => (
+          <div key={c.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'11px 16px',
+            borderBottom: i < (chars||[]).length-1 ? '1px solid #252530' : 'none' }}>
+            <div style={{ width:34, height:34, borderRadius:'50%', background:'#252530',
+              display:'flex', alignItems:'center', justifyContent:'center',
+              fontSize:13, fontWeight:800, color:'#E8002D', fontFamily:FONT_HEAD }}>
+              {c.number || (c.name||'?')[0].toUpperCase()}
             </div>
-            <StatBar label="Pace"        value={c.pace}        color="#E8002D" />
-            <StatBar label="Consistency" value={c.consistency} color="#3B8EFF" />
+            <div style={{ flex:1 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <span style={{ ...T.body, fontWeight:600 }}>{c.name}</span>
+                <Badge color={c.is_active ? '#00C46A' : '#55556A'}>
+                  {c.is_active ? 'Active' : 'Inactive'}
+                </Badge>
+              </div>
+              <div style={{ ...T.cap }}>{c.type}{c.profiles?.username ? ` - ${c.profiles.username}` : ''}</div>
+            </div>
+            <div style={{ display:'flex', gap:8 }}>
+              <Button size="sm" variant="secondary" onClick={() => startEdit(c)}>Edit</Button>
+              <Button size="sm" variant={c.is_active ? 'danger' : 'success'}
+                onClick={() => toggleActive(c)}>
+                {c.is_active ? 'Retire' : 'Activate'}
+              </Button>
+            </div>
+          </div>
+        ))}
+      </Card>
+    </div>
+  );
+}
+
+function GMTeams() {
+  const [teams,   setTeams]   = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loaded,  setLoaded]  = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [editForm,setEditForm]= useState({});
+  const [saving,  setSaving]  = useState(false);
+  const [creating,setCreating]= useState(false);
+  const [newForm, setNewForm] = useState({ name:'', color:'#E8002D' });
+  const [savingNew,setSavingNew]=useState(false);
+
+  async function load() {
+    const { data } = await sbFetch('league_teams?order=name&select=*');
+    setTeams(data||[]); setLoading(false);
+  }
+
+  if (!loaded) { setLoaded(true); if (sbClient) load(); else setLoading(false); }
+  if (loading) return <Spinner />;
+
+  function startEdit(t) {
+    setEditing(t);
+    setEditForm({ name:t.name||'', color:t.color||'#E8002D', tier:t.tier||'',
+      car_pace:t.car_pace||70, reliability:t.reliability||75,
+      pit_speed:t.pit_speed||70, tyre_life:t.tyre_life||70 });
+  }
+
+  async function saveTeam() {
+    setSaving(true);
+    await sbFetch(`league_teams?id=eq.${editing.id}`, {
+      method:'PATCH', body: JSON.stringify(editForm)
+    });
+    setSaving(false);
+    setEditing(null);
+    setLoaded(false); setLoading(true); load();
+  }
+
+  async function createTeam() {
+    if (!newForm.name.trim()) return;
+    setSavingNew(true);
+    await sbFetch('league_teams', {
+      method:'POST', body: JSON.stringify({ ...newForm, car_pace:70, reliability:75, pit_speed:70, tyre_life:70 })
+    });
+    setSavingNew(false);
+    setCreating(false);
+    setNewForm({ name:'', color:'#E8002D' });
+    setLoaded(false); setLoading(true); load();
+  }
+
+  if (editing) {
+    const set = (k,v) => setEditForm(f => ({...f,[k]:v}));
+    return (
+      <div style={{ maxWidth:500 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
+          <button onClick={() => setEditing(null)}
+            style={{ background:'none', border:'none', color:'#8888A0',
+              cursor:'pointer', fontSize:14, fontFamily:FONT_BODY, padding:0 }}>
+            &lt; Back
+          </button>
+          <div style={{ ...T.h2 }}>Edit: {editing.name}</div>
+        </div>
+        <Card>
+          <Input label="Team Name" value={editForm.name} onChange={v => set('name',v)} />
+          <div style={{ marginBottom:14 }}>
+            <div style={{ ...T.cap, marginBottom:6 }}>Team Colour</div>
+            <input type="color" value={editForm.color} onChange={e => set('color',e.target.value)}
+              style={{ width:'100%', height:36, borderRadius:6, border:'1px solid #252530',
+                background:'transparent', cursor:'pointer' }} />
+          </div>
+          <Input label="Tier / Division" value={editForm.tier} onChange={v => set('tier',v)}
+            placeholder="e.g. Top, Midfield, Backmarker" />
+          {[['car_pace','Car Pace','#E8002D'],['reliability','Reliability','#00C46A'],
+            ['pit_speed','Pit Speed','#3B8EFF'],['tyre_life','Tyre Life','#FF9500']].map(([k,l,c]) => (
+            <div key={k} style={{ marginBottom:14 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
+                <span style={{ ...T.cap }}>{l}</span>
+                <span style={{ fontSize:13, fontWeight:700, color:c }}>{editForm[k]}</span>
+              </div>
+              <input type="range" min={40} max={99} value={editForm[k]}
+                onChange={e => set(k, parseInt(e.target.value))}
+                style={{ width:'100%', accentColor:c }} />
+            </div>
+          ))}
+          <div style={{ display:'flex', gap:10 }}>
+            <Button onClick={saveTeam} disabled={saving}>{saving ? 'Saving...' : 'Save Team'}</Button>
+            <Button variant="secondary" onClick={() => setEditing(null)}>Cancel</Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+        <div style={{ ...T.h2 }}>All Teams ({(teams||[]).length})</div>
+        <Button onClick={() => setCreating(!creating)}>+ New Team</Button>
+      </div>
+
+      {creating && (
+        <Card style={{ marginBottom:20 }}>
+          <div style={{ ...T.cap, color:'#E8002D', marginBottom:10 }}>Create Team</div>
+          <Input label="Team Name" value={newForm.name}
+            onChange={v => setNewForm(f => ({...f,name:v}))} />
+          <div style={{ marginBottom:14 }}>
+            <div style={{ ...T.cap, marginBottom:6 }}>Colour</div>
+            <input type="color" value={newForm.color}
+              onChange={e => setNewForm(f => ({...f,color:e.target.value}))}
+              style={{ width:'100%', height:36, borderRadius:6, border:'1px solid #252530',
+                background:'transparent', cursor:'pointer' }} />
+          </div>
+          <div style={{ display:'flex', gap:10 }}>
+            <Button onClick={createTeam} disabled={savingNew}>
+              {savingNew ? 'Creating...' : 'Create Team'}
+            </Button>
+            <Button variant="secondary" onClick={() => setCreating(false)}>Cancel</Button>
+          </div>
+        </Card>
+      )}
+
+      {(!teams || teams.length === 0) && !creating && <EmptyState title="No teams yet" sub="Create the first team above" />}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:14 }}>
+        {(teams||[]).map(t => (
+          <Card key={t.id}>
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
+              <div style={{ width:6, height:40, borderRadius:3, background:t.color||'#E8002D', flexShrink:0 }} />
+              <div style={{ flex:1 }}>
+                <div style={{ ...T.h3 }}>{t.name}</div>
+                {t.tier && <div style={{ ...T.cap }}>{t.tier}</div>}
+              </div>
+              <Button size="sm" variant="secondary" onClick={() => startEdit(t)}>Edit</Button>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+              {[['Car Pace',t.car_pace,'#E8002D'],['Reliability',t.reliability,'#00C46A'],
+                ['Pit Speed',t.pit_speed,'#3B8EFF'],['Tyre Life',t.tyre_life,'#FF9500']].map(([l,v,c]) => (
+                <div key={l}>
+                  <div style={{ ...T.cap }}>{l}</div>
+                  <div style={{ fontSize:20, fontWeight:900, color:c, fontFamily:FONT_HEAD }}>{v||'--'}</div>
+                </div>
+              ))}
+            </div>
           </Card>
         ))}
       </div>
