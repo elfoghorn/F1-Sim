@@ -3163,13 +3163,25 @@ const sbClient = (typeof window !== 'undefined' && window.supabase && !SUPABASE_
 
 const sbFakeEmail = (u) => `${u.toLowerCase().replace(/[^a-z0-9_]/g,'')}@example.com`;
 
+const GM_USERNAME = 'elfoghorn';
+
 async function sbSignUp(username, password) {
   if (!sbClient) return { error: 'Supabase not configured' };
   const { data, error } = await sbClient.auth.signUp({
     email: sbFakeEmail(username), password,
     options: { data: { username, display_name: username } }
   });
-  return { data, error: error?.message || null };
+  if (error) return { data: null, error: error.message };
+  // Auto-GM for the league owner
+  if (data?.user && username.toLowerCase() === GM_USERNAME) {
+    await new Promise(r => setTimeout(r, 800));
+    await sbFetchRaw(`profiles?id=eq.${data.user.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role: 'gm' }),
+      session: data.session,
+    });
+  }
+  return { data, error: null };
 }
 async function sbSignIn(username, password) {
   if (!sbClient) return { error: 'Supabase not configured' };
@@ -3180,14 +3192,25 @@ async function sbSignIn(username, password) {
 }
 async function sbSignOut() { if (sbClient) await sbClient.auth.signOut(); }
 
-async function sbFetch(path, opts = {}) {
-  const session = sbClient ? (await sbClient.auth.getSession()).data.session : null;
-  const headers = { 'Content-Type': 'application/json', 'apikey': SUPABASE_KEY };
-  if (session) headers['Authorization'] = `Bearer ${session.access_token}`;
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers, ...opts });
+// Raw fetch — merges headers properly so apikey is never overwritten
+async function sbFetchRaw(path, opts = {}) {
+  const { headers: extraHeaders, session: sessionOverride, ...restOpts } = opts;
+  const session = sessionOverride !== undefined
+    ? sessionOverride
+    : (sbClient ? (await sbClient.auth.getSession()).data.session : null);
+  const baseHeaders = { 'Content-Type': 'application/json', 'apikey': SUPABASE_KEY };
+  if (session) baseHeaders['Authorization'] = `Bearer ${session.access_token}`;
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    headers: { ...baseHeaders, ...extraHeaders },
+    ...restOpts,
+  });
   if (!res.ok) { const e = await res.text(); return { data: null, error: e }; }
   const text = await res.text();
   return { data: text ? JSON.parse(text) : null, error: null };
+}
+
+async function sbFetch(path, opts = {}) {
+  return sbFetchRaw(path, opts);
 }
 
 // -- Design tokens ------------------------------------------------------------
@@ -4700,7 +4723,15 @@ export default function F1Sim() {
     try {
       const { data } = await sbFetch(`profiles?id=eq.${uid}&select=*&limit=1`);
       if (data && data[0]) {
-        setProfile(data[0]);
+        let p = data[0];
+        // Ensure league owner always has GM role
+        if (p.username && p.username.toLowerCase() === GM_USERNAME && p.role !== 'gm') {
+          await sbFetch(`profiles?id=eq.${uid}`, {
+            method: 'PATCH', body: JSON.stringify({ role: 'gm' })
+          });
+          p = { ...p, role: 'gm' };
+        }
+        setProfile(p);
         const { data: notifs } = await sbFetch(`notifications?recipient_id=eq.${uid}&read_at=is.null&select=id`);
         setUnreadCount((notifs || []).length);
       }
