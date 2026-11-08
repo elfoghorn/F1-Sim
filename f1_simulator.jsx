@@ -3250,6 +3250,66 @@ const T = {
   cap:  { fontSize:11, fontWeight:500, letterSpacing:1.5, textTransform:'uppercase', color:'#55556A', fontFamily:FONT_MONO },
 };
 
+// -- Display maps (encoding-safe; engine DRIVING_STYLES/TRACKS use mojibake) --
+
+const STYLE_DISPLAY = {
+  aggressive: { icon:'🔥', label:'Aggressive',  tip:'Late-braking, high-risk overtakes, pushes hard from lap 1' },
+  smooth:     { icon:'✈️',  label:'Smooth',      tip:'Minimal tyre wear, precise inputs, consistent lap times' },
+  qualifier:  { icon:'⚡',        label:'Qualifier',   tip:'Flies in qualifying, struggles over race distance' },
+  defender:   { icon:'🛡️', label:'Defender', tip:'Excellent at holding position, hard to pass cleanly' },
+  charger:    { icon:'🏆',  label:'Charger',     tip:'Strong from behind, excellent mid-race overtaker' },
+  strategist: { icon:'🧠',  label:'Strategist',  tip:'Reads the race perfectly, tyre and pit window specialist' },
+  technical:  { icon:'🔧',  label:'Technical',   tip:'Excels on slow technical circuits, precise cornering' },
+  ironman:    { icon:'💪',  label:'Ironman',     tip:'Maintains pace over full distance, legendary consistency' },
+};
+
+const TRACK_FLAG = {
+  bahrain:        '🇧🇭',
+  saudi_arabia:   '🇸🇦',
+  australia:      '🇦🇺',
+  japan:          '🇯🇵',
+  china:          '🇨🇳',
+  miami:          '🇺🇸',
+  emilia_romagna: '🇮🇹',
+  monaco:         '🇲🇨',
+  canada:         '🇨🇦',
+  spain:          '🇪🇸',
+  austria:        '🇦🇹',
+  great_britain:  '🇬🇧',
+  hungary:        '🇭🇺',
+  belgium:        '🇧🇪',
+  netherlands:    '🇳🇱',
+  italy:          '🇮🇹',
+  azerbaijan:     '🇦🇿',
+  singapore:      '🇸🇬',
+  usa:            '🇺🇸',
+  mexico:         '🇲🇽',
+  brazil:         '🇧🇷',
+  las_vegas:      '🇺🇸',
+  qatar:          '🇶🇦',
+  abu_dhabi:      '🇦🇪',
+};
+
+async function uploadCharacterPhoto(file, charId) {
+  if (!sbClient) return { url: null, error: 'Not connected' };
+  const sess = (await sbClient.auth.getSession()).data.session;
+  if (!sess) return { url: null, error: 'Not signed in' };
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+  const path = `${charId}/${Date.now()}.${ext}`;
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/character-photos/${path}`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${sess.access_token}`,
+      'Content-Type': file.type || 'image/jpeg',
+      'x-upsert': 'true',
+    },
+    body: file,
+  });
+  if (!res.ok) { const e = await res.text(); return { url: null, error: e }; }
+  return { url: `${SUPABASE_URL}/storage/v1/object/public/character-photos/${path}`, error: null };
+}
+
 // -- Utility components -------------------------------------------------------
 
 function Badge({ color, bg, children, style={} }) {
@@ -3567,11 +3627,12 @@ function AuthScreen({ onLogin }) {
 // -- Dashboard ----------------------------------------------------------------
 
 function Dashboard({ profile, setPage, sbUser }) {
-  const [chars,     setChars]     = useState(null);
-  const [nextRound, setNextRound] = useState(null);
-  const [appStats,  setAppStats]  = useState({ pending:0, approved:0 });
-  const [activity,  setActivity]  = useState([]);
-  const [loaded,    setLoaded]    = useState(false);
+  const [chars,      setChars]      = useState(null);
+  const [nextRound,  setNextRound]  = useState(null);
+  const [latestRace, setLatestRace] = useState(null);
+  const [appStats,   setAppStats]   = useState({ pending:0, approved:0 });
+  const [activity,   setActivity]   = useState([]);
+  const [loaded,     setLoaded]     = useState(false);
   const isGM = profile?.role === 'gm' || profile?.role === 'admin';
 
   if (!loaded) {
@@ -3591,6 +3652,8 @@ function Dashboard({ profile, setPage, sbUser }) {
         });
       sbFetch(`notifications?recipient_id=eq.${sbUser.id}&order=created_at.desc&limit=5`)
         .then(({ data }) => setActivity(data || []));
+      sbFetch('session_runs?status=eq.final&session=eq.race&order=created_at.desc&limit=1&select=*')
+        .then(({ data }) => setLatestRace(data?.[0] || null));
     } else {
       setChars([]);
     }
@@ -3739,6 +3802,43 @@ function Dashboard({ profile, setPage, sbUser }) {
               ))}
             </div>
           </Card>
+
+          {/* Latest race results */}
+          {latestRace && (latestRace.result?.placements?.length > 0) && (() => {
+            const placements = latestRace.result.placements.slice(0,10);
+            const podium = ['#FFD700','#C0C0C0','#CD7F32'];
+            return (
+              <Card>
+                <div style={{ ...T.cap, color:'#E8002D', marginBottom:4 }}>Latest Race Results</div>
+                <div style={{ ...T.sub, fontSize:11, color:'#55556A', marginBottom:10 }}>
+                  {latestRace.circuit_name || latestRace.round_id?.slice(0,8) || 'Most recent race'}
+                </div>
+                <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+                  {placements.map((p, i) => {
+                    const pc = podium[i] || '#8888A0';
+                    const name = p.driver || p.name || `P${i+1}`;
+                    const time = p.time || p.gap || '';
+                    return (
+                      <div key={i} style={{ display:'flex', alignItems:'center', gap:8,
+                        padding:'4px 6px', borderRadius:4,
+                        background: i < 3 ? pc+'11' : 'transparent' }}>
+                        <div style={{ fontWeight:900, fontSize:14, color:pc, minWidth:20,
+                          fontFamily:FONT_HEAD, textAlign:'center' }}>{i+1}</div>
+                        <div style={{ flex:1, fontSize:12, color:'#F0F0F5',
+                          whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{name}</div>
+                        {time && (
+                          <div style={{ fontSize:10, color:'#8888A0', fontFamily:FONT_MONO,
+                            whiteSpace:'nowrap' }}>{time}</div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <Button size='sm' variant='secondary' style={{ width:'100%', marginTop:10 }}
+                  onClick={() => setPage('stats')}>Full Results</Button>
+              </Card>
+            );
+          })()}
 
           {/* Recent activity */}
           {activity.length > 0 && (
@@ -4105,7 +4205,7 @@ function CharacterDetail({ char: initChar, onBack, sbUser }) {
                           return t ? (
                             <span key={id} style={{ ...T.cap, fontSize:11, padding:'2px 7px', borderRadius:12,
                               background:'#00C46A22', border:'1px solid #00C46A55', color:'#00C46A' }}>
-                              {t.flag} {t.name.replace(' GP','')}
+                              {TRACK_FLAG[t.id]||''} {t.name.replace(' GP','')}
                             </span>
                           ) : null;
                         })}
@@ -4121,7 +4221,7 @@ function CharacterDetail({ char: initChar, onBack, sbUser }) {
                           return t ? (
                             <span key={id} style={{ ...T.cap, fontSize:11, padding:'2px 7px', borderRadius:12,
                               background:'#E8002D22', border:'1px solid #E8002D55', color:'#E8002D' }}>
-                              {t.flag} {t.name.replace(' GP','')}
+                              {TRACK_FLAG[t.id]||''} {t.name.replace(' GP','')}
                             </span>
                           ) : null;
                         })}
@@ -4219,7 +4319,7 @@ function TrackPicker({ good, bad, onChange }) {
 
   function label(ids) {
     if (!ids.length) return 'None';
-    return ids.map(id => { const t = TRACKS.find(t=>t.id===id); return t ? `${t.flag} ${t.name.replace(' GP','')}` : id; }).join('  ·  ');
+    return ids.map(id => { const t = TRACKS.find(t=>t.id===id); return t ? `${TRACK_FLAG[t.id]||''} ${t.name.replace(' GP','')}` : id; }).join('  ·  ');
   }
 
   return (
@@ -4234,7 +4334,7 @@ function TrackPicker({ good, bad, onChange }) {
                 borderRadius:6, padding:'6px 8px' }}>
               <div style={{ ...T.cap, fontSize:11, marginBottom:5, whiteSpace:'nowrap', overflow:'hidden',
                 textOverflow:'ellipsis', color: isGood?'#00C46A':isBad?'#E8002D':'#8888A0' }}>
-                {t.flag} {t.name.replace(' GP','')}
+                {TRACK_FLAG[t.id]||''} {t.name.replace(' GP','')}
               </div>
               <div style={{ display:'flex', gap:4 }}>
                 {(['good','bad']).map(type => {
@@ -4294,8 +4394,23 @@ function CharacterEditForm({ char, onDone }) {
     mental: char.mental != null ? char.mental : 7,
   };
   const [fd, setFd] = useState(init);
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState('');
+  const [saving,        setSaving]        = useState(false);
+  const [err,           setErr]           = useState('');
+  const [photoUploading,setPhotoUploading]= useState(false);
+  const [photoErr,      setPhotoErr]      = useState('');
+
+  async function handlePhotoUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoUploading(true); setPhotoErr('');
+    const { url, error } = await uploadCharacterPhoto(file, char.id);
+    setPhotoUploading(false);
+    if (error) {
+      setPhotoErr('Upload failed — ensure the character-photos bucket exists in Supabase Storage');
+      return;
+    }
+    setFd(p => ({ ...p, photo_url: url }));
+  }
 
   function set(k) { return e => setFd(p => ({ ...p, [k]: e.target.value })); }
 
@@ -4356,13 +4471,31 @@ function CharacterEditForm({ char, onDone }) {
 
       <Card style={{ marginBottom:16 }}>
         <div style={{ ...T.cap, color:'#E8002D', marginBottom:12 }}>Photo / Face Claim</div>
-        <TF label="Photo URL" fkey="photo_url" placeholder="https://i.imgur.com/..." />
-        {fd.photo_url && (
-          <img src={fd.photo_url} alt="preview"
-            style={{ width:72, height:72, borderRadius:'50%', objectFit:'cover',
-              border:'2px solid #E8002D', marginTop:4 }}
-            onError={e => { e.target.style.display='none'; }} />
-        )}
+        <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
+          {fd.photo_url && (
+            <img src={fd.photo_url} alt="preview"
+              style={{ width:72, height:72, borderRadius:'50%', objectFit:'cover',
+                border:'2px solid #E8002D', flexShrink:0 }}
+              onError={e => { e.target.style.display='none'; }} />
+          )}
+          <div style={{ flex:1 }}>
+            <label style={{ ...T.cap, color:'#8888A0', display:'block', marginBottom:6 }}>Upload Photo</label>
+            <input type="file" accept="image/*"
+              onChange={handlePhotoUpload}
+              disabled={photoUploading}
+              style={{ display:'block', marginBottom:8, fontSize:12, color:'#8888A0',
+                fontFamily:FONT_BODY, cursor:'pointer', width:'100%' }} />
+            {photoUploading && (
+              <div style={{ ...T.cap, color:'#8888A0', marginBottom:8 }}>Uploading...</div>
+            )}
+            {photoErr && (
+              <div style={{ color:'#E8002D', fontSize:12, marginBottom:8 }}>{photoErr}</div>
+            )}
+            <label style={{ ...T.cap, color:'#55556A', display:'block', marginBottom:4 }}>Or paste a URL</label>
+            <input type="text" value={fd.photo_url||''} onChange={set('photo_url')}
+              placeholder="https://i.imgur.com/..." style={iStyle} />
+          </div>
+        </div>
       </Card>
 
       <Card style={{ marginBottom:16 }}>
@@ -4389,9 +4522,9 @@ function CharacterEditForm({ char, onDone }) {
                   background: sel ? (s.color||'#E8002D')+'22' : '#111114',
                   border: `1px solid ${sel ? (s.color||'#E8002D') : '#252530'}`,
                   transition:'border-color .12s, background .12s' }}>
-                <div style={{ fontSize:16 }}>{s.icon||'🏎'}</div>
+                <div style={{ fontSize:16 }}>{STYLE_DISPLAY[s.id]?.icon || '🏎️'}</div>
                 <div style={{ ...T.cap, color: sel ? (s.color||'#E8002D') : '#8888A0',
-                  fontSize:11, marginTop:3, textTransform:'capitalize' }}>{s.id}</div>
+                  fontSize:11, marginTop:3, textTransform:'capitalize' }}>{STYLE_DISPLAY[s.id]?.label || s.id}</div>
               </div>
             );
           })}
@@ -4402,7 +4535,7 @@ function CharacterEditForm({ char, onDone }) {
             <div style={{ padding:'10px 12px', borderRadius:6, background:(s.color||'#E8002D')+'11',
               border:`1px solid ${(s.color||'#E8002D')}33`, marginBottom:14 }}>
               <div style={{ ...T.cap, color: s.color||'#E8002D', marginBottom:4 }}>{s.name||s.id}</div>
-              <div style={{ ...T.sub, color:'#8888A0', fontSize:12, lineHeight:1.5 }}>{s.description||s.effects||''}</div>
+              <div style={{ ...T.sub, color:'#8888A0', fontSize:12, lineHeight:1.5 }}>{STYLE_DISPLAY[fd.sim_style]?.tip || ''}</div>
             </div>
           ) : null;
         })()}
@@ -5839,8 +5972,10 @@ function CalendarPage({ profile }) {
     );
   }
 
-  const complete = rounds.filter(r => r.state === 'complete').length;
-  const nextRound = rounds.find(r => r.state !== 'complete');
+  const testingRounds = rounds.filter(r => r.number < 0).sort((a,b) => a.number - b.number);
+  const raceRounds    = rounds.filter(r => r.number >= 1);
+  const complete      = raceRounds.filter(r => r.state === 'complete').length;
+  const nextRound     = raceRounds.find(r => r.state !== 'complete');
 
   return (
     <div>
@@ -5848,7 +5983,9 @@ function CalendarPage({ profile }) {
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:24 }}>
         <div>
           <div style={{ ...T.h1, marginBottom:4 }}>Race Calendar</div>
-          <div style={{ ...T.sub }}>{complete}/{rounds.length} rounds complete</div>
+          <div style={{ ...T.sub }}>{complete}/{raceRounds.length} rounds complete
+            {testingRounds.length > 0 && <span style={{ marginLeft:10, color:'#55556A' }}>+{testingRounds.length} testing</span>}
+          </div>
         </div>
       </div>
 
@@ -5913,9 +6050,52 @@ function CalendarPage({ profile }) {
         </div>
       )}
 
+      {/* Pre-Season Testing */}
+      {testingRounds.length > 0 && (
+        <div style={{ marginBottom:20 }}>
+          <div style={{ ...T.cap, color:'#3B8EFF', marginBottom:10 }}>Pre-Season Testing</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {testingRounds.map((r, idx) => {
+              const sc = STATE_COLOR[r.state] || '#3B8EFF';
+              const done = r.state === 'complete';
+              return (
+                <Card key={r.id}
+                  onClick={done ? () => setSelected(r) : undefined}
+                  style={{ cursor: done ? 'pointer' : 'default',
+                    borderLeft:`3px solid ${done ? '#00C46A' : '#3B8EFF'}` }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                    <div style={{ display:'flex', gap:14, alignItems:'center' }}>
+                      <div style={{ fontWeight:900, fontSize:16, color:done?'#00C46A':'#3B8EFF',
+                        minWidth:52, fontFamily:FONT_HEAD }}>TEST {idx+1}</div>
+                      <div>
+                        <div style={{ ...T.h3 }}>{r.circuit_name || r.circuit_id}</div>
+                        <div style={{ ...T.sub, fontSize:12 }}>
+                          {r.scheduled_for ? new Date(r.scheduled_for).toDateString() : 'TBD'}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                      <Badge color={sc}>{STATE_LABEL[r.state]||r.state}</Badge>
+                      {done && <span style={{ ...T.cap, fontSize:10, color:'#00C46A' }}>View Results ›</span>}
+                      {isGM && !done && nextState(r.state) && (
+                        <Button size="sm" variant="secondary"
+                          onClick={e => { e.stopPropagation(); advanceState(r); }}
+                          disabled={advancing === r.id}>
+                          {advancing === r.id ? '...' : 'Advance'}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Full schedule */}
       <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-        {rounds.map(r => {
+        {raceRounds.map(r => {
           const sc = STATE_COLOR[r.state] || '#55556A';
           const done = r.state === 'complete';
           return (
@@ -5938,6 +6118,7 @@ function CalendarPage({ profile }) {
                 <div style={{ display:'flex', gap:8, alignItems:'center' }}>
                   {r.is_sprint && <Badge color="#FF9500">Sprint</Badge>}
                   <Badge color={sc}>{STATE_LABEL[r.state]||r.state}</Badge>
+                  {done && <span style={{ ...T.cap, fontSize:10, color:'#00C46A' }}>View Results ›</span>}
                   {isGM && !done && nextState(r.state) && (
                     <Button size="sm" variant="secondary"
                       onClick={() => advanceState(r)}
@@ -8093,8 +8274,10 @@ function GMLeagueSettings() {
   const [settings, setSettings] = useState({});
   const [loading,  setLoading]  = useState(true);
   const [loaded,   setLoaded]   = useState(false);
-  const [saving,   setSaving]   = useState(false);
-  const [saved,    setSaved]    = useState(false);
+  const [saving,     setSaving]     = useState(false);
+  const [saved,      setSaved]      = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [genMsg,     setGenMsg]     = useState('');
 
   async function load() {
     const { data } = await sbFetch('league_settings?select=key,value');
@@ -8149,19 +8332,77 @@ function GMLeagueSettings() {
     setSettings(s => ({ ...F1_DEFAULTS, ...s }));
   }
 
+  const F1_2027_CALENDAR = [
+    { number:-2, type:'testing', circuit_id:'bahrain',       circuit_name:'Pre-Season Test 1',   scheduled_for:'2027-02-19', is_sprint:false },
+    { number:-1, type:'testing', circuit_id:'bahrain',       circuit_name:'Pre-Season Test 2',   scheduled_for:'2027-02-27', is_sprint:false },
+    { number:1,  type:'race',    circuit_id:'australia',     circuit_name:'Australian GP',       scheduled_for:'2027-03-13', is_sprint:false },
+    { number:2,  type:'race',    circuit_id:'china',         circuit_name:'Chinese GP',          scheduled_for:'2027-03-20', is_sprint:true  },
+    { number:3,  type:'race',    circuit_id:'japan',         circuit_name:'Japanese GP',         scheduled_for:'2027-04-04', is_sprint:false },
+    { number:4,  type:'race',    circuit_id:'bahrain',       circuit_name:'Bahrain GP',          scheduled_for:'2027-04-11', is_sprint:false },
+    { number:5,  type:'race',    circuit_id:'saudi_arabia',  circuit_name:'Saudi Arabian GP',    scheduled_for:'2027-04-18', is_sprint:false },
+    { number:6,  type:'race',    circuit_id:'miami',         circuit_name:'Miami GP',            scheduled_for:'2027-05-02', is_sprint:true  },
+    { number:7,  type:'race',    circuit_id:'emilia_romagna',circuit_name:'Emilia-Romagna GP',   scheduled_for:'2027-05-16', is_sprint:false },
+    { number:8,  type:'race',    circuit_id:'monaco',        circuit_name:'Monaco GP',           scheduled_for:'2027-05-23', is_sprint:false },
+    { number:9,  type:'race',    circuit_id:'spain',         circuit_name:'Spanish GP',          scheduled_for:'2027-05-30', is_sprint:false },
+    { number:10, type:'race',    circuit_id:'canada',        circuit_name:'Canadian GP',         scheduled_for:'2027-06-13', is_sprint:false },
+    { number:11, type:'race',    circuit_id:'austria',       circuit_name:'Austrian GP',         scheduled_for:'2027-06-27', is_sprint:true  },
+    { number:12, type:'race',    circuit_id:'great_britain', circuit_name:'British GP',          scheduled_for:'2027-07-04', is_sprint:false },
+    { number:13, type:'race',    circuit_id:'belgium',       circuit_name:'Belgian GP',          scheduled_for:'2027-07-25', is_sprint:false },
+    { number:14, type:'race',    circuit_id:'hungary',       circuit_name:'Hungarian GP',        scheduled_for:'2027-08-01', is_sprint:false },
+    { number:15, type:'race',    circuit_id:'netherlands',   circuit_name:'Dutch GP',            scheduled_for:'2027-08-29', is_sprint:false },
+    { number:16, type:'race',    circuit_id:'italy',         circuit_name:'Italian GP',          scheduled_for:'2027-09-05', is_sprint:false },
+    { number:17, type:'race',    circuit_id:'azerbaijan',    circuit_name:'Azerbaijan GP',       scheduled_for:'2027-09-19', is_sprint:false },
+    { number:18, type:'race',    circuit_id:'singapore',     circuit_name:'Singapore GP',        scheduled_for:'2027-10-03', is_sprint:false },
+    { number:19, type:'race',    circuit_id:'usa',           circuit_name:'United States GP',    scheduled_for:'2027-10-17', is_sprint:true  },
+    { number:20, type:'race',    circuit_id:'mexico',        circuit_name:'Mexico City GP',      scheduled_for:'2027-10-24', is_sprint:false },
+    { number:21, type:'race',    circuit_id:'brazil',        circuit_name:'Brazilian GP',        scheduled_for:'2027-11-07', is_sprint:true  },
+    { number:22, type:'race',    circuit_id:'las_vegas',     circuit_name:'Las Vegas GP',        scheduled_for:'2027-11-20', is_sprint:false },
+    { number:23, type:'race',    circuit_id:'qatar',         circuit_name:'Qatar GP',            scheduled_for:'2027-11-28', is_sprint:true  },
+    { number:24, type:'race',    circuit_id:'abu_dhabi',     circuit_name:'Abu Dhabi GP',        scheduled_for:'2027-12-05', is_sprint:false },
+  ];
+
+  async function generateCalendar() {
+    setGenerating(true); setGenMsg('');
+    const { data: existing } = await sbFetch('rounds?select=id');
+    if (existing && existing.length > 0) {
+      const confirmed = window.confirm(
+        `${existing.length} round(s) already exist.\n\nReplace all with the full 2027 F1 calendar (2 testing + 24 races)?\n\nThis cannot be undone.`
+      );
+      if (!confirmed) { setGenerating(false); return; }
+      await sbFetch('rounds?id=neq.00000000-0000-0000-0000-000000000000', { method:'DELETE' });
+    }
+    let ok = 0;
+    for (const r of F1_2027_CALENDAR) {
+      const res = await sbFetch('rounds', {
+        method:'POST',
+        headers:{ Prefer:'return=minimal' },
+        body: JSON.stringify({ ...r, state:'scheduled' }),
+      });
+      if (!res.error) ok++;
+    }
+    setGenerating(false);
+    setGenMsg(`✓ Generated ${ok}/${F1_2027_CALENDAR.length} rounds (2 testing + 24 races)`);
+  }
+
   return (
     <div>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
         <div style={{ ...T.h3 }}>League Settings</div>
         <div style={{ display:'flex', gap:10 }}>
           <Button variant="secondary" onClick={applyDefaults}>Apply F1 Defaults</Button>
+          <Button variant="secondary" onClick={generateCalendar} disabled={generating}>
+            {generating ? 'Generating...' : 'Generate 2027 Calendar'}
+          </Button>
           <Button onClick={save} disabled={saving}>
             {saved ? 'Saved ✓' : saving ? 'Saving...' : 'Save Changes'}
           </Button>
         </div>
       </div>
-      <div style={{ ...T.cap, color:'#55556A', marginBottom:20 }}>
-        "Apply F1 Defaults" pre-fills any empty fields with standard F1 2025 values without overwriting what you've already set.
+      <div style={{ display:'flex', gap:16, alignItems:'center', marginBottom:20 }}>
+        <div style={{ ...T.cap, color:'#55556A' }}>
+          "Apply F1 Defaults" pre-fills empty fields · "Generate 2027 Calendar" inserts 2 testing + 24 race rounds
+        </div>
+        {genMsg && <div style={{ ...T.cap, color:'#00C46A', fontSize:11 }}>{genMsg}</div>}
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
