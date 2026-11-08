@@ -3413,6 +3413,35 @@ const NAV_ITEMS = [
   { id:'sandbox',      label:'Sandbox' },
 ];
 
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(e) { return { error: e }; }
+  componentDidCatch(e, info) { console.error('F1Sim render error:', e, info); }
+  render() {
+    if (this.state.error) {
+      return React.createElement('div', {
+        style: { padding:32, fontFamily:'IBM Plex Mono, monospace', background:'#0A0A0C',
+          minHeight:'100vh', color:'#F0F0F5' }
+      },
+        React.createElement('div', { style:{ fontSize:20, fontWeight:700, color:'#E8002D', marginBottom:12 } },
+          'Render Error'),
+        React.createElement('pre', { style:{ fontSize:12, color:'#FF9500', whiteSpace:'pre-wrap',
+          background:'#111114', padding:16, borderRadius:8, border:'1px solid #252530' } },
+          String(this.state.error?.message || this.state.error)),
+        React.createElement('pre', { style:{ fontSize:11, color:'#55556A', whiteSpace:'pre-wrap',
+          marginTop:12, background:'#111114', padding:16, borderRadius:8, border:'1px solid #252530' } },
+          String(this.state.error?.stack || '')),
+        React.createElement('button', {
+          onClick: () => this.setState({ error: null }),
+          style:{ marginTop:16, padding:'8px 20px', background:'#E8002D', border:'none',
+            borderRadius:6, color:'#fff', cursor:'pointer', fontFamily:'IBM Plex Mono, monospace' }
+        }, 'Dismiss')
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function Sidebar({ page, setPage, profile, unreadCount=0 }) {
   const isGM = profile?.role === 'gm' || profile?.role === 'admin';
   return (
@@ -8102,7 +8131,9 @@ export default function F1Sim() {
       fontFamily:FONT_BODY, color:'#F0F0F5' }}>
       <Sidebar page={page} setPage={setPage} profile={profile} unreadCount={unreadCount} />
       <main style={{ flex:1, padding:'28px 32px', overflowY:'auto', maxHeight:'100vh' }}>
-        {renderPage()}
+        <ErrorBoundary>
+          {renderPage()}
+        </ErrorBoundary>
       </main>
     </div>
   );
