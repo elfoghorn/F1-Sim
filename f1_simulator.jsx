@@ -5244,57 +5244,47 @@ function MyTeamPage({ sbUser }) {
 // -- Teams Page ---------------------------------------------------------------
 
 function TeamsPage() {
-  const [teams, setTeams] = useState(null);
+  const [teams,    setTeams]    = useState(null);
   const [selected, setSelected] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [loaded, setLoaded] = useState(false);
+  const [loading,  setLoading]  = useState(true);
+  const [loaded,   setLoaded]   = useState(false);
 
   if (!loaded) {
     setLoaded(true);
     if (sbClient) {
-      sbFetch('league_teams?select=*,league_drivers(id,name,number,pace,consistency)&order=name')
-        .then(({ data }) => { setTeams(data || []); setLoading(false); });
-    } else { setLoading(false); setTeams([]); }
+      sbFetch('league_teams?select=*&order=name')
+        .then(({ data }) => { setTeams(data && data.length ? data : null); setLoading(false); });
+    } else { setLoading(false); }
   }
 
   if (loading) return <Spinner />;
 
-  if (selected) {
-    const t = (teams||[]).find(x => x.id === selected);
-    if (!t) { setSelected(null); return null; }
-    return <TeamDetail team={t} onBack={() => setSelected(null)} />;
-  }
+  if (selected) return <TeamDetail team={selected} onBack={() => setSelected(null)} />;
 
-  const displayTeams = (teams && teams.length > 0) ? teams : TEAMS.map(t => ({
+  const displayTeams = teams || TEAMS.map(t => ({
     id: t.id, name: t.name, color: t.color, tier: t.tier,
-    car_pace: t.carPace, reliability: t.reliability, league_drivers: []
+    car_pace: t.carPace, reliability: t.reliability, pit_speed: t.pitSpeed,
+    tyre_life: t.tyreLife, strategy: t.strategy,
   }));
 
   return (
     <div>
       <div style={{ ...T.h1, marginBottom:8 }}>Teams</div>
-      <div style={{ ...T.sub, marginBottom:24 }}>Active teams and rosters</div>
+      <div style={{ ...T.sub, marginBottom:24 }}>Click any team to see their full roster and stats</div>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:14 }}>
         {displayTeams.map(t => (
-          <Card key={t.id} onClick={() => t.id && typeof t.id === 'string' && t.id.includes('-') ? setSelected(t.id) : null}>
-            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
-              <div style={{ width:4, height:40, background: t.color || '#E8002D', borderRadius:2 }} />
+          <Card key={t.id} onClick={() => setSelected(t)}>
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
+              <div style={{ width:5, height:44, background: t.color || '#E8002D', borderRadius:3 }} />
               <div style={{ flex:1 }}>
                 <div style={{ ...T.h3 }}>{t.name}</div>
-                <div style={{ ...T.sub }}>{t.tier} tier</div>
+                <div style={{ ...T.cap, color:'#55556A', textTransform:'capitalize' }}>{(t.tier||'').replace('_',' ')} tier</div>
               </div>
-              {(() => {
-                const dCount = (t.league_drivers||[]).filter(d => !d.type || d.type !== 'staff').length;
-                const full   = dCount >= 2;
-                return (
-                  <Badge color={full?'#00C46A':'#55556A'}>
-                    {full ? 'Full' : `${dCount}/2`}
-                  </Badge>
-                );
-              })()}
+              <div style={{ fontSize:18, opacity:.4 }}>›</div>
             </div>
-            <StatBar label="Car Pace"    value={t.car_pace || t.carPace || 75} color={t.color || '#E8002D'} />
-            <StatBar label="Reliability" value={t.reliability || 75}            color={t.color || '#E8002D'} />
+            <StatBar label="Car Pace"    value={t.car_pace || t.carPace || 75}    color={t.color || '#E8002D'} />
+            <StatBar label="Reliability" value={t.reliability || 75}              color={t.color || '#E8002D'} />
+            <StatBar label="Pit Speed"   value={t.pit_speed || t.pitSpeed || 70}  color={t.color || '#E8002D'} />
           </Card>
         ))}
       </div>
@@ -5309,7 +5299,8 @@ function TeamDetail({ team, onBack }) {
 
   if (!loaded) {
     setLoaded(true);
-    if (sbClient && team.id && String(team.id).includes('-')) {
+    const isDbTeam = sbClient && team.id && String(team.id).includes('-');
+    if (isDbTeam) {
       Promise.all([
         sbFetch(`characters?team_id=eq.${team.id}&is_active=eq.true&select=*&order=type`),
         sbFetch(`session_runs?status=eq.final&session=eq.race&select=result`),
@@ -5327,7 +5318,7 @@ function TeamDetail({ team, onBack }) {
         setTeamWins({ wins, podiums });
       });
     } else {
-      setStaff(team.league_drivers || []);
+      setStaff([]);
       setTeamWins({ wins: 0, podiums: 0 });
     }
   }
@@ -5364,14 +5355,19 @@ function TeamDetail({ team, onBack }) {
       </div>
 
       {/* Car stats */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:16 }}>
-        {[['Car Pace',team.car_pace],['Reliability',team.reliability],
-          ['Pit Speed',team.pit_speed],['Tyre Life',team.tyre_life]].map(([l,v]) => (
-          <Card key={l} style={{ textAlign:'center', padding:14 }}>
-            <div style={{ fontSize:28, fontWeight:900, color:tc, fontFamily:FONT_HEAD }}>{v}</div>
-            <div style={{ ...T.cap }}>{l}</div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(110px,1fr))', gap:10, marginBottom:20 }}>
+        {[['Car Pace', team.car_pace || team.carPace],
+          ['Reliability', team.reliability],
+          ['Pit Speed', team.pit_speed || team.pitSpeed],
+          ['Tyre Life', team.tyre_life || team.tyreLife],
+          ['Strategy', team.strategy_skill || team.strategy]].map(([l,v]) => v != null ? (
+          <Card key={l} style={{ textAlign:'center', padding:'12px 8px' }}>
+            <div style={{ fontSize:26, fontWeight:900, color:tc, fontFamily:FONT_HEAD, lineHeight:1 }}>
+              {typeof v === 'number' ? v : '—'}
+            </div>
+            <div style={{ ...T.cap, fontSize:11, marginTop:4 }}>{l}</div>
           </Card>
-        ))}
+        ) : null).filter(Boolean)}
       </div>
 
       {/* Win stats */}
@@ -5403,10 +5399,24 @@ function TeamDetail({ team, onBack }) {
                   {d.number && <div style={{ ...T.cap, color:'#55556A' }}>#{d.number}</div>}
                 </div>
               </div>
-              {d.nationality && <div style={{ ...T.cap, color:'#8888A0', marginBottom:6, fontSize:11 }}>{d.nationality}</div>}
+              <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:8 }}>
+                {d.nationality && <Badge color="#3B8EFF">{d.nationality}</Badge>}
+                {(d.sim_style || d.driving_style) && (() => {
+                  const s = DRIVING_STYLES.find(x => x.id === (d.sim_style || d.style));
+                  return <Badge color={s ? (s.color||'#FF9500') : '#FF9500'}>
+                    {s ? (s.icon ? s.icon+' '+s.id : s.id) : (d.driving_style||d.style)}
+                  </Badge>;
+                })()}
+              </div>
               <StatBar label="Pace"        value={d.pace}        color={tc} />
               <StatBar label="Consistency" value={d.consistency} color={tc} />
-              {d.driving_style && <div style={{ ...T.sub, fontSize:11, marginTop:6, color:'#8888A0' }}>{d.driving_style}</div>}
+              <StatBar label="Wet"         value={d.wet}         color={tc} />
+              <StatBar label="Overtaking"  value={d.overtaking}  color={tc} />
+              {d.mental != null && (
+                <div style={{ ...T.cap, color:'#8888A0', fontSize:11, marginTop:6 }}>
+                  Mental: {d.mental}/10
+                </div>
+              )}
             </Card>
           ))}
         </div>
