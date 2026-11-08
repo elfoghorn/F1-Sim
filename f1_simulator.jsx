@@ -4403,14 +4403,13 @@ function ApplyPage({ sbUser }) {
 }
 
 function ApplicationForm({ sbUser, onDone, onCancel }) {
-  const [chars,  setChars]  = useState([]);
   const [teams,  setTeams]  = useState([]);
   const [step,   setStep]   = useState(0);
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState('');
   const [loaded, setLoaded] = useState(false);
   const [fd, setFd] = useState({
-    character_id:'', team_id:'',
+    char_name:'', char_type:'driver', char_number:'', team_id:'',
     // section 2 — identity details
     nationality:'', age:'', height:'',
     // section 3 — driver profile / staff profile
@@ -4432,11 +4431,9 @@ function ApplicationForm({ sbUser, onDone, onCancel }) {
     setLoaded(true);
     if (sbClient) {
       Promise.all([
-        sbFetch(`characters?owner_id=eq.${sbUser.id}&select=id,name,type`),
         sbFetch('league_teams?select=id,name'),
         sbFetch('league_drivers?select=team_id,characters!character_id(type)&limit=500'),
-      ]).then(([c,t,ld]) => {
-        setChars(c.data||[]);
+      ]).then(([t,ld]) => {
         // Build slot map: teamId -> driver count
         const slotMap = {};
         (ld.data||[]).forEach(d => {
@@ -4453,8 +4450,7 @@ function ApplicationForm({ sbUser, onDone, onCancel }) {
     }
   }
 
-  const selChar = chars.find(c => c.id === fd.character_id);
-  const isDriver = selChar ? selChar.type === 'driver' : true;
+  const isDriver = fd.char_type === 'driver';
 
   const SECTIONS_DRIVER = [
     'Character & Team', 'Driver Details', 'Driver Profile',
@@ -4471,10 +4467,25 @@ function ApplicationForm({ sbUser, onDone, onCancel }) {
 
   async function submit() {
     setSaving(true); setError('');
+    // Create the new character first
+    const charRes = await sbFetch('characters', {
+      method:'POST',
+      headers:{ Prefer:'return=representation' },
+      body: JSON.stringify({
+        name: fd.char_name.trim(),
+        type: fd.char_type,
+        number: fd.char_number ? parseInt(fd.char_number, 10) : null,
+        owner_id: sbUser.id,
+        is_active: false,
+      })
+    });
+    if (charRes.error) { setSaving(false); setError(charRes.error); return; }
+    const newChar = Array.isArray(charRes.data) ? charRes.data[0] : charRes.data;
+    if (!newChar?.id) { setSaving(false); setError('Failed to create character'); return; }
     const { error: err } = await sbFetch('applications', {
       method:'POST',
       body: JSON.stringify({
-        character_id: fd.character_id,
+        character_id: newChar.id,
         applicant_id: sbUser.id,
         desired_team_id: fd.team_id || null,
         status: 'submitted',
@@ -4488,7 +4499,7 @@ function ApplicationForm({ sbUser, onDone, onCancel }) {
   }
 
   function nextStep() {
-    if (step === 0 && !fd.character_id) { setError('Please select a character'); return; }
+    if (step === 0 && !fd.char_name.trim()) { setError('Please enter a character name'); return; }
     setError('');
     if (step < totalSteps - 1) setStep(s => s+1);
     else submit();
@@ -4526,12 +4537,22 @@ function ApplicationForm({ sbUser, onDone, onCancel }) {
         </div>
       )}
 
-      {/* Section 0 — Character & Team */}
+      {/* Section 0 — New Character & Team */}
       {step === 0 && (
         <Card>
-          <Select label="Character" value={fd.character_id} onChange={v => set('character_id',v)}
-            options={[{ value:'', label:'Select a character...' },
-              ...chars.map(c => ({ value:c.id, label:`${c.name} (${c.type})` }))]} />
+          <Input label="Character Name" value={fd.char_name} onChange={v => set('char_name',v)}
+            placeholder="Enter your character's full name" />
+          <Select label="Role" value={fd.char_type} onChange={v => set('char_type',v)}
+            options={[
+              { value:'driver',           label:'Driver' },
+              { value:'team_principal',   label:'Team Principal' },
+              { value:'race_engineer',    label:'Race Engineer' },
+              { value:'engineer',         label:'Engineer' },
+            ]} />
+          {isDriver && (
+            <Input label="Car Number (optional)" value={fd.char_number} onChange={v => set('char_number',v)}
+              placeholder="e.g. 44" />
+          )}
           <Select label="Desired Team (optional)" value={fd.team_id} onChange={v => set('team_id',v)}
             options={[{ value:'', label:'No preference' },
               ...teams.map(t => ({
@@ -4545,7 +4566,7 @@ function ApplicationForm({ sbUser, onDone, onCancel }) {
             </div>
           )}
           <div style={{ ...T.sub, fontSize:12 }}>
-            Select the character you are applying with. If you have no team preference, leave the team blank.
+            Create a new character for this application. If you have no team preference, leave the team blank.
           </div>
         </Card>
       )}
@@ -7606,14 +7627,25 @@ function GMRaceControl({ sbUser }) {
 
     setRunning(true);
     setTimeout(() => {
-      let res;
       if (mode === 'qualifying') {
-        res = aggQual(n, driverList, teamList, track);
+        const raw = aggQual(n, driverList, teamList, track);
+        setResults((raw.grid || []).map((e, i) => ({
+          pos: i+1,
+          driver: e.driver?.name || '',
+          team:   e.team?.name   || '',
+          time:   e.score ? e.score.toFixed(3) : '',
+        })));
       } else {
-        const grid = aggQual(1, driverList, teamList, track).map(r => r.driver);
-        res = aggRace(n, grid, teamList, track);
+        const qualResult = aggQual(1, driverList, teamList, track);
+        const raw = aggRace(n, qualResult.grid, teamList, track);
+        setResults((raw.positions || []).map((e, i) => ({
+          pos:    i+1,
+          driver: e.driver?.name || '',
+          team:   e.team?.name   || '',
+          dnf:    e.dnf || false,
+          time:   e.dnf ? 'DNF' : (i === 0 ? 'WINNER' : (e.gap != null ? `+${e.gap.toFixed(3)}s` : '')),
+        })));
       }
-      setResults(res);
       setRunning(false);
     }, 50);
   }
@@ -7874,10 +7906,20 @@ function SandboxPage() {
   function run() {
     setRunning(true);
     setTimeout(() => {
-      if (mode === 'qualifying') setResults(aggQual(n, DRIVERS, TEAMS, track));
-      else {
-        const grid = aggQual(1, DRIVERS, TEAMS, track).map(r => r.driver);
-        setResults(aggRace(n, grid, TEAMS, track));
+      if (mode === 'qualifying') {
+        const raw = aggQual(n, DRIVERS, TEAMS, track);
+        setResults((raw.grid||[]).map((e,i) => ({
+          pos:i+1, driver:e.driver?.name||'', team:e.team?.name||'',
+          time:e.score?e.score.toFixed(3):'',
+        })));
+      } else {
+        const qr = aggQual(1, DRIVERS, TEAMS, track);
+        const raw = aggRace(n, qr.grid, TEAMS, track);
+        setResults((raw.positions||[]).map((e,i) => ({
+          pos:i+1, driver:e.driver?.name||'', team:e.team?.name||'',
+          dnf:e.dnf||false,
+          time:e.dnf?'DNF':(i===0?'WINNER':(e.gap!=null?`+${e.gap.toFixed(3)}s`:'')),
+        })));
       }
       setRunning(false);
     }, 50);
