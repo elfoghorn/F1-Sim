@@ -24820,6 +24820,7 @@ function GMRaceControl({ sbUser }) {
   const [savingRound,   setSavingRound]   = useState(false);
   const [advancing,     setAdvancing]     = useState(null);
   const [tab,           setTab]           = useState('sim');
+  const [simError,      setSimError]      = useState('');
 
   async function loadRounds() {
     const { data } = await sbFetch('rounds?order=number&select=*');
@@ -24876,26 +24877,31 @@ function GMRaceControl({ sbUser }) {
     const driverList = leagueMode && leagueDrivers.length > 0 ? leagueDrivers : DRIVERS;
     const teamList   = leagueMode && leagueTeams.length > 0   ? leagueTeams   : TEAMS;
 
+    setSimError('');
     setRunning(true);
     setTimeout(() => {
-      if (mode === 'qualifying') {
-        const raw = aggQual(n, driverList, teamList, track);
-        setResults((raw.grid || []).map((e, i) => ({
-          pos: i+1,
-          driver: _optionalChain([e, 'access', _245 => _245.driver, 'optionalAccess', _246 => _246.name]) || '',
-          team:   _optionalChain([e, 'access', _247 => _247.team, 'optionalAccess', _248 => _248.name])   || '',
-          time:   e.score ? e.score.toFixed(3) : '',
-        })));
-      } else {
-        const qualResult = aggQual(1, driverList, teamList, track);
-        const raw = aggRace(n, qualResult.grid, teamList, track);
-        setResults((raw.positions || []).map((e, i) => ({
-          pos:    i+1,
-          driver: _optionalChain([e, 'access', _249 => _249.driver, 'optionalAccess', _250 => _250.name]) || '',
-          team:   _optionalChain([e, 'access', _251 => _251.team, 'optionalAccess', _252 => _252.name])   || '',
-          dnf:    e.dnf || false,
-          time:   e.dnf ? 'DNF' : (i === 0 ? 'WINNER' : (e.gap != null ? `+${e.gap.toFixed(3)}s` : '')),
-        })));
+      try {
+        if (mode === 'qualifying') {
+          const raw = aggQual(n, driverList, teamList, track);
+          setResults((raw.grid || []).map((e, i) => ({
+            pos: i+1,
+            driver: _optionalChain([e, 'access', _245 => _245.driver, 'optionalAccess', _246 => _246.name]) || '',
+            team:   _optionalChain([e, 'access', _247 => _247.team, 'optionalAccess', _248 => _248.name])   || '',
+            time:   e.score ? e.score.toFixed(3) : '',
+          })));
+        } else {
+          const qualResult = aggQual(1, driverList, teamList, track);
+          const raw = aggRace(n, qualResult.grid, teamList, track);
+          setResults((raw.positions || []).map((e, i) => ({
+            pos:    i+1,
+            driver: _optionalChain([e, 'access', _249 => _249.driver, 'optionalAccess', _250 => _250.name]) || '',
+            team:   _optionalChain([e, 'access', _251 => _251.team, 'optionalAccess', _252 => _252.name])   || '',
+            dnf:    e.dnf || false,
+            time:   e.dnf ? 'DNF' : (i === 0 ? 'WINNER' : (e.gap != null ? `+${e.gap.toFixed(3)}s` : '')),
+          })));
+        }
+      } catch(err) {
+        setSimError(String(_optionalChain([err, 'optionalAccess', _253 => _253.message]) || err));
       }
       setRunning(false);
     }, 50);
@@ -24930,7 +24936,7 @@ function GMRaceControl({ sbUser }) {
       body: JSON.stringify({
         number:        parseInt(newRound.number),
         circuit_id:    newRound.circuit_id,
-        circuit_name:  _optionalChain([track, 'optionalAccess', _253 => _253.name]) || newRound.circuit_id,
+        circuit_name:  _optionalChain([track, 'optionalAccess', _254 => _254.name]) || newRound.circuit_id,
         state:         'scheduled',
         is_sprint:     newRound.is_sprint,
         scheduled_for: newRound.scheduled_for || null,
@@ -25052,6 +25058,14 @@ function GMRaceControl({ sbUser }) {
             )
           )
 
+          , simError && (
+            React.createElement('div', { style: { background:'rgba(232,0,45,0.1)', border:'1px solid #E8002D',
+              borderRadius:7, padding:'12px 16px', marginBottom:16, fontSize:13,
+              color:'#FF6644', fontFamily:FONT_MONO, whiteSpace:'pre-wrap' },}, "Simulation error: "
+                , simError
+            )
+          )
+
           , results && (
             React.createElement(Card, { style: { padding:0, overflow:'hidden' },}
               , React.createElement('div', { style: { padding:'10px 16px', background:'#111114',
@@ -25153,24 +25167,30 @@ function SandboxPage() {
   const [mode, setMode] = useState('qualifying');
   const [results, setResults] = useState(null);
   const [running, setRunning] = useState(false);
+  const [simError, setSimError] = useState('');
 
   function run() {
+    setSimError('');
     setRunning(true);
     setTimeout(() => {
-      if (mode === 'qualifying') {
-        const raw = aggQual(n, DRIVERS, TEAMS, track);
-        setResults((raw.grid||[]).map((e,i) => ({
-          pos:i+1, driver:_optionalChain([e, 'access', _254 => _254.driver, 'optionalAccess', _255 => _255.name])||'', team:_optionalChain([e, 'access', _256 => _256.team, 'optionalAccess', _257 => _257.name])||'',
-          time:e.score?e.score.toFixed(3):'',
-        })));
-      } else {
-        const qr = aggQual(1, DRIVERS, TEAMS, track);
-        const raw = aggRace(n, qr.grid, TEAMS, track);
-        setResults((raw.positions||[]).map((e,i) => ({
-          pos:i+1, driver:_optionalChain([e, 'access', _258 => _258.driver, 'optionalAccess', _259 => _259.name])||'', team:_optionalChain([e, 'access', _260 => _260.team, 'optionalAccess', _261 => _261.name])||'',
-          dnf:e.dnf||false,
-          time:e.dnf?'DNF':(i===0?'WINNER':(e.gap!=null?`+${e.gap.toFixed(3)}s`:'')),
-        })));
+      try {
+        if (mode === 'qualifying') {
+          const raw = aggQual(n, DRIVERS, TEAMS, track);
+          setResults((raw.grid||[]).map((e,i) => ({
+            pos:i+1, driver:_optionalChain([e, 'access', _255 => _255.driver, 'optionalAccess', _256 => _256.name])||'', team:_optionalChain([e, 'access', _257 => _257.team, 'optionalAccess', _258 => _258.name])||'',
+            time:e.score?e.score.toFixed(3):'',
+          })));
+        } else {
+          const qr = aggQual(1, DRIVERS, TEAMS, track);
+          const raw = aggRace(n, qr.grid, TEAMS, track);
+          setResults((raw.positions||[]).map((e,i) => ({
+            pos:i+1, driver:_optionalChain([e, 'access', _259 => _259.driver, 'optionalAccess', _260 => _260.name])||'', team:_optionalChain([e, 'access', _261 => _261.team, 'optionalAccess', _262 => _262.name])||'',
+            dnf:e.dnf||false,
+            time:e.dnf?'DNF':(i===0?'WINNER':(e.gap!=null?`+${e.gap.toFixed(3)}s`:'')),
+          })));
+        }
+      } catch(err) {
+        setSimError(String(_optionalChain([err, 'optionalAccess', _263 => _263.message]) || err));
       }
       setRunning(false);
     }, 50);
@@ -25194,6 +25214,13 @@ function SandboxPage() {
           )
           , React.createElement(Button, { onClick: run, disabled: running, style: { width:'100%' },}
             , running ? 'Running...' : 'Run Simulation'
+          )
+          , simError && (
+            React.createElement('div', { style: { marginTop:10, padding:'10px 12px', background:'rgba(232,0,45,0.1)',
+              border:'1px solid #E8002D', borderRadius:6, fontSize:12,
+              color:'#FF6644', fontFamily:FONT_MONO, whiteSpace:'pre-wrap' },}
+              , simError
+            )
           )
         )
         , results && (
@@ -25230,7 +25257,7 @@ function F1Sim() {
   if (sbClient && !authInitRef.current) {
     authInitRef.current = true;
     sbClient.auth.getSession().then(({ data: { session } }) => {
-      if (_optionalChain([session, 'optionalAccess', _262 => _262.user])) {
+      if (_optionalChain([session, 'optionalAccess', _264 => _264.user])) {
         setSbUser(session.user);
         loadProfile(session.user.id);
       } else {

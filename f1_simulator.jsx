@@ -7569,6 +7569,7 @@ function GMRaceControl({ sbUser }) {
   const [savingRound,   setSavingRound]   = useState(false);
   const [advancing,     setAdvancing]     = useState(null);
   const [tab,           setTab]           = useState('sim');
+  const [simError,      setSimError]      = useState('');
 
   async function loadRounds() {
     const { data } = await sbFetch('rounds?order=number&select=*');
@@ -7625,26 +7626,31 @@ function GMRaceControl({ sbUser }) {
     const driverList = leagueMode && leagueDrivers.length > 0 ? leagueDrivers : DRIVERS;
     const teamList   = leagueMode && leagueTeams.length > 0   ? leagueTeams   : TEAMS;
 
+    setSimError('');
     setRunning(true);
     setTimeout(() => {
-      if (mode === 'qualifying') {
-        const raw = aggQual(n, driverList, teamList, track);
-        setResults((raw.grid || []).map((e, i) => ({
-          pos: i+1,
-          driver: e.driver?.name || '',
-          team:   e.team?.name   || '',
-          time:   e.score ? e.score.toFixed(3) : '',
-        })));
-      } else {
-        const qualResult = aggQual(1, driverList, teamList, track);
-        const raw = aggRace(n, qualResult.grid, teamList, track);
-        setResults((raw.positions || []).map((e, i) => ({
-          pos:    i+1,
-          driver: e.driver?.name || '',
-          team:   e.team?.name   || '',
-          dnf:    e.dnf || false,
-          time:   e.dnf ? 'DNF' : (i === 0 ? 'WINNER' : (e.gap != null ? `+${e.gap.toFixed(3)}s` : '')),
-        })));
+      try {
+        if (mode === 'qualifying') {
+          const raw = aggQual(n, driverList, teamList, track);
+          setResults((raw.grid || []).map((e, i) => ({
+            pos: i+1,
+            driver: e.driver?.name || '',
+            team:   e.team?.name   || '',
+            time:   e.score ? e.score.toFixed(3) : '',
+          })));
+        } else {
+          const qualResult = aggQual(1, driverList, teamList, track);
+          const raw = aggRace(n, qualResult.grid, teamList, track);
+          setResults((raw.positions || []).map((e, i) => ({
+            pos:    i+1,
+            driver: e.driver?.name || '',
+            team:   e.team?.name   || '',
+            dnf:    e.dnf || false,
+            time:   e.dnf ? 'DNF' : (i === 0 ? 'WINNER' : (e.gap != null ? `+${e.gap.toFixed(3)}s` : '')),
+          })));
+        }
+      } catch(err) {
+        setSimError(String(err?.message || err));
       }
       setRunning(false);
     }, 50);
@@ -7801,6 +7807,14 @@ function GMRaceControl({ sbUser }) {
             </Card>
           </div>
 
+          {simError && (
+            <div style={{ background:'rgba(232,0,45,0.1)', border:'1px solid #E8002D',
+              borderRadius:7, padding:'12px 16px', marginBottom:16, fontSize:13,
+              color:'#FF6644', fontFamily:FONT_MONO, whiteSpace:'pre-wrap' }}>
+              Simulation error: {simError}
+            </div>
+          )}
+
           {results && (
             <Card style={{ padding:0, overflow:'hidden' }}>
               <div style={{ padding:'10px 16px', background:'#111114',
@@ -7902,24 +7916,30 @@ function SandboxPage() {
   const [mode, setMode] = useState('qualifying');
   const [results, setResults] = useState(null);
   const [running, setRunning] = useState(false);
+  const [simError, setSimError] = useState('');
 
   function run() {
+    setSimError('');
     setRunning(true);
     setTimeout(() => {
-      if (mode === 'qualifying') {
-        const raw = aggQual(n, DRIVERS, TEAMS, track);
-        setResults((raw.grid||[]).map((e,i) => ({
-          pos:i+1, driver:e.driver?.name||'', team:e.team?.name||'',
-          time:e.score?e.score.toFixed(3):'',
-        })));
-      } else {
-        const qr = aggQual(1, DRIVERS, TEAMS, track);
-        const raw = aggRace(n, qr.grid, TEAMS, track);
-        setResults((raw.positions||[]).map((e,i) => ({
-          pos:i+1, driver:e.driver?.name||'', team:e.team?.name||'',
-          dnf:e.dnf||false,
-          time:e.dnf?'DNF':(i===0?'WINNER':(e.gap!=null?`+${e.gap.toFixed(3)}s`:'')),
-        })));
+      try {
+        if (mode === 'qualifying') {
+          const raw = aggQual(n, DRIVERS, TEAMS, track);
+          setResults((raw.grid||[]).map((e,i) => ({
+            pos:i+1, driver:e.driver?.name||'', team:e.team?.name||'',
+            time:e.score?e.score.toFixed(3):'',
+          })));
+        } else {
+          const qr = aggQual(1, DRIVERS, TEAMS, track);
+          const raw = aggRace(n, qr.grid, TEAMS, track);
+          setResults((raw.positions||[]).map((e,i) => ({
+            pos:i+1, driver:e.driver?.name||'', team:e.team?.name||'',
+            dnf:e.dnf||false,
+            time:e.dnf?'DNF':(i===0?'WINNER':(e.gap!=null?`+${e.gap.toFixed(3)}s`:'')),
+          })));
+        }
+      } catch(err) {
+        setSimError(String(err?.message || err));
       }
       setRunning(false);
     }, 50);
@@ -7944,6 +7964,13 @@ function SandboxPage() {
           <Button onClick={run} disabled={running} style={{ width:'100%' }}>
             {running ? 'Running...' : 'Run Simulation'}
           </Button>
+          {simError && (
+            <div style={{ marginTop:10, padding:'10px 12px', background:'rgba(232,0,45,0.1)',
+              border:'1px solid #E8002D', borderRadius:6, fontSize:12,
+              color:'#FF6644', fontFamily:FONT_MONO, whiteSpace:'pre-wrap' }}>
+              {simError}
+            </div>
+          )}
         </Card>
         {results && (
           <Card style={{ flex:'1 1 300px', padding:0, overflow:'hidden' }}>
