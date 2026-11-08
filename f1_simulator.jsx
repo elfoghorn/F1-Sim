@@ -4658,74 +4658,218 @@ function TeamDetail({ team, onBack }) {
 
 // -- Championship Page --------------------------------------------------------
 
-function ChampionshipPage() {
+function ChampionshipPage({ profile }) {
   const [standings, setStandings] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [loaded, setLoaded] = useState(false);
+  const [teams,     setTeams]     = useState([]);
+  const [rounds,    setRounds]    = useState([]);
+  const [loading,   setLoading]   = useState(true);
+  const [loaded,    setLoaded]    = useState(false);
+  const [tab,       setTab]       = useState('drivers');
 
   if (!loaded) {
     setLoaded(true);
     if (sbClient) {
-      sbFetch('standings?order=driver_points.desc&limit=50')
-        .then(({ data }) => { setStandings(data || []); setLoading(false); });
+      Promise.all([
+        sbFetch('standings?order=driver_points.desc&limit=50'),
+        sbFetch('league_teams?order=name&select=*'),
+        sbFetch('rounds?select=id,state&order=number'),
+      ]).then(([s, t, r]) => {
+        setStandings(s.data || []);
+        setTeams(t.data || []);
+        setRounds(r.data || []);
+        setLoading(false);
+      });
     } else { setLoading(false); setStandings([]); }
   }
 
   if (loading) return <Spinner />;
-  if (!standings || standings.length === 0) {
-    return <EmptyState title="No standings yet" sub="Race results will appear here once the season begins" />;
-  }
 
+  const complete = (rounds||[]).filter(r => r.state === 'complete').length;
+  const total    = (rounds||[]).length;
+
+  // Constructor standings: sum driver_points grouped by team
+  const ctorMap = {};
+  (standings||[]).forEach(s => {
+    const key = s.team_name || 'Unknown';
+    if (!ctorMap[key]) {
+      const t = teams.find(t => t.name === key);
+      ctorMap[key] = { name:key, points:0, color:t?.color||'#55556A', drivers:[] };
+    }
+    ctorMap[key].points += s.driver_points || 0;
+    ctorMap[key].drivers.push(s.driver_name);
+  });
+  const ctorRows = Object.values(ctorMap).sort((a,b) => b.points - a.points);
+
+  const leader = standings?.[0];
   const medalColor = i => i === 0 ? '#FFD700' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : '#55556A';
+
+  const teamColor = name => {
+    const t = teams.find(t => t.name === name);
+    return t?.color || '#55556A';
+  };
+
+  if (!standings || standings.length === 0) {
+    return (
+      <div>
+        <div style={{ ...T.cap, color:'#E8002D', marginBottom:4 }}>Formula One</div>
+        <div style={{ ...T.h1, marginBottom:8 }}>Championship</div>
+        <EmptyState title="No standings yet"
+          sub="Race results will appear here once the season begins" />
+      </div>
+    );
+  }
 
   return (
     <div>
-      <div style={{ ...T.h1, marginBottom:8 }}>Championship</div>
-      <div style={{ ...T.sub, marginBottom:24 }}>Driver standings</div>
-      <Card style={{ padding:0, overflow:'hidden' }}>
-        <div style={{ display:'grid', gridTemplateColumns:'48px 1fr auto auto', padding:'10px 16px',
-          background:'#111114', borderBottom:'1px solid #252530' }}>
-          {['Pos','Driver','Team','Pts'].map(h => <span key={h} style={{ ...T.cap }}>{h}</span>)}
-        </div>
-        {standings.map((s, i) => (
-          <div key={s.driver_id} style={{ display:'grid', gridTemplateColumns:'48px 1fr auto auto',
-            padding:'12px 16px', borderBottom: i < standings.length-1 ? '1px solid #252530' : 'none',
-            alignItems:'center' }}>
-            <div style={{ fontWeight:800, fontSize:18, color: medalColor(i) }}>{i+1}</div>
-            <div>
-              <div style={{ ...T.body, fontWeight:600 }}>{s.driver_name}</div>
-              <div style={{ ...T.cap }}>#{s.driver_number}</div>
+      {/* Season header */}
+      <div style={{ ...T.cap, color:'#E8002D', marginBottom:4 }}>Formula One</div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:24 }}>
+        <div>
+          <div style={{ ...T.h1, marginBottom:4 }}>Championship</div>
+          {total > 0 && (
+            <div style={{ ...T.sub }}>
+              {complete}/{total} rounds complete
             </div>
-            <div style={{ ...T.sub, marginRight:16 }}>{s.team_name}</div>
-            <div style={{ fontWeight:800, fontSize:18, color: medalColor(i) }}>{s.driver_points}</div>
+          )}
+        </div>
+        {leader && (
+          <div style={{ textAlign:'right' }}>
+            <div style={{ ...T.cap, marginBottom:2 }}>Drivers Leader</div>
+            <div style={{ ...T.h2 }}>{leader.driver_name}</div>
+            <div style={{ fontSize:28, fontWeight:900, color:'#FFD700', fontFamily:FONT_HEAD, lineHeight:1 }}>
+              {leader.driver_points} pts
+            </div>
+            {standings[1] && (
+              <div style={{ ...T.sub, fontSize:12 }}>
+                +{(leader.driver_points||0) - (standings[1].driver_points||0)} over {standings[1].driver_name}
+              </div>
+            )}
           </div>
+        )}
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display:'flex', gap:4, marginBottom:20 }}>
+        {[['drivers','Drivers'],['constructors','Constructors']].map(([id,label]) => (
+          <button key={id} onClick={() => setTab(id)}
+            style={{ padding:'8px 18px', border:'none', borderRadius:6, fontSize:13, fontWeight:600,
+              cursor:'pointer', background: tab === id ? '#E8002D' : '#111114',
+              color: tab === id ? '#fff' : '#8888A0', fontFamily:FONT_BODY }}>
+            {label}
+          </button>
         ))}
-      </Card>
+      </div>
+
+      {/* Driver standings */}
+      {tab === 'drivers' && (
+        <Card style={{ padding:0, overflow:'hidden' }}>
+          <div style={{ display:'grid', gridTemplateColumns:'48px 1fr 160px 60px',
+            padding:'10px 16px', background:'#111114', borderBottom:'1px solid #252530' }}>
+            {['Pos','Driver','Team','Pts'].map(h =>
+              <span key={h} style={{ ...T.cap }}>{h}</span>)}
+          </div>
+          {standings.map((s, i) => (
+            <div key={s.driver_id||i} style={{
+              display:'grid', gridTemplateColumns:'48px 1fr 160px 60px',
+              padding:'12px 16px',
+              borderBottom: i < standings.length-1 ? '1px solid #252530' : 'none',
+              alignItems:'center',
+              background: i === 0 ? '#FFD70008' : 'transparent' }}>
+              <div style={{ fontWeight:900, fontSize:16, color:medalColor(i), fontFamily:FONT_HEAD }}>{i+1}</div>
+              <div>
+                <div style={{ ...T.body, fontWeight:600 }}>{s.driver_name}</div>
+                {s.driver_number && <div style={{ ...T.cap }}>#{s.driver_number}</div>}
+              </div>
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <div style={{ width:4, height:16, borderRadius:2, background:teamColor(s.team_name) }} />
+                <span style={{ ...T.sub }}>{s.team_name}</span>
+              </div>
+              <div style={{ fontWeight:900, fontSize:16, color:medalColor(i), fontFamily:FONT_HEAD }}>
+                {s.driver_points}
+              </div>
+            </div>
+          ))}
+        </Card>
+      )}
+
+      {/* Constructor standings */}
+      {tab === 'constructors' && (
+        <Card style={{ padding:0, overflow:'hidden' }}>
+          <div style={{ display:'grid', gridTemplateColumns:'48px 1fr 1fr 60px',
+            padding:'10px 16px', background:'#111114', borderBottom:'1px solid #252530' }}>
+            {['Pos','Constructor','Drivers','Pts'].map(h =>
+              <span key={h} style={{ ...T.cap }}>{h}</span>)}
+          </div>
+          {ctorRows.map((c, i) => (
+            <div key={c.name} style={{
+              display:'grid', gridTemplateColumns:'48px 1fr 1fr 60px',
+              padding:'12px 16px',
+              borderBottom: i < ctorRows.length-1 ? '1px solid #252530' : 'none',
+              alignItems:'center' }}>
+              <div style={{ fontWeight:900, fontSize:16, color:medalColor(i), fontFamily:FONT_HEAD }}>{i+1}</div>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <div style={{ width:4, height:28, borderRadius:2, background:c.color }} />
+                <div style={{ ...T.body, fontWeight:600 }}>{c.name}</div>
+              </div>
+              <div style={{ ...T.sub, fontSize:12 }}>{c.drivers.join(', ')}</div>
+              <div style={{ fontWeight:900, fontSize:16, color:medalColor(i), fontFamily:FONT_HEAD }}>
+                {c.points}
+              </div>
+            </div>
+          ))}
+        </Card>
+      )}
     </div>
   );
 }
 
 // -- Calendar Page ------------------------------------------------------------
 
-function CalendarPage() {
-  const [rounds, setRounds] = useState(null);
+function CalendarPage({ profile }) {
+  const [rounds,  setRounds]  = useState(null);
   const [loading, setLoading] = useState(true);
-  const [loaded, setLoaded] = useState(false);
+  const [loaded,  setLoaded]  = useState(false);
+  const [advancing, setAdvancing] = useState(null);
 
-  if (!loaded) {
-    setLoaded(true);
-    if (sbClient) {
-      sbFetch('rounds?order=number&select=*').then(({ data }) => { setRounds(data || []); setLoading(false); });
-    } else { setLoading(false); setRounds([]); }
+  async function load() {
+    const { data } = await sbFetch('rounds?order=number&select=*');
+    setRounds(data || []);
+    setLoading(false);
   }
 
+  if (!loaded) { setLoaded(true); if (sbClient) load(); else { setLoading(false); setRounds([]); } }
   if (loading) return <Spinner />;
+
+  const isGM = profile?.role === 'gm' || profile?.role === 'admin';
+
+  const STATE_PIPELINE = ['scheduled','orders_open','locked','in_progress','complete'];
+  const STATE_LABEL    = { scheduled:'Scheduled', orders_open:'Orders Open', locked:'Locked',
+    in_progress:'In Progress', complete:'Complete' };
+  const STATE_COLOR    = { scheduled:'#55556A', orders_open:'#3B8EFF', locked:'#FF9500',
+    in_progress:'#E8002D', complete:'#00C46A' };
+
+  function nextState(s) {
+    const i = STATE_PIPELINE.indexOf(s);
+    return i >= 0 && i < STATE_PIPELINE.length-1 ? STATE_PIPELINE[i+1] : null;
+  }
+
+  async function advanceState(round) {
+    const next = nextState(round.state);
+    if (!next) return;
+    setAdvancing(round.id);
+    await sbFetch(`rounds?id=eq.${round.id}`, {
+      method:'PATCH', body: JSON.stringify({ state: next })
+    });
+    setAdvancing(null);
+    load();
+  }
 
   if (!rounds || rounds.length === 0) {
     return (
       <div>
+        <div style={{ ...T.cap, color:'#E8002D', marginBottom:4 }}>Season</div>
         <div style={{ ...T.h1, marginBottom:8 }}>Race Calendar</div>
-        <div style={{ ...T.sub, marginBottom:24 }}>No season schedule set - showing circuit list</div>
+        <div style={{ ...T.sub, marginBottom:24 }}>No season schedule set - circuit list</div>
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:12 }}>
           {TRACKS.map((t, i) => (
             <Card key={t.id}>
@@ -4734,7 +4878,7 @@ function CalendarPage() {
                 <div>
                   <div style={{ ...T.h3 }}>{t.name}</div>
                   <div style={{ ...T.sub }}>{t.country}</div>
-                  {t.sprint && <Badge color="#FF9500" style={{ marginTop:4 }}>Sprint</Badge>}
+                  {t.hasSprint && <Badge color="#FF9500" style={{ marginTop:4 }}>Sprint</Badge>}
                 </div>
               </div>
             </Card>
@@ -4744,31 +4888,114 @@ function CalendarPage() {
     );
   }
 
-  const stateColor = s => ({ scheduled:'#55556A', orders_open:'#3B8EFF', locked:'#FF9500',
-    in_progress:'#E8002D', complete:'#00C46A' })[s] || '#55556A';
+  const complete = rounds.filter(r => r.state === 'complete').length;
+  const nextRound = rounds.find(r => r.state !== 'complete');
 
   return (
     <div>
-      <div style={{ ...T.h1, marginBottom:8 }}>Race Calendar</div>
-      <div style={{ ...T.sub, marginBottom:24 }}>Season schedule</div>
-      <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-        {rounds.map(r => (
-          <Card key={r.id}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-              <div style={{ display:'flex', gap:14, alignItems:'center' }}>
-                <div style={{ fontWeight:800, fontSize:20, color:'#55556A', minWidth:36 }}>R{r.number}</div>
-                <div>
-                  <div style={{ ...T.h3 }}>{r.circuit_name || r.circuit_id}</div>
-                  <div style={{ ...T.sub }}>{r.scheduled_for ? new Date(r.scheduled_for).toDateString() : 'TBD'}</div>
-                </div>
+      <div style={{ ...T.cap, color:'#E8002D', marginBottom:4 }}>Season</div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:24 }}>
+        <div>
+          <div style={{ ...T.h1, marginBottom:4 }}>Race Calendar</div>
+          <div style={{ ...T.sub }}>{complete}/{rounds.length} rounds complete</div>
+        </div>
+      </div>
+
+      {/* Next round spotlight */}
+      {nextRound && (
+        <div style={{ marginBottom:24, padding:20, borderRadius:10,
+          background:'linear-gradient(135deg,#1A1A25,#111114)',
+          border:`1px solid ${STATE_COLOR[nextRound.state]}44` }}>
+          <div style={{ ...T.cap, color:STATE_COLOR[nextRound.state], marginBottom:6 }}>
+            {nextRound.state === 'in_progress' ? 'NOW RACING' : 'NEXT ROUND'}
+          </div>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
+            <div>
+              <div style={{ ...T.h1, marginBottom:4 }}>
+                R{nextRound.number} &mdash; {nextRound.circuit_name || nextRound.circuit_id}
               </div>
-              <div style={{ display:'flex', gap:8 }}>
-                {r.is_sprint && <Badge color="#FF9500">Sprint</Badge>}
-                <Badge color={stateColor(r.state)}>{r.state.replace(/_/g,' ')}</Badge>
+              <div style={{ ...T.sub }}>
+                {nextRound.scheduled_for ? new Date(nextRound.scheduled_for).toDateString() : 'Date TBD'}
+                {nextRound.is_sprint && <span style={{ marginLeft:8 }}><Badge color="#FF9500">Sprint</Badge></span>}
               </div>
             </div>
-          </Card>
-        ))}
+            <Badge color={STATE_COLOR[nextRound.state]} style={{ fontSize:12 }}>
+              {STATE_LABEL[nextRound.state]}
+            </Badge>
+          </div>
+
+          {/* State pipeline */}
+          <div style={{ display:'flex', alignItems:'center', gap:0, marginTop:16 }}>
+            {STATE_PIPELINE.map((s, i) => {
+              const done   = STATE_PIPELINE.indexOf(nextRound.state) > i;
+              const active = nextRound.state === s;
+              const color  = done ? '#00C46A' : active ? STATE_COLOR[s] : '#252530';
+              return (
+                <React.Fragment key={s}>
+                  <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
+                    <div style={{ width:12, height:12, borderRadius:'50%', background:color,
+                      boxShadow: active ? `0 0 8px ${color}` : 'none', transition:'all .3s' }} />
+                    <div style={{ ...T.cap, fontSize:9, color:active?color:'#55556A', whiteSpace:'nowrap' }}>
+                      {STATE_LABEL[s].split(' ')[0]}
+                    </div>
+                  </div>
+                  {i < STATE_PIPELINE.length-1 && (
+                    <div style={{ flex:1, height:2, background:done?'#00C46A':'#252530',
+                      transition:'background .3s', margin:'0 4px', marginBottom:16 }} />
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </div>
+
+          {/* GM advance button */}
+          {isGM && nextState(nextRound.state) && (
+            <div style={{ marginTop:12 }}>
+              <Button size="sm" onClick={() => advanceState(nextRound)}
+                disabled={advancing === nextRound.id}>
+                {advancing === nextRound.id
+                  ? 'Advancing...'
+                  : `Advance to: ${STATE_LABEL[nextState(nextRound.state)]}`}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Full schedule */}
+      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+        {rounds.map(r => {
+          const sc = STATE_COLOR[r.state] || '#55556A';
+          const done = r.state === 'complete';
+          return (
+            <Card key={r.id} style={{ opacity: done ? 0.65 : 1,
+              borderLeft:`3px solid ${done ? '#00C46A' : sc}` }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <div style={{ display:'flex', gap:14, alignItems:'center' }}>
+                  <div style={{ fontWeight:900, fontSize:18, color:done?'#00C46A':'#55556A',
+                    minWidth:36, fontFamily:FONT_HEAD }}>R{r.number}</div>
+                  <div>
+                    <div style={{ ...T.h3 }}>{r.circuit_name || r.circuit_id}</div>
+                    <div style={{ ...T.sub, fontSize:12 }}>
+                      {r.scheduled_for ? new Date(r.scheduled_for).toDateString() : 'TBD'}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                  {r.is_sprint && <Badge color="#FF9500">Sprint</Badge>}
+                  <Badge color={sc}>{STATE_LABEL[r.state]||r.state}</Badge>
+                  {isGM && !done && nextState(r.state) && (
+                    <Button size="sm" variant="secondary"
+                      onClick={() => advanceState(r)}
+                      disabled={advancing === r.id}>
+                      {advancing === r.id ? '...' : 'Advance'}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </Card>
+          );
+        })}
       </div>
     </div>
   );
@@ -4777,12 +5004,125 @@ function CalendarPage() {
 // -- Statistics Page ----------------------------------------------------------
 
 function StatsPage() {
+  const [sessions, setSessions] = useState(null);
+  const [loading,  setLoading]  = useState(true);
+  const [loaded,   setLoaded]   = useState(false);
+  const [tab,      setTab]      = useState('results');
+
+  if (!loaded) {
+    setLoaded(true);
+    if (sbClient) {
+      sbFetch('session_runs?order=created_at.desc&limit=100&select=*')
+        .then(({ data }) => { setSessions(data||[]); setLoading(false); });
+    } else setLoading(false);
+  }
+
+  if (loading) return <Spinner />;
+
+  // Tally wins and podiums from session_runs where status=final
+  const finalSessions = (sessions||[]).filter(s => s.status === 'final' && s.session === 'race');
+  const winsMap = {};
+  finalSessions.forEach(s => {
+    const placements = s.result?.placements || [];
+    placements.slice(0,3).forEach((p, pos) => {
+      const name = p.driver || p.name || '';
+      if (!name) return;
+      if (!winsMap[name]) winsMap[name] = { name, wins:0, podiums:0 };
+      if (pos === 0) winsMap[name].wins++;
+      winsMap[name].podiums++;
+    });
+  });
+  const winRows = Object.values(winsMap).sort((a,b) => b.wins - a.wins || b.podiums - a.podiums);
+
   return (
     <div>
-      <div style={{ ...T.h1, marginBottom:8 }}>Statistics</div>
-      <div style={{ ...T.sub, marginBottom:24 }}>Season statistics and records</div>
-      <EmptyState title="Statistics coming soon"
-        sub="Detailed stats will be available after race results are published" />
+      <div style={{ ...T.cap, color:'#E8002D', marginBottom:4 }}>Season Data</div>
+      <div style={{ ...T.h1, marginBottom:24 }}>Statistics</div>
+
+      <div style={{ display:'flex', gap:4, marginBottom:20 }}>
+        {[['results','Race Results'],['wins','Wins Table']].map(([id,label]) => (
+          <button key={id} onClick={() => setTab(id)}
+            style={{ padding:'8px 18px', border:'none', borderRadius:6, fontSize:13, fontWeight:600,
+              cursor:'pointer', background: tab === id ? '#E8002D' : '#111114',
+              color: tab === id ? '#fff' : '#8888A0', fontFamily:FONT_BODY }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'results' && (
+        <div>
+          {(!sessions || sessions.length === 0) && (
+            <EmptyState title="No results yet"
+              sub="Race and qualifying results will appear here once sessions are confirmed" />
+          )}
+          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+            {(sessions||[]).map((s, i) => (
+              <Card key={s.id||i}>
+                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
+                  <div>
+                    <div style={{ ...T.h3 }}>
+                      {s.session === 'qualifying' ? 'Qualifying' : 'Race'} &mdash; Round {
+                        s.round_id ? s.round_id.slice(0,8) : 'unknown'}
+                    </div>
+                    <div style={{ ...T.sub, fontSize:12 }}>
+                      {new Date(s.created_at||Date.now()).toLocaleString()}
+                      <span style={{ marginLeft:8 }}>{s.run_count}x simulations</span>
+                    </div>
+                  </div>
+                  <Badge color={s.status==='final'?'#00C46A':s.status==='provisional'?'#FF9500':'#55556A'}>
+                    {s.status}
+                  </Badge>
+                </div>
+                {s.result?.placements && (
+                  <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+                    {s.result.placements.slice(0,5).map((p,pi) => (
+                      <div key={pi} style={{ display:'flex', gap:10, fontSize:12, alignItems:'center' }}>
+                        <span style={{ fontWeight:800, color:pi<3?['#FFD700','#C0C0C0','#CD7F32'][pi]:'#55556A',
+                          width:28, fontFamily:FONT_HEAD }}>P{pi+1}</span>
+                        <span style={{ ...T.body }}>{p.driver||p.name||''}</span>
+                        <span style={{ ...T.sub }}>{p.time||p.lapTime||p.teamId||''}</span>
+                      </div>
+                    ))}
+                    {s.result.placements.length > 5 && (
+                      <div style={{ ...T.cap, color:'#55556A' }}>
+                        + {s.result.placements.length - 5} more
+                      </div>
+                    )}
+                  </div>
+                )}
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {tab === 'wins' && (
+        <div>
+          {winRows.length === 0 ? (
+            <EmptyState title="No final results yet"
+              sub="Wins and podiums are tallied from confirmed race results" />
+          ) : (
+            <Card style={{ padding:0, overflow:'hidden' }}>
+              <div style={{ display:'grid', gridTemplateColumns:'48px 1fr 80px 80px',
+                padding:'10px 16px', background:'#111114', borderBottom:'1px solid #252530' }}>
+                {['Pos','Driver','Wins','Podiums'].map(h => <span key={h} style={{ ...T.cap }}>{h}</span>)}
+              </div>
+              {winRows.map((r, i) => (
+                <div key={r.name} style={{ display:'grid', gridTemplateColumns:'48px 1fr 80px 80px',
+                  padding:'12px 16px', borderBottom: i < winRows.length-1 ? '1px solid #252530' : 'none',
+                  alignItems:'center' }}>
+                  <div style={{ fontWeight:900, fontSize:16, color:i<3?['#FFD700','#C0C0C0','#CD7F32'][i]:'#55556A',
+                    fontFamily:FONT_HEAD }}>{i+1}</div>
+                  <div style={{ ...T.body, fontWeight:600 }}>{r.name}</div>
+                  <div style={{ fontWeight:900, fontSize:16, color:'#FFD700', fontFamily:FONT_HEAD }}>{r.wins}</div>
+                  <div style={{ fontWeight:700, fontSize:14, color:'#F0F0F5' }}>{r.podiums}</div>
+                </div>
+              ))}
+            </Card>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -5854,101 +6194,333 @@ function GMAuditLog() {
 // -- GM Race Control ----------------------------------------------------------
 
 function GMRaceControl({ sbUser }) {
-  const [track, setTrack] = useState(TRACKS[0]);
-  const [n, setN] = useState(5);
-  const [mode, setMode] = useState('qualifying');
-  const [results, setResults] = useState(null);
-  const [running, setRunning] = useState(false);
-  const [rounds, setRounds] = useState([]);
+  const [track,         setTrack]         = useState(TRACKS[0]);
+  const [n,             setN]             = useState(5);
+  const [mode,          setMode]          = useState('qualifying');
+  const [results,       setResults]       = useState(null);
+  const [running,       setRunning]       = useState(false);
+  const [rounds,        setRounds]        = useState([]);
+  const [allRounds,     setAllRounds]     = useState([]);
   const [selectedRound, setSelectedRound] = useState('');
-  const [loaded, setLoaded] = useState(false);
+  const [loaded,        setLoaded]        = useState(false);
+  const [leagueMode,    setLeagueMode]    = useState(false);
+  const [leagueDrivers, setLeagueDrivers] = useState([]);
+  const [leagueTeams,   setLeagueTeams]   = useState([]);
+  const [loadingLeague, setLoadingLeague] = useState(false);
+  const [creating,      setCreating]      = useState(false);
+  const [newRound,      setNewRound]      = useState({ circuit_id:'', circuit_name:'', number:'', scheduled_for:'', is_sprint:false });
+  const [savingRound,   setSavingRound]   = useState(false);
+  const [advancing,     setAdvancing]     = useState(null);
+  const [tab,           setTab]           = useState('sim');
 
-  if (!loaded) {
-    setLoaded(true);
-    if (sbClient) {
-      sbFetch('rounds?state=in.(locked,orders_open)&order=number&select=id,number,circuit_id,circuit_name')
-        .then(({ data }) => setRounds(data || []));
-    }
+  async function loadRounds() {
+    const { data } = await sbFetch('rounds?order=number&select=*');
+    setAllRounds(data||[]);
+    setRounds((data||[]).filter(r => ['locked','orders_open'].includes(r.state)));
+  }
+
+  if (!loaded) { setLoaded(true); if (sbClient) loadRounds(); }
+
+  async function loadLeagueData() {
+    setLoadingLeague(true);
+    const [dr, tr] = await Promise.all([
+      sbFetch('league_drivers?select=*,characters(name,pace,consistency,wet,overtaking,defense,experience,mental,style),league_teams(id,name,color,car_pace,reliability,pit_speed,tyre_life)'),
+      sbFetch('league_teams?select=*'),
+    ]);
+    const rawDrivers = (dr.data||[]).filter(d => d.characters);
+    const rawTeams   = tr.data||[];
+
+    // Map to engine format
+    const engTeams = rawTeams.map(t => ({
+      id: t.id, tier: t.tier||'mid', strategy:'reactive',
+      name: t.name, abbr:(t.name||'UNK').substring(0,3).toUpperCase(),
+      color: t.color||'#888888', tc:'#fff',
+      basePitSpeed: t.pit_speed||80, carPace:t.car_pace||70,
+      reliability:t.reliability||75, pitSpeed:t.pit_speed||80,
+      tyreLife:t.tyre_life||70, cornering:10, topSpeed:10,
+    }));
+
+    const engDrivers = rawDrivers.map(d => {
+      const c   = d.characters;
+      const tid = d.league_teams?.id || d.team_id;
+      return {
+        id: d.id.slice(0,8), name: c.name,
+        abbr: (c.name||'???').substring(0,3).toUpperCase(),
+        num: d.number||99, teamId: tid,
+        pace:        c.pace||70,
+        consistency: c.consistency||70,
+        wet:         c.wet||70,
+        overtaking:  c.overtaking||70,
+        defense:     c.defense||70,
+        experience:  c.experience||50,
+        mental:      c.mental||7,
+        style:       c.style||'balanced',
+        goodTracks:[], badTracks:[], rivals:[],
+      };
+    });
+
+    setLeagueDrivers(engDrivers);
+    setLeagueTeams(engTeams);
+    setLoadingLeague(false);
   }
 
   function runSim() {
+    const driverList = leagueMode && leagueDrivers.length > 0 ? leagueDrivers : DRIVERS;
+    const teamList   = leagueMode && leagueTeams.length > 0   ? leagueTeams   : TEAMS;
+
     setRunning(true);
     setTimeout(() => {
       let res;
       if (mode === 'qualifying') {
-        res = aggQual(n, DRIVERS, TEAMS, track);
+        res = aggQual(n, driverList, teamList, track);
       } else {
-        const grid = aggQual(1, DRIVERS, TEAMS, track).map(r => r.driver);
-        res = aggRace(n, grid, TEAMS, track);
+        const grid = aggQual(1, driverList, teamList, track).map(r => r.driver);
+        res = aggRace(n, grid, teamList, track);
       }
       setResults(res);
       setRunning(false);
     }, 50);
   }
 
-  async function publishResults() {
+  async function publishResults(status) {
     if (!selectedRound || !results) return;
     await sbFetch('session_runs', {
       method:'POST',
       body: JSON.stringify({
         round_id: selectedRound, session: mode, attempt:1,
         seed: Date.now(), mode: n > 1 ? 'averaged' : 'single',
-        run_count: n, result: { placements: results }, status:'provisional', run_by: sbUser.id
+        run_count: n, result: { placements: results }, status, run_by: sbUser.id,
+        league_mode: leagueMode,
       })
     });
-    alert('Published as provisional!');
+    if (status === 'final') {
+      // Advance round to complete
+      await sbFetch(`rounds?id=eq.${selectedRound}`, {
+        method:'PATCH', body: JSON.stringify({ state:'complete' })
+      });
+      loadRounds();
+    }
+  }
+
+  async function createRound() {
+    if (!newRound.circuit_id || !newRound.number) return;
+    setSavingRound(true);
+    const track = TRACKS.find(t => t.id === newRound.circuit_id);
+    await sbFetch('rounds', {
+      method:'POST',
+      body: JSON.stringify({
+        number:        parseInt(newRound.number),
+        circuit_id:    newRound.circuit_id,
+        circuit_name:  track?.name || newRound.circuit_id,
+        state:         'scheduled',
+        is_sprint:     newRound.is_sprint,
+        scheduled_for: newRound.scheduled_for || null,
+      })
+    });
+    setSavingRound(false);
+    setCreating(false);
+    setNewRound({ circuit_id:'', circuit_name:'', number:'', scheduled_for:'', is_sprint:false });
+    loadRounds();
+  }
+
+  const STATE_PIPELINE = ['scheduled','orders_open','locked','in_progress','complete'];
+  const STATE_LABEL    = { scheduled:'Scheduled', orders_open:'Orders Open', locked:'Locked',
+    in_progress:'In Progress', complete:'Complete' };
+  const STATE_COLOR    = { scheduled:'#55556A', orders_open:'#3B8EFF', locked:'#FF9500',
+    in_progress:'#E8002D', complete:'#00C46A' };
+  function nextState(s) {
+    const i = STATE_PIPELINE.indexOf(s);
+    return i >= 0 && i < STATE_PIPELINE.length-1 ? STATE_PIPELINE[i+1] : null;
+  }
+  async function advanceState(r) {
+    const next = nextState(r.state);
+    if (!next) return;
+    setAdvancing(r.id);
+    await sbFetch(`rounds?id=eq.${r.id}`, { method:'PATCH', body: JSON.stringify({ state:next }) });
+    setAdvancing(null);
+    loadRounds();
   }
 
   return (
     <div>
-      <div style={{ ...T.h2, marginBottom:16 }}>Race Control</div>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:16 }}>
-        <Card>
-          <div style={{ ...T.cap, marginBottom:10 }}>Session Settings</div>
-          <Select label="Mode" value={mode} onChange={setMode}
-            options={[{ value:'qualifying', label:'Qualifying' }, { value:'race', label:'Race' }]} />
-          <Select label="Circuit" value={track.id} onChange={id => setTrack(TRACKS.find(t => t.id === id) || TRACKS[0])}
-            options={TRACKS.map(t => ({ value:t.id, label:t.name }))} />
-          <div style={{ marginBottom:14 }}>
-            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
-              <span style={{ ...T.cap }}>Simulations: {n}</span>
-            </div>
-            <input type="range" min={1} max={25} value={n}
-              onChange={e => setN(parseInt(e.target.value))}
-              style={{ width:'100%', accentColor:'#E8002D' }} />
-          </div>
-          <Button onClick={runSim} disabled={running} style={{ width:'100%' }}>
-            {running ? 'Running...' : `Run ${mode}`}
-          </Button>
-        </Card>
-        <Card>
-          <div style={{ ...T.cap, marginBottom:10 }}>Publish</div>
-          {rounds.length > 0 ? (
-            <Select label="Link to Round" value={selectedRound} onChange={setSelectedRound}
-              options={[{ value:'', label:'Select round...' },
-                ...rounds.map(r => ({ value:r.id, label:`R${r.number} - ${r.circuit_name||r.circuit_id}` }))]} />
-          ) : (
-            <div style={{ ...T.sub, fontSize:12, marginBottom:14 }}>No active rounds found</div>
-          )}
-          <Button variant="secondary" disabled={!results || !selectedRound} onClick={publishResults}>
-            Publish as Provisional
-          </Button>
-        </Card>
+      <div style={{ display:'flex', gap:4, marginBottom:20 }}>
+        {[['sim','Simulator'],['rounds','Round Management']].map(([id,label]) => (
+          <button key={id} onClick={() => setTab(id)}
+            style={{ padding:'8px 18px', border:'none', borderRadius:6, fontSize:13, fontWeight:600,
+              cursor:'pointer', background: tab === id ? '#E8002D' : '#111114',
+              color: tab === id ? '#fff' : '#8888A0', fontFamily:FONT_BODY }}>
+            {label}
+          </button>
+        ))}
       </div>
-      {results && (
-        <Card style={{ padding:0, overflow:'hidden' }}>
-          <div style={{ padding:'10px 16px', background:'#111114', borderBottom:'1px solid #252530', ...T.cap }}>
-            Results - {track.name} {mode}
-          </div>
-          {results.map((r, i) => (
-            <div key={i} style={{ display:'grid', gridTemplateColumns:'40px 1fr auto',
-              padding:'10px 16px', borderBottom:'1px solid #252530', alignItems:'center' }}>
-              <div style={{ fontWeight:800, color: i<3 ? ['#FFD700','#C0C0C0','#CD7F32'][i] : '#55556A' }}>P{i+1}</div>
-              <div style={{ ...T.body }}>{r.driver || r.name || r.abbr || ''}</div>
-              <div style={{ ...T.sub }}>{r.time || r.lapTime || r.teamId || ''}</div>
+
+      {/* ── Simulator tab ── */}
+      {tab === 'sim' && (
+        <div>
+          {/* League mode toggle */}
+          <div style={{ marginBottom:16, padding:'12px 16px', background:'#111114',
+            borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <div>
+              <div style={{ ...T.body, fontWeight:600 }}>
+                {leagueMode ? 'League Mode' : 'Engine Mode'}
+              </div>
+              <div style={{ ...T.sub, fontSize:12 }}>
+                {leagueMode
+                  ? `Using ${leagueDrivers.length} league drivers from DB`
+                  : 'Using built-in F1 2027 engine drivers'}
+              </div>
             </div>
-          ))}
-        </Card>
+            <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+              {!leagueMode ? (
+                <Button size="sm" onClick={() => { setLeagueMode(true); loadLeagueData(); }}
+                  disabled={loadingLeague}>
+                  {loadingLeague ? 'Loading...' : 'Switch to League'}
+                </Button>
+              ) : (
+                <Button size="sm" variant="secondary" onClick={() => setLeagueMode(false)}>
+                  Switch to Engine
+                </Button>
+              )}
+            </div>
+          </div>
+
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:16 }}>
+            <Card>
+              <div style={{ ...T.cap, marginBottom:10 }}>Session Settings</div>
+              <Select label="Mode" value={mode} onChange={setMode}
+                options={[{ value:'qualifying', label:'Qualifying' }, { value:'race', label:'Race' }]} />
+              <Select label="Circuit" value={track.id}
+                onChange={id => setTrack(TRACKS.find(t => t.id === id) || TRACKS[0])}
+                options={TRACKS.map(t => ({ value:t.id, label:t.name }))} />
+              <div style={{ marginBottom:14 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
+                  <span style={{ ...T.cap }}>Simulations: {n}</span>
+                </div>
+                <input type="range" min={1} max={25} value={n}
+                  onChange={e => setN(parseInt(e.target.value))}
+                  style={{ width:'100%', accentColor:'#E8002D' }} />
+              </div>
+              <Button onClick={runSim} disabled={running || (leagueMode && leagueDrivers.length === 0)}
+                style={{ width:'100%' }}>
+                {running ? 'Running...' : `Run ${mode}`}
+              </Button>
+            </Card>
+
+            <Card>
+              <div style={{ ...T.cap, marginBottom:10 }}>Publish</div>
+              {rounds.length > 0 ? (
+                <Select label="Link to Round" value={selectedRound} onChange={setSelectedRound}
+                  options={[{ value:'', label:'Select round...' },
+                    ...rounds.map(r => ({ value:r.id, label:`R${r.number} - ${r.circuit_name||r.circuit_id}` }))]} />
+              ) : (
+                <div style={{ ...T.sub, fontSize:12, marginBottom:14 }}>No active rounds</div>
+              )}
+              <div style={{ display:'flex', gap:8 }}>
+                <Button variant="secondary" disabled={!results || !selectedRound}
+                  onClick={() => publishResults('provisional')}>
+                  Provisional
+                </Button>
+                <Button variant="success" disabled={!results || !selectedRound}
+                  onClick={() => publishResults('final')}>
+                  Confirm Final
+                </Button>
+              </div>
+              {results && selectedRound && (
+                <div style={{ ...T.sub, fontSize:11, marginTop:8 }}>
+                  "Confirm Final" saves results and advances round to Complete.
+                </div>
+              )}
+            </Card>
+          </div>
+
+          {results && (
+            <Card style={{ padding:0, overflow:'hidden' }}>
+              <div style={{ padding:'10px 16px', background:'#111114',
+                borderBottom:'1px solid #252530', ...T.cap }}>
+                Results &mdash; {track.name} {mode}
+                {leagueMode && <span style={{ color:'#3B8EFF', marginLeft:8 }}>(League)</span>}
+              </div>
+              {results.map((r, i) => (
+                <div key={i} style={{ display:'grid', gridTemplateColumns:'40px 1fr auto',
+                  padding:'10px 16px', borderBottom:'1px solid #252530', alignItems:'center' }}>
+                  <div style={{ fontWeight:900, fontFamily:FONT_HEAD,
+                    color: i<3 ? ['#FFD700','#C0C0C0','#CD7F32'][i] : '#55556A' }}>P{i+1}</div>
+                  <div style={{ ...T.body }}>{r.driver || r.name || r.abbr || ''}</div>
+                  <div style={{ ...T.sub }}>{r.time || r.lapTime || r.teamId || ''}</div>
+                </div>
+              ))}
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* ── Round Management tab ── */}
+      {tab === 'rounds' && (
+        <div>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+            <div style={{ ...T.h3 }}>All Rounds</div>
+            <Button onClick={() => setCreating(!creating)}>+ New Round</Button>
+          </div>
+
+          {creating && (
+            <Card style={{ marginBottom:20 }}>
+              <div style={{ ...T.cap, color:'#E8002D', marginBottom:10 }}>Create Round</div>
+              <Input label="Round Number" value={newRound.number}
+                onChange={v => setNewRound(f => ({...f,number:v}))} placeholder="e.g. 1" />
+              <Select label="Circuit" value={newRound.circuit_id}
+                onChange={v => setNewRound(f => ({...f, circuit_id:v}))}
+                options={[{value:'',label:'Select circuit...'},
+                  ...TRACKS.map(t => ({value:t.id,label:t.name}))]} />
+              <Input label="Date (optional)" value={newRound.scheduled_for}
+                onChange={v => setNewRound(f => ({...f,scheduled_for:v}))}
+                placeholder="YYYY-MM-DD" />
+              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
+                <label style={{ ...T.cap }}>Sprint Weekend</label>
+                <input type="checkbox" checked={newRound.is_sprint}
+                  onChange={e => setNewRound(f => ({...f,is_sprint:e.target.checked}))}
+                  style={{ width:16, height:16, accentColor:'#FF9500' }} />
+              </div>
+              <div style={{ display:'flex', gap:10 }}>
+                <Button onClick={createRound} disabled={savingRound}>
+                  {savingRound ? 'Creating...' : 'Create Round'}
+                </Button>
+                <Button variant="secondary" onClick={() => setCreating(false)}>Cancel</Button>
+              </div>
+            </Card>
+          )}
+
+          {allRounds.length === 0 && !creating && (
+            <EmptyState title="No rounds yet" sub="Create the first round above" />
+          )}
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {allRounds.map(r => (
+              <Card key={r.id}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <div style={{ display:'flex', gap:14, alignItems:'center' }}>
+                    <div style={{ fontWeight:900, fontSize:18, fontFamily:FONT_HEAD,
+                      color: STATE_COLOR[r.state]||'#55556A', minWidth:36 }}>R{r.number}</div>
+                    <div>
+                      <div style={{ ...T.h3 }}>{r.circuit_name||r.circuit_id}</div>
+                      <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+                        <Badge color={STATE_COLOR[r.state]||'#55556A'}>
+                          {STATE_LABEL[r.state]||r.state}
+                        </Badge>
+                        {r.is_sprint && <Badge color="#FF9500">Sprint</Badge>}
+                      </div>
+                    </div>
+                  </div>
+                  {nextState(r.state) && (
+                    <Button size="sm" variant="secondary"
+                      onClick={() => advanceState(r)}
+                      disabled={advancing === r.id}>
+                      {advancing === r.id ? '...' : `-> ${STATE_LABEL[nextState(r.state)]}`}
+                    </Button>
+                  )}
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );
@@ -6082,8 +6654,8 @@ export default function F1Sim() {
       case 'team':          return <MyTeamPage {...pageProps} />;
       case 'apply':         return <ApplyPage {...pageProps} />;
       case 'teams':         return <TeamsPage />;
-      case 'championship':  return <ChampionshipPage />;
-      case 'calendar':      return <CalendarPage />;
+      case 'championship':  return <ChampionshipPage {...pageProps} />;
+      case 'calendar':      return <CalendarPage {...pageProps} />;
       case 'stats':         return <StatsPage />;
       case 'notifications': return <NotificationsPage {...pageProps} onRead={() => setUnreadCount(0)} />;
       case 'settings':      return <SettingsPage {...pageProps} />;
