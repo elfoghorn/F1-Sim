@@ -3290,6 +3290,25 @@ const TRACK_FLAG = {
   abu_dhabi:      '🇦🇪',
 };
 
+async function ensureTeamsSeeded() {
+  if (!sbClient) return;
+  const { data } = await sbFetch('league_teams?select=id&limit=1');
+  if (data && data.length > 0) return; // already seeded
+  const rows = TEAMS.map(t => ({
+    id: t.id, name: t.name, abbr: t.abbr || t.id.slice(0,3).toUpperCase(),
+    color: t.color, tier: t.tier, strategy: t.strategy,
+    car_pace: t.carPace, reliability: t.reliability, pit_speed: t.pitSpeed,
+    tyre_life: t.tyreLife, cornering: t.cornering || 10, top_speed: t.topSpeed || 10,
+  }));
+  for (const row of rows) {
+    await sbFetch('league_teams', {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates' },
+      body: JSON.stringify(row),
+    });
+  }
+}
+
 async function uploadCharacterPhoto(file, charId) {
   if (!sbClient) return { url: null, error: 'Not connected' };
   const sess = (await sbClient.auth.getSession()).data.session;
@@ -4617,6 +4636,7 @@ function CharacterEditForm({ char, onDone }) {
 function CharactersPage({ sbUser }) {
   const [chars, setChars] = useState(null);
   const [creating, setCreating] = useState(false);
+  const [applying, setApplying] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [selected, setSelected] = useState(null);
@@ -4638,6 +4658,12 @@ function CharactersPage({ sbUser }) {
       onCancel={() => setCreating(false)} />
   );
 
+  if (applying) return (
+    <ApplicationForm sbUser={sbUser}
+      onDone={() => { setApplying(false); loadChars(); }}
+      onCancel={() => setApplying(false)} />
+  );
+
   return (
     <div>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24 }}>
@@ -4645,7 +4671,10 @@ function CharactersPage({ sbUser }) {
           <div style={{ ...T.h1 }}>My Characters</div>
           <div style={{ ...T.sub }}>Your driver and staff characters</div>
         </div>
-        <Button onClick={() => setCreating(true)}>+ New Character</Button>
+        <div style={{ display:'flex', gap:10 }}>
+          <Button variant="secondary" onClick={() => setApplying(true)}>Apply for Team Slot</Button>
+          <Button onClick={() => setCreating(true)}>+ New Character</Button>
+        </div>
       </div>
       {!chars || chars.length === 0 ? (
         <EmptyState title="No characters yet" sub="Create a driver or staff character to get started"
@@ -7636,10 +7665,9 @@ function GMCharacters() {
 
   async function openTransfer(c) {
     setXferErr(''); setXferTeam(c.team_id||'');
-    if (!teams.length) {
-      const { data } = await sbFetch('league_teams?order=name&select=id,name,color');
-      setTeams(data||[]);
-    }
+    await ensureTeamsSeeded();
+    const { data } = await sbFetch('league_teams?order=name&select=id,name,color');
+    setTeams(data||[]);
     setTransferring(c);
   }
 
@@ -7836,6 +7864,7 @@ function GMTeams() {
   const [savingNew,setSavingNew]=useState(false);
 
   async function load() {
+    await ensureTeamsSeeded();
     const { data } = await sbFetch('league_teams?order=name&select=*');
     setTeams(data||[]); setLoading(false);
   }
