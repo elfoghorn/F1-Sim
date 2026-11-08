@@ -3405,6 +3405,7 @@ const NAV_ITEMS = [
   { id:'championship', label:'Championship' },
   { id:'calendar',     label:'Calendar' },
   { id:'stats',        label:'Statistics' },
+  { id:'search',       label:'Search' },
   { id:'notifications',label:'Notifications' },
   { id:'settings',     label:'Settings' },
   null,
@@ -5244,6 +5245,307 @@ function StatsPage({ sbUser }) {
   );
 }
 
+async function sendNotification(recipientId, kind, payload) {
+  if (!recipientId || !sbClient) return;
+  try {
+    await sbFetch('notifications', {
+      method:'POST',
+      body: JSON.stringify({ recipient_id: recipientId, kind, payload, read_at: null })
+    });
+  } catch(e) { /* non-fatal */ }
+}
+
+// -- Search Page -------------------------------------------------------------
+
+function SearchPage({ setPage, setNavTarget }) {
+  const [query,   setQuery]   = useState('');
+  const [results, setResults] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  async function doSearch(q) {
+    if (!q || q.trim().length < 2) { setResults(null); return; }
+    setLoading(true);
+    const enc = encodeURIComponent(`%${q.trim()}%`);
+    const [chars, profiles, teams, news] = await Promise.all([
+      sbFetch(`characters?name=ilike.${enc}&select=id,name,type,is_active,nationality&limit=10`),
+      sbFetch(`profiles?or=(username.ilike.${enc},display_name.ilike.${enc})&select=id,username,display_name,bio&limit=10`),
+      sbFetch(`league_teams?name=ilike.${enc}&select=id,name,color,tier&limit=10`),
+      sbFetch(`news_posts?title=ilike.${enc}&select=id,title,category,created_at&limit=5`),
+    ]);
+    setResults({
+      characters: chars.data || [],
+      profiles:   profiles.data || [],
+      teams:      teams.data || [],
+      news:       news.data || [],
+    });
+    setLoading(false);
+  }
+
+  function goProfile(profileId) {
+    setNavTarget({ profileId });
+    setPage('profile');
+  }
+  function goTeams() { setPage('teams'); }
+
+  const total = results ? (results.characters.length + results.profiles.length +
+    results.teams.length + results.news.length) : 0;
+
+  return (
+    <div>
+      <div style={{ ...T.cap, color:'#E8002D', marginBottom:4 }}>League</div>
+      <div style={{ ...T.h1, marginBottom:20 }}>Search</div>
+
+      {/* Search input */}
+      <div style={{ position:'relative', marginBottom:24 }}>
+        <input
+          type="text"
+          value={query}
+          onChange={e => { setQuery(e.target.value); doSearch(e.target.value); }}
+          placeholder="Search characters, players, teams, news..."
+          autoFocus
+          style={{
+            width:'100%', padding:'14px 44px 14px 16px', boxSizing:'border-box',
+            background:'#111114', border:'1px solid #252530', borderRadius:8,
+            color:'#F0F0F5', fontSize:16, fontFamily:FONT_BODY, outline:'none',
+          }}
+        />
+        {loading && (
+          <div style={{ position:'absolute', right:14, top:'50%', transform:'translateY(-50%)',
+            fontSize:11, color:'#55556A', fontFamily:FONT_MONO }}>...</div>
+        )}
+      </div>
+
+      {!results && !loading && (
+        <div style={{ textAlign:'center', padding:'60px 0', color:'#55556A' }}>
+          <div style={{ fontSize:40, marginBottom:12 }}>O</div>
+          <div style={{ ...T.body }}>Search the entire league</div>
+          <div style={{ ...T.sub }}>Characters, players, teams, news &mdash; all in one place</div>
+        </div>
+      )}
+
+      {results && total === 0 && (
+        <EmptyState title="No results" sub={`Nothing matched "${query}"`} />
+      )}
+
+      {results && results.profiles.length > 0 && (
+        <div style={{ marginBottom:24 }}>
+          <div style={{ ...T.cap, color:'#3B8EFF', marginBottom:10 }}>
+            Players ({results.profiles.length})
+          </div>
+          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            {results.profiles.map(p => (
+              <Card key={p.id} style={{ cursor:'pointer', padding:'10px 14px' }}
+                onClick={() => goProfile(p.id)}>
+                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <div style={{ width:36, height:36, borderRadius:'50%', background:'#252530',
+                    display:'flex', alignItems:'center', justifyContent:'center',
+                    fontSize:14, fontWeight:800, color:'#3B8EFF', fontFamily:FONT_HEAD }}>
+                    {(p.display_name||p.username||'?')[0].toUpperCase()}
+                  </div>
+                  <div>
+                    <div style={{ ...T.body, fontWeight:600 }}>{p.display_name || p.username}</div>
+                    {p.display_name && <div style={{ ...T.cap }}>{p.username}</div>}
+                    {p.bio && <div style={{ ...T.sub, fontSize:11 }}>{p.bio.slice(0,80)}</div>}
+                  </div>
+                  <div style={{ marginLeft:'auto', ...T.cap, color:'#3B8EFF' }}>View profile &rsaquo;</div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {results && results.characters.length > 0 && (
+        <div style={{ marginBottom:24 }}>
+          <div style={{ ...T.cap, color:'#E8002D', marginBottom:10 }}>
+            Characters ({results.characters.length})
+          </div>
+          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            {results.characters.map(c => (
+              <Card key={c.id} style={{ padding:'10px 14px' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <div style={{ flex:1 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                      <span style={{ ...T.body, fontWeight:600 }}>{c.name}</span>
+                      <Badge color={c.type==='driver'?'#3B8EFF':'#FF9500'}>{c.type}</Badge>
+                      {!c.is_active && <Badge color="#55556A">Inactive</Badge>}
+                    </div>
+                    {c.nationality && <div style={{ ...T.cap }}>{c.nationality}</div>}
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {results && results.teams.length > 0 && (
+        <div style={{ marginBottom:24 }}>
+          <div style={{ ...T.cap, color:'#FF9500', marginBottom:10 }}>
+            Teams ({results.teams.length})
+          </div>
+          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            {results.teams.map(t => (
+              <Card key={t.id} style={{ cursor:'pointer', padding:'10px 14px' }}
+                onClick={goTeams}>
+                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <div style={{ width:6, height:36, borderRadius:3,
+                    background:t.color||'#55556A', flexShrink:0 }} />
+                  <div>
+                    <div style={{ ...T.body, fontWeight:600 }}>{t.name}</div>
+                    {t.tier && <div style={{ ...T.cap }}>{t.tier}</div>}
+                  </div>
+                  <div style={{ marginLeft:'auto', ...T.cap, color:'#FF9500' }}>Teams &rsaquo;</div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {results && results.news.length > 0 && (
+        <div style={{ marginBottom:24 }}>
+          <div style={{ ...T.cap, color:'#55556A', marginBottom:10 }}>
+            News ({results.news.length})
+          </div>
+          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            {results.news.map(n => (
+              <Card key={n.id} style={{ cursor:'pointer', padding:'10px 14px' }}
+                onClick={() => setPage('notifications')}>
+                <div style={{ ...T.body, fontWeight:600, marginBottom:4 }}>{n.title}</div>
+                <div style={{ display:'flex', gap:8 }}>
+                  {n.category && <Badge color="#55556A">{n.category.replace(/_/g,' ')}</Badge>}
+                  <span style={{ ...T.cap }}>{new Date(n.created_at).toLocaleDateString()}</span>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// -- Public Profile Page ------------------------------------------------------
+
+function PublicProfilePage({ navTarget, setPage }) {
+  const profileId = navTarget?.profileId;
+  const [data,    setData]    = useState(null);
+  const [chars,   setChars]   = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loaded,  setLoaded]  = useState(false);
+
+  if (!loaded) {
+    setLoaded(true);
+    if (sbClient && profileId) {
+      Promise.all([
+        sbFetch(`profiles?id=eq.${profileId}&select=*&limit=1`),
+        sbFetch(`characters?owner_id=eq.${profileId}&select=*&order=created_at&limit=20`),
+      ]).then(([pr, cr]) => {
+        setData((pr.data||[])[0] || null);
+        setChars(cr.data||[]);
+        setLoading(false);
+      });
+    } else setLoading(false);
+  }
+
+  if (loading) return <Spinner />;
+  if (!profileId || !data) return (
+    <div>
+      <button onClick={() => setPage('search')}
+        style={{ background:'none', border:'none', color:'#E8002D', cursor:'pointer',
+          fontFamily:FONT_BODY, fontSize:14, marginBottom:20 }}>
+        &larr; Back to Search
+      </button>
+      <EmptyState title="Profile not found" sub="This player profile could not be loaded" />
+    </div>
+  );
+
+  const driverChars = chars.filter(c => c.type === 'driver');
+  const staffChars  = chars.filter(c => c.type !== 'driver');
+
+  return (
+    <div>
+      <button onClick={() => setPage('search')}
+        style={{ background:'none', border:'none', color:'#55556A', cursor:'pointer',
+          fontFamily:FONT_BODY, fontSize:14, marginBottom:20 }}>
+        &larr; Back to Search
+      </button>
+
+      {/* Profile header */}
+      <Card style={{ marginBottom:20 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:16, marginBottom:16 }}>
+          <div style={{ width:64, height:64, borderRadius:'50%', background:'#252530',
+            display:'flex', alignItems:'center', justifyContent:'center',
+            fontSize:24, fontWeight:900, color:'#3B8EFF', fontFamily:FONT_HEAD }}>
+            {(data.display_name||data.username||'?')[0].toUpperCase()}
+          </div>
+          <div>
+            <div style={{ ...T.h1 }}>{data.display_name || data.username}</div>
+            {data.display_name && (
+              <div style={{ ...T.cap }}>@{data.username}</div>
+            )}
+            <div style={{ display:'flex', gap:6, marginTop:6 }}>
+              <Badge color={data.role==='gm'?'#E8002D':data.role==='admin'?'#FFD700':'#3B8EFF'}>
+                {data.role || 'player'}
+              </Badge>
+            </div>
+          </div>
+        </div>
+        {data.bio && (
+          <div style={{ ...T.body, lineHeight:1.8, marginBottom:12 }}>{data.bio}</div>
+        )}
+        {data.social_handle && (
+          <div style={{ ...T.cap }}>Social: {data.social_handle}</div>
+        )}
+      </Card>
+
+      {/* Characters */}
+      {chars.length > 0 && (
+        <div>
+          <div style={{ ...T.cap, color:'#E8002D', marginBottom:10 }}>
+            Characters ({chars.length})
+          </div>
+          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+            {chars.map(c => (
+              <Card key={c.id} style={{ padding:'12px 14px' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <div style={{ width:40, height:40, borderRadius:'50%', background:'#252530',
+                    display:'flex', alignItems:'center', justifyContent:'center',
+                    fontSize:16, fontWeight:900,
+                    color: c.type==='driver'?'#E8002D':'#FF9500',
+                    fontFamily:FONT_HEAD }}>
+                    {c.number || (c.name||'?')[0].toUpperCase()}
+                  </div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:3 }}>
+                      <span style={{ ...T.body, fontWeight:600 }}>{c.name}</span>
+                      <Badge color={c.type==='driver'?'#3B8EFF':'#FF9500'}>{c.type}</Badge>
+                      <Badge color={c.is_active?'#00C46A':'#55556A'}>
+                        {c.is_active?'Active':'Inactive'}
+                      </Badge>
+                    </div>
+                    <div style={{ display:'flex', gap:12 }}>
+                      {c.nationality && <span style={{ ...T.cap }}>{c.nationality}</span>}
+                      {c.type === 'driver' && c.pace && (
+                        <span style={{ ...T.cap }}>Pace: {c.pace}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {chars.length === 0 && (
+        <EmptyState title="No characters" sub="This player has no characters yet" />
+      )}
+    </div>
+  );
+}
+
 // -- Notifications Page -------------------------------------------------------
 
 function NotificationsPage({ sbUser, onRead }) {
@@ -5638,6 +5940,7 @@ function GMControlPage({ sbUser, setPage: _setPage }) {
     { id:'contracts',     label:'Contracts' },
     { id:'news',          label:'News' },
     { id:'race',          label:'Race Control' },
+    { id:'league',        label:'League Settings' },
     { id:'audit',         label:'Audit Log' },
   ];
 
@@ -5671,6 +5974,7 @@ function GMControlPage({ sbUser, setPage: _setPage }) {
       {tab === 'contracts'    && <GMContracts />}
       {tab === 'news'         && <GMNews sbUser={sbUser} />}
       {tab === 'race'         && <GMRaceControl sbUser={sbUser} />}
+      {tab === 'league'       && <GMLeagueSettings />}
       {tab === 'audit'        && <GMAuditLog />}
     </div>
   );
@@ -5713,6 +6017,23 @@ function GMApplications() {
         body: JSON.stringify({ character_id: app.characters.id, team_id: teamId,
           name: app.characters.name, number: null })
       });
+    }
+    // Send notification to applicant
+    if (app.applicant_id) {
+      const charName = app.characters?.name || 'your character';
+      const teamName = status === 'approved'
+        ? (app.approving_team || teamId ? `You have been placed with a team.` : '')
+        : '';
+      await sendNotification(app.applicant_id,
+        status === 'approved' ? 'application_decided' : 'application_decided',
+        {
+          message: status === 'approved'
+            ? `Your application for ${charName} has been APPROVED. Welcome to the league!`
+            : `Your application for ${charName} has been declined.`,
+          character_name: charName,
+          decision: status,
+        }
+      );
     }
     setApproving(null);
     setExpanded(null);
@@ -6713,6 +7034,137 @@ function GMContracts() {
   );
 }
 
+function GMLeagueSettings() {
+  const [settings, setSettings] = useState({});
+  const [loading,  setLoading]  = useState(true);
+  const [loaded,   setLoaded]   = useState(false);
+  const [saving,   setSaving]   = useState(false);
+  const [saved,    setSaved]    = useState(false);
+
+  async function load() {
+    const { data } = await sbFetch('league_settings?select=key,value');
+    const map = {};
+    (data||[]).forEach(r => { map[r.key] = r.value; });
+    setSettings(map);
+    setLoading(false);
+  }
+
+  if (!loaded) { setLoaded(true); if (sbClient) load(); else setLoading(false); }
+  if (loading) return <Spinner />;
+
+  const set = (k, v) => setSettings(s => ({...s, [k]: v}));
+
+  async function save() {
+    setSaving(true);
+    const rows = Object.entries(settings).map(([key, value]) => ({ key, value }));
+    for (const row of rows) {
+      await sbFetch('league_settings', {
+        method:'POST',
+        headers:{ Prefer:'resolution=merge-duplicates' },
+        body: JSON.stringify(row),
+      });
+    }
+    setSaving(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  }
+
+  const TIERS = ['top','upper_mid','mid','lower_mid','backmarker'];
+
+  return (
+    <div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+        <div style={{ ...T.h3 }}>League Settings</div>
+        <Button onClick={save} disabled={saving}>
+          {saved ? 'Saved!' : saving ? 'Saving...' : 'Save Changes'}
+        </Button>
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
+        {/* Identity */}
+        <Card>
+          <div style={{ ...T.cap, color:'#E8002D', marginBottom:12 }}>Identity</div>
+          <Input label="League Name" value={settings.league_name||''} onChange={v => set('league_name',v)}
+            placeholder="e.g. F1 Sim League 2027" />
+          <Input label="Season Number" value={settings.season_number||''} onChange={v => set('season_number',v)}
+            placeholder="e.g. 1" />
+          <Input label="Tagline" value={settings.tagline||''} onChange={v => set('tagline',v)}
+            placeholder="e.g. The Official F1 Sim League" />
+        </Card>
+
+        {/* Registration */}
+        <Card>
+          <div style={{ ...T.cap, color:'#3B8EFF', marginBottom:12 }}>Registration</div>
+          <Select label="Applications Status"
+            value={settings.registration_open||'open'}
+            onChange={v => set('registration_open',v)}
+            options={[
+              { value:'open',   label:'Open - new applications accepted' },
+              { value:'review', label:'Review only - no new apps' },
+              { value:'closed', label:'Closed - locked' },
+            ]} />
+          <Input label="Max Characters per Player" value={settings.max_characters||''}
+            onChange={v => set('max_characters',v)} placeholder="e.g. 2" />
+          <Input label="Max Drivers per Team" value={settings.max_drivers_per_team||''}
+            onChange={v => set('max_drivers_per_team',v)} placeholder="e.g. 2" />
+        </Card>
+
+        {/* Season state */}
+        <Card>
+          <div style={{ ...T.cap, color:'#FF9500', marginBottom:12 }}>Season State</div>
+          <Select label="Season Phase"
+            value={settings.season_phase||'pre_season'}
+            onChange={v => set('season_phase',v)}
+            options={[
+              { value:'pre_season',  label:'Pre-Season' },
+              { value:'active',      label:'Active - season running' },
+              { value:'mid_break',   label:'Mid-Season Break' },
+              { value:'post_season', label:'Post-Season' },
+              { value:'off_season',  label:'Off-Season' },
+            ]} />
+          <Input label="Current Round" value={settings.current_round||''}
+            onChange={v => set('current_round',v)} placeholder="e.g. 3" />
+          <Input label="Total Rounds" value={settings.total_rounds||''}
+            onChange={v => set('total_rounds',v)} placeholder="e.g. 24" />
+        </Card>
+
+        {/* Scoring */}
+        <Card>
+          <div style={{ ...T.cap, color:'#FFD700', marginBottom:12 }}>Scoring System</div>
+          <Select label="Points System"
+            value={settings.points_system||'standard'}
+            onChange={v => set('points_system',v)}
+            options={[
+              { value:'standard',    label:'Standard F1 (25-18-15...)' },
+              { value:'sprint_bonus',label:'Sprint bonus included' },
+              { value:'custom',      label:'Custom (edit manually)' },
+            ]} />
+          <Input label="Fastest Lap Point" value={settings.fastest_lap_point||''}
+            onChange={v => set('fastest_lap_point',v)} placeholder="1 (optional)" />
+          <Input label="DNF Penalty" value={settings.dnf_penalty||''}
+            onChange={v => set('dnf_penalty',v)} placeholder="e.g. 0 (no penalty)" />
+        </Card>
+      </div>
+
+      {/* Current values preview */}
+      <Card style={{ marginTop:20 }}>
+        <div style={{ ...T.cap, color:'#55556A', marginBottom:10 }}>Current DB Values</div>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:8 }}>
+          {Object.entries(settings).map(([k,v]) => (
+            <div key={k} style={{ background:'#111114', borderRadius:6, padding:'8px 10px' }}>
+              <div style={{ ...T.cap, color:'#55556A' }}>{k.replace(/_/g,' ')}</div>
+              <div style={{ ...T.body, fontSize:13, fontWeight:600 }}>{String(v)}</div>
+            </div>
+          ))}
+          {Object.keys(settings).length === 0 && (
+            <div style={{ ...T.sub }}>No settings saved yet. Fill in the form above and click Save.</div>
+          )}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 function GMAuditLog() {
   const [log, setLog] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -7152,6 +7604,7 @@ export default function F1Sim() {
   const [sbUser, setSbUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [page, setPage] = useState('dashboard');
+  const [navTarget, setNavTarget] = useState(null);
   const [authLoading, setAuthLoading] = useState(!!sbClient);
   const [unreadCount, setUnreadCount] = useState(0);
   const authInitRef = useRef(false);
@@ -7204,7 +7657,7 @@ export default function F1Sim() {
 
   if (!sbUser) return <AuthScreen onLogin={handleLogin} />;
 
-  const pageProps = { sbUser, profile, setPage, onProfileUpdate: setProfile };
+  const pageProps = { sbUser, profile, setPage, navTarget, setNavTarget, onProfileUpdate: setProfile };
 
   const renderPage = () => {
     switch (page) {
@@ -7219,6 +7672,8 @@ export default function F1Sim() {
       case 'notifications': return <NotificationsPage {...pageProps} onRead={() => setUnreadCount(0)} />;
       case 'settings':      return <SettingsPage {...pageProps} />;
       case 'gm':            return <GMControlPage {...pageProps} />;
+      case 'search':         return <SearchPage {...pageProps} />;
+      case 'profile':        return <PublicProfilePage {...pageProps} />;
       case 'sandbox':       return <SandboxPage />;
       default:              return <Dashboard {...pageProps} />;
     }

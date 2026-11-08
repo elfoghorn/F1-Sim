@@ -20656,6 +20656,7 @@ const NAV_ITEMS = [
   { id:'championship', label:'Championship' },
   { id:'calendar',     label:'Calendar' },
   { id:'stats',        label:'Statistics' },
+  { id:'search',       label:'Search' },
   { id:'notifications',label:'Notifications' },
   { id:'settings',     label:'Settings' },
   null,
@@ -22495,6 +22496,307 @@ function StatsPage({ sbUser }) {
   );
 }
 
+async function sendNotification(recipientId, kind, payload) {
+  if (!recipientId || !sbClient) return;
+  try {
+    await sbFetch('notifications', {
+      method:'POST',
+      body: JSON.stringify({ recipient_id: recipientId, kind, payload, read_at: null })
+    });
+  } catch(e) { /* non-fatal */ }
+}
+
+// -- Search Page -------------------------------------------------------------
+
+function SearchPage({ setPage, setNavTarget }) {
+  const [query,   setQuery]   = useState('');
+  const [results, setResults] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  async function doSearch(q) {
+    if (!q || q.trim().length < 2) { setResults(null); return; }
+    setLoading(true);
+    const enc = encodeURIComponent(`%${q.trim()}%`);
+    const [chars, profiles, teams, news] = await Promise.all([
+      sbFetch(`characters?name=ilike.${enc}&select=id,name,type,is_active,nationality&limit=10`),
+      sbFetch(`profiles?or=(username.ilike.${enc},display_name.ilike.${enc})&select=id,username,display_name,bio&limit=10`),
+      sbFetch(`league_teams?name=ilike.${enc}&select=id,name,color,tier&limit=10`),
+      sbFetch(`news_posts?title=ilike.${enc}&select=id,title,category,created_at&limit=5`),
+    ]);
+    setResults({
+      characters: chars.data || [],
+      profiles:   profiles.data || [],
+      teams:      teams.data || [],
+      news:       news.data || [],
+    });
+    setLoading(false);
+  }
+
+  function goProfile(profileId) {
+    setNavTarget({ profileId });
+    setPage('profile');
+  }
+  function goTeams() { setPage('teams'); }
+
+  const total = results ? (results.characters.length + results.profiles.length +
+    results.teams.length + results.news.length) : 0;
+
+  return (
+    React.createElement('div', null
+      , React.createElement('div', { style: { ...T.cap, color:'#E8002D', marginBottom:4 },}, "League")
+      , React.createElement('div', { style: { ...T.h1, marginBottom:20 },}, "Search")
+
+      /* Search input */
+      , React.createElement('div', { style: { position:'relative', marginBottom:24 },}
+        , React.createElement('input', {
+          type: "text",
+          value: query,
+          onChange: e => { setQuery(e.target.value); doSearch(e.target.value); },
+          placeholder: "Search characters, players, teams, news..."    ,
+          autoFocus: true,
+          style: {
+            width:'100%', padding:'14px 44px 14px 16px', boxSizing:'border-box',
+            background:'#111114', border:'1px solid #252530', borderRadius:8,
+            color:'#F0F0F5', fontSize:16, fontFamily:FONT_BODY, outline:'none',
+          },}
+        )
+        , loading && (
+          React.createElement('div', { style: { position:'absolute', right:14, top:'50%', transform:'translateY(-50%)',
+            fontSize:11, color:'#55556A', fontFamily:FONT_MONO },}, "...")
+        )
+      )
+
+      , !results && !loading && (
+        React.createElement('div', { style: { textAlign:'center', padding:'60px 0', color:'#55556A' },}
+          , React.createElement('div', { style: { fontSize:40, marginBottom:12 },}, "O")
+          , React.createElement('div', { style: { ...T.body },}, "Search the entire league"   )
+          , React.createElement('div', { style: { ...T.sub },}, "Characters, players, teams, news — all in one place"        )
+        )
+      )
+
+      , results && total === 0 && (
+        React.createElement(EmptyState, { title: "No results" , sub: `Nothing matched "${query}"`,} )
+      )
+
+      , results && results.profiles.length > 0 && (
+        React.createElement('div', { style: { marginBottom:24 },}
+          , React.createElement('div', { style: { ...T.cap, color:'#3B8EFF', marginBottom:10 },}, "Players ("
+             , results.profiles.length, ")"
+          )
+          , React.createElement('div', { style: { display:'flex', flexDirection:'column', gap:6 },}
+            , results.profiles.map(p => (
+              React.createElement(Card, { key: p.id, style: { cursor:'pointer', padding:'10px 14px' },
+                onClick: () => goProfile(p.id),}
+                , React.createElement('div', { style: { display:'flex', alignItems:'center', gap:10 },}
+                  , React.createElement('div', { style: { width:36, height:36, borderRadius:'50%', background:'#252530',
+                    display:'flex', alignItems:'center', justifyContent:'center',
+                    fontSize:14, fontWeight:800, color:'#3B8EFF', fontFamily:FONT_HEAD },}
+                    , (p.display_name||p.username||'?')[0].toUpperCase()
+                  )
+                  , React.createElement('div', null
+                    , React.createElement('div', { style: { ...T.body, fontWeight:600 },}, p.display_name || p.username)
+                    , p.display_name && React.createElement('div', { style: { ...T.cap },}, p.username)
+                    , p.bio && React.createElement('div', { style: { ...T.sub, fontSize:11 },}, p.bio.slice(0,80))
+                  )
+                  , React.createElement('div', { style: { marginLeft:'auto', ...T.cap, color:'#3B8EFF' },}, "View profile ›"  )
+                )
+              )
+            ))
+          )
+        )
+      )
+
+      , results && results.characters.length > 0 && (
+        React.createElement('div', { style: { marginBottom:24 },}
+          , React.createElement('div', { style: { ...T.cap, color:'#E8002D', marginBottom:10 },}, "Characters ("
+             , results.characters.length, ")"
+          )
+          , React.createElement('div', { style: { display:'flex', flexDirection:'column', gap:6 },}
+            , results.characters.map(c => (
+              React.createElement(Card, { key: c.id, style: { padding:'10px 14px' },}
+                , React.createElement('div', { style: { display:'flex', alignItems:'center', gap:10 },}
+                  , React.createElement('div', { style: { flex:1 },}
+                    , React.createElement('div', { style: { display:'flex', alignItems:'center', gap:8 },}
+                      , React.createElement('span', { style: { ...T.body, fontWeight:600 },}, c.name)
+                      , React.createElement(Badge, { color: c.type==='driver'?'#3B8EFF':'#FF9500',}, c.type)
+                      , !c.is_active && React.createElement(Badge, { color: "#55556A",}, "Inactive")
+                    )
+                    , c.nationality && React.createElement('div', { style: { ...T.cap },}, c.nationality)
+                  )
+                )
+              )
+            ))
+          )
+        )
+      )
+
+      , results && results.teams.length > 0 && (
+        React.createElement('div', { style: { marginBottom:24 },}
+          , React.createElement('div', { style: { ...T.cap, color:'#FF9500', marginBottom:10 },}, "Teams ("
+             , results.teams.length, ")"
+          )
+          , React.createElement('div', { style: { display:'flex', flexDirection:'column', gap:6 },}
+            , results.teams.map(t => (
+              React.createElement(Card, { key: t.id, style: { cursor:'pointer', padding:'10px 14px' },
+                onClick: goTeams,}
+                , React.createElement('div', { style: { display:'flex', alignItems:'center', gap:10 },}
+                  , React.createElement('div', { style: { width:6, height:36, borderRadius:3,
+                    background:t.color||'#55556A', flexShrink:0 },} )
+                  , React.createElement('div', null
+                    , React.createElement('div', { style: { ...T.body, fontWeight:600 },}, t.name)
+                    , t.tier && React.createElement('div', { style: { ...T.cap },}, t.tier)
+                  )
+                  , React.createElement('div', { style: { marginLeft:'auto', ...T.cap, color:'#FF9500' },}, "Teams ›" )
+                )
+              )
+            ))
+          )
+        )
+      )
+
+      , results && results.news.length > 0 && (
+        React.createElement('div', { style: { marginBottom:24 },}
+          , React.createElement('div', { style: { ...T.cap, color:'#55556A', marginBottom:10 },}, "News ("
+             , results.news.length, ")"
+          )
+          , React.createElement('div', { style: { display:'flex', flexDirection:'column', gap:6 },}
+            , results.news.map(n => (
+              React.createElement(Card, { key: n.id, style: { cursor:'pointer', padding:'10px 14px' },
+                onClick: () => setPage('notifications'),}
+                , React.createElement('div', { style: { ...T.body, fontWeight:600, marginBottom:4 },}, n.title)
+                , React.createElement('div', { style: { display:'flex', gap:8 },}
+                  , n.category && React.createElement(Badge, { color: "#55556A",}, n.category.replace(/_/g,' '))
+                  , React.createElement('span', { style: { ...T.cap },}, new Date(n.created_at).toLocaleDateString())
+                )
+              )
+            ))
+          )
+        )
+      )
+    )
+  );
+}
+
+// -- Public Profile Page ------------------------------------------------------
+
+function PublicProfilePage({ navTarget, setPage }) {
+  const profileId = _optionalChain([navTarget, 'optionalAccess', _174 => _174.profileId]);
+  const [data,    setData]    = useState(null);
+  const [chars,   setChars]   = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loaded,  setLoaded]  = useState(false);
+
+  if (!loaded) {
+    setLoaded(true);
+    if (sbClient && profileId) {
+      Promise.all([
+        sbFetch(`profiles?id=eq.${profileId}&select=*&limit=1`),
+        sbFetch(`characters?owner_id=eq.${profileId}&select=*&order=created_at&limit=20`),
+      ]).then(([pr, cr]) => {
+        setData((pr.data||[])[0] || null);
+        setChars(cr.data||[]);
+        setLoading(false);
+      });
+    } else setLoading(false);
+  }
+
+  if (loading) return React.createElement(Spinner, null );
+  if (!profileId || !data) return (
+    React.createElement('div', null
+      , React.createElement('button', { onClick: () => setPage('search'),
+        style: { background:'none', border:'none', color:'#E8002D', cursor:'pointer',
+          fontFamily:FONT_BODY, fontSize:14, marginBottom:20 },}, "← Back to Search"
+
+      )
+      , React.createElement(EmptyState, { title: "Profile not found"  , sub: "This player profile could not be loaded"      ,} )
+    )
+  );
+
+  const driverChars = chars.filter(c => c.type === 'driver');
+  const staffChars  = chars.filter(c => c.type !== 'driver');
+
+  return (
+    React.createElement('div', null
+      , React.createElement('button', { onClick: () => setPage('search'),
+        style: { background:'none', border:'none', color:'#55556A', cursor:'pointer',
+          fontFamily:FONT_BODY, fontSize:14, marginBottom:20 },}, "← Back to Search"
+
+      )
+
+      /* Profile header */
+      , React.createElement(Card, { style: { marginBottom:20 },}
+        , React.createElement('div', { style: { display:'flex', alignItems:'center', gap:16, marginBottom:16 },}
+          , React.createElement('div', { style: { width:64, height:64, borderRadius:'50%', background:'#252530',
+            display:'flex', alignItems:'center', justifyContent:'center',
+            fontSize:24, fontWeight:900, color:'#3B8EFF', fontFamily:FONT_HEAD },}
+            , (data.display_name||data.username||'?')[0].toUpperCase()
+          )
+          , React.createElement('div', null
+            , React.createElement('div', { style: { ...T.h1 },}, data.display_name || data.username)
+            , data.display_name && (
+              React.createElement('div', { style: { ...T.cap },}, "@", data.username)
+            )
+            , React.createElement('div', { style: { display:'flex', gap:6, marginTop:6 },}
+              , React.createElement(Badge, { color: data.role==='gm'?'#E8002D':data.role==='admin'?'#FFD700':'#3B8EFF',}
+                , data.role || 'player'
+              )
+            )
+          )
+        )
+        , data.bio && (
+          React.createElement('div', { style: { ...T.body, lineHeight:1.8, marginBottom:12 },}, data.bio)
+        )
+        , data.social_handle && (
+          React.createElement('div', { style: { ...T.cap },}, "Social: " , data.social_handle)
+        )
+      )
+
+      /* Characters */
+      , chars.length > 0 && (
+        React.createElement('div', null
+          , React.createElement('div', { style: { ...T.cap, color:'#E8002D', marginBottom:10 },}, "Characters ("
+             , chars.length, ")"
+          )
+          , React.createElement('div', { style: { display:'flex', flexDirection:'column', gap:10 },}
+            , chars.map(c => (
+              React.createElement(Card, { key: c.id, style: { padding:'12px 14px' },}
+                , React.createElement('div', { style: { display:'flex', alignItems:'center', gap:10 },}
+                  , React.createElement('div', { style: { width:40, height:40, borderRadius:'50%', background:'#252530',
+                    display:'flex', alignItems:'center', justifyContent:'center',
+                    fontSize:16, fontWeight:900,
+                    color: c.type==='driver'?'#E8002D':'#FF9500',
+                    fontFamily:FONT_HEAD },}
+                    , c.number || (c.name||'?')[0].toUpperCase()
+                  )
+                  , React.createElement('div', { style: { flex:1 },}
+                    , React.createElement('div', { style: { display:'flex', alignItems:'center', gap:8, marginBottom:3 },}
+                      , React.createElement('span', { style: { ...T.body, fontWeight:600 },}, c.name)
+                      , React.createElement(Badge, { color: c.type==='driver'?'#3B8EFF':'#FF9500',}, c.type)
+                      , React.createElement(Badge, { color: c.is_active?'#00C46A':'#55556A',}
+                        , c.is_active?'Active':'Inactive'
+                      )
+                    )
+                    , React.createElement('div', { style: { display:'flex', gap:12 },}
+                      , c.nationality && React.createElement('span', { style: { ...T.cap },}, c.nationality)
+                      , c.type === 'driver' && c.pace && (
+                        React.createElement('span', { style: { ...T.cap },}, "Pace: " , c.pace)
+                      )
+                    )
+                  )
+                )
+              )
+            ))
+          )
+        )
+      )
+
+      , chars.length === 0 && (
+        React.createElement(EmptyState, { title: "No characters" , sub: "This player has no characters yet"     ,} )
+      )
+    )
+  );
+}
+
 // -- Notifications Page -------------------------------------------------------
 
 function NotificationsPage({ sbUser, onRead }) {
@@ -22613,13 +22915,13 @@ function NotificationsPage({ sbUser, onRead }) {
                           React.createElement('div', { style: { width:7, height:7, borderRadius:'50%', background:color, flexShrink:0 },} )
                         )
                         , React.createElement('div', { style: { ...T.cap, color },}
-                          , NOTIF_ICON[n.kind] || '[!]', " " , _optionalChain([n, 'access', _174 => _174.kind, 'optionalAccess', _175 => _175.replace, 'call', _176 => _176(/_/g,' ')])
+                          , NOTIF_ICON[n.kind] || '[!]', " " , _optionalChain([n, 'access', _175 => _175.kind, 'optionalAccess', _176 => _176.replace, 'call', _177 => _177(/_/g,' ')])
                         )
                       )
-                      , _optionalChain([n, 'access', _177 => _177.payload, 'optionalAccess', _178 => _178.message]) && (
+                      , _optionalChain([n, 'access', _178 => _178.payload, 'optionalAccess', _179 => _179.message]) && (
                         React.createElement('div', { style: { ...T.body, marginBottom:4 },}, n.payload.message)
                       )
-                      , _optionalChain([n, 'access', _179 => _179.payload, 'optionalAccess', _180 => _180.character_name]) && (
+                      , _optionalChain([n, 'access', _180 => _180.payload, 'optionalAccess', _181 => _181.character_name]) && (
                         React.createElement('div', { style: { ...T.sub, fontSize:12 },}, "Character: " , n.payload.character_name)
                       )
                       , React.createElement('div', { style: { ...T.cap, marginTop:6 },}
@@ -22669,7 +22971,7 @@ function NotificationsPage({ sbUser, onRead }) {
                     , post.body
                   )
                   , React.createElement('div', { style: { ...T.cap, color:'#55556A' },}, "Posted by "
-                      , _optionalChain([post, 'access', _181 => _181.profiles, 'optionalAccess', _182 => _182.display_name]) || _optionalChain([post, 'access', _183 => _183.profiles, 'optionalAccess', _184 => _184.username]) || 'GM'
+                      , _optionalChain([post, 'access', _182 => _182.profiles, 'optionalAccess', _183 => _183.display_name]) || _optionalChain([post, 'access', _184 => _184.profiles, 'optionalAccess', _185 => _185.username]) || 'GM'
                     , ' ', "— " , new Date(post.created_at).toLocaleString()
                   )
                 )
@@ -22686,9 +22988,9 @@ function NotificationsPage({ sbUser, onRead }) {
 
 function SettingsPage({ profile, sbUser, onProfileUpdate }) {
   const [form, setForm] = useState({
-    display_name: _optionalChain([profile, 'optionalAccess', _185 => _185.display_name])||'',
-    bio: _optionalChain([profile, 'optionalAccess', _186 => _186.bio])||'',
-    social_handle: _optionalChain([profile, 'optionalAccess', _187 => _187.social_handle])||''
+    display_name: _optionalChain([profile, 'optionalAccess', _186 => _186.display_name])||'',
+    bio: _optionalChain([profile, 'optionalAccess', _187 => _187.bio])||'',
+    social_handle: _optionalChain([profile, 'optionalAccess', _188 => _188.social_handle])||''
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -22712,11 +23014,11 @@ function SettingsPage({ profile, sbUser, onProfileUpdate }) {
         , React.createElement('div', { style: { ...T.cap, marginBottom:12 },}, "Account")
         , React.createElement('div', { style: { display:'flex', gap:10, marginBottom:8 },}
           , React.createElement('span', { style: { ...T.sub },}, "Username:")
-          , React.createElement('span', { style: { ...T.body, fontWeight:600 },}, _optionalChain([profile, 'optionalAccess', _188 => _188.username]))
+          , React.createElement('span', { style: { ...T.body, fontWeight:600 },}, _optionalChain([profile, 'optionalAccess', _189 => _189.username]))
         )
         , React.createElement('div', { style: { display:'flex', gap:10 },}
           , React.createElement('span', { style: { ...T.sub },}, "Role:")
-          , React.createElement(Badge, { color: _optionalChain([profile, 'optionalAccess', _189 => _189.role]) === 'gm' ? '#E8002D' : '#3B8EFF',}, _optionalChain([profile, 'optionalAccess', _190 => _190.role]))
+          , React.createElement(Badge, { color: _optionalChain([profile, 'optionalAccess', _190 => _190.role]) === 'gm' ? '#E8002D' : '#3B8EFF',}, _optionalChain([profile, 'optionalAccess', _191 => _191.role]))
         )
       )
       , React.createElement(Card, { style: { marginBottom:16 },}
@@ -22852,7 +23154,7 @@ function GMOverview({ setPage }) {
       )
 
       /* Season summary */
-      , _optionalChain([S, 'optionalAccess', _191 => _191.nextRound]) && (
+      , _optionalChain([S, 'optionalAccess', _192 => _192.nextRound]) && (
         React.createElement(Card, { style: { marginTop:20 },}
           , React.createElement('div', { style: { ...T.cap, color:'#E8002D', marginBottom:10 },}, "Next Race" )
           , React.createElement('div', { style: { display:'flex', alignItems:'center', gap:16 },}
@@ -22889,6 +23191,7 @@ function GMControlPage({ sbUser, setPage: _setPage }) {
     { id:'contracts',     label:'Contracts' },
     { id:'news',          label:'News' },
     { id:'race',          label:'Race Control' },
+    { id:'league',        label:'League Settings' },
     { id:'audit',         label:'Audit Log' },
   ];
 
@@ -22922,6 +23225,7 @@ function GMControlPage({ sbUser, setPage: _setPage }) {
       , tab === 'contracts'    && React.createElement(GMContracts, null )
       , tab === 'news'         && React.createElement(GMNews, { sbUser: sbUser,} )
       , tab === 'race'         && React.createElement(GMRaceControl, { sbUser: sbUser,} )
+      , tab === 'league'       && React.createElement(GMLeagueSettings, null )
       , tab === 'audit'        && React.createElement(GMAuditLog, null )
     )
   );
@@ -22957,13 +23261,30 @@ function GMApplications() {
       method:'PATCH',
       body: JSON.stringify({ status, decided_at: new Date().toISOString() })
     });
-    if (status === 'approved' && teamId && _optionalChain([app, 'access', _192 => _192.characters, 'optionalAccess', _193 => _193.id])) {
+    if (status === 'approved' && teamId && _optionalChain([app, 'access', _193 => _193.characters, 'optionalAccess', _194 => _194.id])) {
       await sbFetch('league_drivers', {
         method:'POST',
         headers:{ Prefer:'resolution=merge-duplicates' },
         body: JSON.stringify({ character_id: app.characters.id, team_id: teamId,
           name: app.characters.name, number: null })
       });
+    }
+    // Send notification to applicant
+    if (app.applicant_id) {
+      const charName = _optionalChain([app, 'access', _195 => _195.characters, 'optionalAccess', _196 => _196.name]) || 'your character';
+      const teamName = status === 'approved'
+        ? (app.approving_team || teamId ? `You have been placed with a team.` : '')
+        : '';
+      await sendNotification(app.applicant_id,
+        status === 'approved' ? 'application_decided' : 'application_decided',
+        {
+          message: status === 'approved'
+            ? `Your application for ${charName} has been APPROVED. Welcome to the league!`
+            : `Your application for ${charName} has been declined.`,
+          character_name: charName,
+          decision: status,
+        }
+      );
     }
     setApproving(null);
     setExpanded(null);
@@ -23045,19 +23366,19 @@ function GMApplications() {
       , React.createElement('div', { style: { display:'flex', flexDirection:'column', gap:12 },}
         , filtered.map(app => {
           const isExp = expanded === app.id;
-          const isApp = _optionalChain([approving, 'optionalAccess', _194 => _194.appId]) === app.id;
+          const isApp = _optionalChain([approving, 'optionalAccess', _197 => _197.appId]) === app.id;
           return (
             React.createElement(Card, { key: app.id,}
               /* Header row */
               , React.createElement('div', { style: { display:'flex', justifyContent:'space-between', alignItems:'flex-start' },}
                 , React.createElement('div', { style: { flex:1 },}
                   , React.createElement('div', { style: { display:'flex', alignItems:'center', gap:10, marginBottom:4 },}
-                    , React.createElement('div', { style: { ...T.h3 },}, _optionalChain([app, 'access', _195 => _195.characters, 'optionalAccess', _196 => _196.name]))
-                    , React.createElement('span', { style: { ...T.cap, color:'#8888A0' },}, _optionalChain([app, 'access', _197 => _197.characters, 'optionalAccess', _198 => _198.type]))
+                    , React.createElement('div', { style: { ...T.h3 },}, _optionalChain([app, 'access', _198 => _198.characters, 'optionalAccess', _199 => _199.name]))
+                    , React.createElement('span', { style: { ...T.cap, color:'#8888A0' },}, _optionalChain([app, 'access', _200 => _200.characters, 'optionalAccess', _201 => _201.type]))
                   )
                   , React.createElement('div', { style: { ...T.sub, fontSize:12 },}, "by "
-                     , React.createElement('strong', { style: { color:'#F0F0F5' },}, _optionalChain([app, 'access', _199 => _199.profiles, 'optionalAccess', _200 => _200.username]))
-                    , _optionalChain([app, 'access', _201 => _201.league_teams, 'optionalAccess', _202 => _202.name]) && React.createElement('span', null, " · preferred: "   , app.league_teams.name)
+                     , React.createElement('strong', { style: { color:'#F0F0F5' },}, _optionalChain([app, 'access', _202 => _202.profiles, 'optionalAccess', _203 => _203.username]))
+                    , _optionalChain([app, 'access', _204 => _204.league_teams, 'optionalAccess', _205 => _205.name]) && React.createElement('span', null, " · preferred: "   , app.league_teams.name)
                     , React.createElement('span', null, " · "  , new Date(app.created_at || Date.now()).toLocaleDateString())
                   )
                 )
@@ -23085,7 +23406,7 @@ function GMApplications() {
               , ['submitted','under_review'].includes(app.status) && !isApp && (
                 React.createElement('div', { style: { display:'flex', gap:8, marginTop:12 },}
                   , React.createElement(Button, { size: "sm", variant: "success", onClick: () =>
-                    setApproving({ appId: app.id, charId: _optionalChain([app, 'access', _203 => _203.characters, 'optionalAccess', _204 => _204.id]), teamId: _optionalChain([app, 'access', _205 => _205.form_data, 'optionalAccess', _206 => _206.team_id]) || '' }),}, "Approve"
+                    setApproving({ appId: app.id, charId: _optionalChain([app, 'access', _206 => _206.characters, 'optionalAccess', _207 => _207.id]), teamId: _optionalChain([app, 'access', _208 => _208.form_data, 'optionalAccess', _209 => _209.team_id]) || '' }),}, "Approve"
 
                   )
                   , React.createElement(Button, { size: "sm", variant: "secondary", onClick: () => decide(app,'under_review'),}, "Mark Review"
@@ -23502,7 +23823,7 @@ function GMCharacters() {
                   , c.is_active ? 'Active' : 'Inactive'
                 )
               )
-              , React.createElement('div', { style: { ...T.cap },}, c.type, _optionalChain([c, 'access', _207 => _207.profiles, 'optionalAccess', _208 => _208.username]) ? ` - ${c.profiles.username}` : '')
+              , React.createElement('div', { style: { ...T.cap },}, c.type, _optionalChain([c, 'access', _210 => _210.profiles, 'optionalAccess', _211 => _211.username]) ? ` - ${c.profiles.username}` : '')
             )
             , React.createElement('div', { style: { display:'flex', gap:8 },}
               , React.createElement(Button, { size: "sm", variant: "secondary", onClick: () => startEdit(c),}, "Edit")
@@ -23687,7 +24008,7 @@ function GMNews({ sbUser }) {
     setSaving(true);
     await sbFetch('news_posts', {
       method:'POST',
-      body: JSON.stringify({ ...form, author_id: _optionalChain([sbUser, 'optionalAccess', _209 => _209.id]) })
+      body: JSON.stringify({ ...form, author_id: _optionalChain([sbUser, 'optionalAccess', _212 => _212.id]) })
     });
     setSaving(false);
     setCreating(false);
@@ -23754,7 +24075,7 @@ function GMNews({ sbUser }) {
                   React.createElement('div', { style: { ...T.cap, color:'#FFD700', marginBottom:4 },}, "PINNED")
                 )
                 , React.createElement(Badge, { color: catColor(post.category), style: { marginBottom:6 },}
-                  , _optionalChain([post, 'access', _210 => _210.category, 'optionalAccess', _211 => _211.replace, 'call', _212 => _212(/_/g,' ')])
+                  , _optionalChain([post, 'access', _213 => _213.category, 'optionalAccess', _214 => _214.replace, 'call', _215 => _215(/_/g,' ')])
                 )
                 , React.createElement('div', { style: { ...T.h3, marginBottom:6 },}, post.title)
                 , post.body && (
@@ -23763,7 +24084,7 @@ function GMNews({ sbUser }) {
                   )
                 )
                 , React.createElement('div', { style: { ...T.cap, color:'#55556A' },}
-                  , _optionalChain([post, 'access', _213 => _213.profiles, 'optionalAccess', _214 => _214.username]) || 'GM', " · "  , new Date(post.created_at).toLocaleString()
+                  , _optionalChain([post, 'access', _216 => _216.profiles, 'optionalAccess', _217 => _217.username]) || 'GM', " · "  , new Date(post.created_at).toLocaleString()
                 )
               )
               , React.createElement('div', { style: { display:'flex', flexDirection:'column', gap:6 },}
@@ -23806,7 +24127,7 @@ function GMContracts() {
   (drivers||[]).forEach(d => {
     const tid = d.team_id;
     if (!teamSlots[tid]) teamSlots[tid] = { drivers:0, staff:0 };
-    if (_optionalChain([d, 'access', _215 => _215.characters, 'optionalAccess', _216 => _216.type]) === 'driver') teamSlots[tid].drivers++;
+    if (_optionalChain([d, 'access', _218 => _218.characters, 'optionalAccess', _219 => _219.type]) === 'driver') teamSlots[tid].drivers++;
     else teamSlots[tid].staff++;
   });
 
@@ -23879,7 +24200,7 @@ function GMContracts() {
           )
           , React.createElement(Card, { style: { padding:0, overflow:'hidden' },}
             , members.map((d, i) => {
-              const isTrans = _optionalChain([transferring, 'optionalAccess', _217 => _217.driverId]) === d.id;
+              const isTrans = _optionalChain([transferring, 'optionalAccess', _220 => _220.driverId]) === d.id;
               return (
                 React.createElement('div', { key: d.id,}
                   , React.createElement('div', { style: { display:'flex', alignItems:'center', gap:12, padding:'11px 16px',
@@ -23888,18 +24209,18 @@ function GMContracts() {
                       background:(team.color||'#55556A')+'22',
                       display:'flex', alignItems:'center', justifyContent:'center',
                       fontSize:13, fontWeight:800, color:team.color||'#55556A', fontFamily:FONT_HEAD },}
-                      , d.number || (_optionalChain([d, 'access', _218 => _218.characters, 'optionalAccess', _219 => _219.name])||'?')[0].toUpperCase()
+                      , d.number || (_optionalChain([d, 'access', _221 => _221.characters, 'optionalAccess', _222 => _222.name])||'?')[0].toUpperCase()
                     )
                     , React.createElement('div', { style: { flex:1 },}
                       , React.createElement('div', { style: { display:'flex', alignItems:'center', gap:8 },}
                         , React.createElement('span', { style: { ...T.body, fontWeight:600 },}
-                          , _optionalChain([d, 'access', _220 => _220.characters, 'optionalAccess', _221 => _221.name]) || d.name || 'Unknown'
+                          , _optionalChain([d, 'access', _223 => _223.characters, 'optionalAccess', _224 => _224.name]) || d.name || 'Unknown'
                         )
-                        , React.createElement(Badge, { color: _optionalChain([d, 'access', _222 => _222.characters, 'optionalAccess', _223 => _223.type])==='driver'?'#3B8EFF':'#FF9500',}
-                          , _optionalChain([d, 'access', _224 => _224.characters, 'optionalAccess', _225 => _225.type]) || 'unknown'
+                        , React.createElement(Badge, { color: _optionalChain([d, 'access', _225 => _225.characters, 'optionalAccess', _226 => _226.type])==='driver'?'#3B8EFF':'#FF9500',}
+                          , _optionalChain([d, 'access', _227 => _227.characters, 'optionalAccess', _228 => _228.type]) || 'unknown'
                         )
                       )
-                      , _optionalChain([d, 'access', _226 => _226.characters, 'optionalAccess', _227 => _227.nationality]) && (
+                      , _optionalChain([d, 'access', _229 => _229.characters, 'optionalAccess', _230 => _230.nationality]) && (
                         React.createElement('div', { style: { ...T.cap },}, d.characters.nationality)
                       )
                     )
@@ -23947,8 +24268,8 @@ function GMContracts() {
               React.createElement('div', { key: d.id, style: { display:'flex', alignItems:'center', gap:12, padding:'11px 16px',
                 borderBottom: i < freeAgents.length-1 ? '1px solid #252530' : 'none' },}
                 , React.createElement('div', { style: { flex:1 },}
-                  , React.createElement('span', { style: { ...T.body },}, _optionalChain([d, 'access', _228 => _228.characters, 'optionalAccess', _229 => _229.name]) || 'Unknown')
-                  , React.createElement(Badge, { color: "#55556A", style: { marginLeft:8 },}, _optionalChain([d, 'access', _230 => _230.characters, 'optionalAccess', _231 => _231.type]))
+                  , React.createElement('span', { style: { ...T.body },}, _optionalChain([d, 'access', _231 => _231.characters, 'optionalAccess', _232 => _232.name]) || 'Unknown')
+                  , React.createElement(Badge, { color: "#55556A", style: { marginLeft:8 },}, _optionalChain([d, 'access', _233 => _233.characters, 'optionalAccess', _234 => _234.type]))
                 )
               )
             ))
@@ -23959,6 +24280,137 @@ function GMContracts() {
       , (!drivers || drivers.length === 0) && (
         React.createElement(EmptyState, { title: "No assigned characters"  ,
           sub: "Characters appear here once assigned to a team via the Applications tab"           ,} )
+      )
+    )
+  );
+}
+
+function GMLeagueSettings() {
+  const [settings, setSettings] = useState({});
+  const [loading,  setLoading]  = useState(true);
+  const [loaded,   setLoaded]   = useState(false);
+  const [saving,   setSaving]   = useState(false);
+  const [saved,    setSaved]    = useState(false);
+
+  async function load() {
+    const { data } = await sbFetch('league_settings?select=key,value');
+    const map = {};
+    (data||[]).forEach(r => { map[r.key] = r.value; });
+    setSettings(map);
+    setLoading(false);
+  }
+
+  if (!loaded) { setLoaded(true); if (sbClient) load(); else setLoading(false); }
+  if (loading) return React.createElement(Spinner, null );
+
+  const set = (k, v) => setSettings(s => ({...s, [k]: v}));
+
+  async function save() {
+    setSaving(true);
+    const rows = Object.entries(settings).map(([key, value]) => ({ key, value }));
+    for (const row of rows) {
+      await sbFetch('league_settings', {
+        method:'POST',
+        headers:{ Prefer:'resolution=merge-duplicates' },
+        body: JSON.stringify(row),
+      });
+    }
+    setSaving(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  }
+
+  const TIERS = ['top','upper_mid','mid','lower_mid','backmarker'];
+
+  return (
+    React.createElement('div', null
+      , React.createElement('div', { style: { display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 },}
+        , React.createElement('div', { style: { ...T.h3 },}, "League Settings" )
+        , React.createElement(Button, { onClick: save, disabled: saving,}
+          , saved ? 'Saved!' : saving ? 'Saving...' : 'Save Changes'
+        )
+      )
+
+      , React.createElement('div', { style: { display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 },}
+        /* Identity */
+        , React.createElement(Card, null
+          , React.createElement('div', { style: { ...T.cap, color:'#E8002D', marginBottom:12 },}, "Identity")
+          , React.createElement(Input, { label: "League Name" , value: settings.league_name||'', onChange: v => set('league_name',v),
+            placeholder: "e.g. F1 Sim League 2027"    ,} )
+          , React.createElement(Input, { label: "Season Number" , value: settings.season_number||'', onChange: v => set('season_number',v),
+            placeholder: "e.g. 1" ,} )
+          , React.createElement(Input, { label: "Tagline", value: settings.tagline||'', onChange: v => set('tagline',v),
+            placeholder: "e.g. The Official F1 Sim League"     ,} )
+        )
+
+        /* Registration */
+        , React.createElement(Card, null
+          , React.createElement('div', { style: { ...T.cap, color:'#3B8EFF', marginBottom:12 },}, "Registration")
+          , React.createElement(Select, { label: "Applications Status" ,
+            value: settings.registration_open||'open',
+            onChange: v => set('registration_open',v),
+            options: [
+              { value:'open',   label:'Open - new applications accepted' },
+              { value:'review', label:'Review only - no new apps' },
+              { value:'closed', label:'Closed - locked' },
+            ],} )
+          , React.createElement(Input, { label: "Max Characters per Player"   , value: settings.max_characters||'',
+            onChange: v => set('max_characters',v), placeholder: "e.g. 2" ,} )
+          , React.createElement(Input, { label: "Max Drivers per Team"   , value: settings.max_drivers_per_team||'',
+            onChange: v => set('max_drivers_per_team',v), placeholder: "e.g. 2" ,} )
+        )
+
+        /* Season state */
+        , React.createElement(Card, null
+          , React.createElement('div', { style: { ...T.cap, color:'#FF9500', marginBottom:12 },}, "Season State" )
+          , React.createElement(Select, { label: "Season Phase" ,
+            value: settings.season_phase||'pre_season',
+            onChange: v => set('season_phase',v),
+            options: [
+              { value:'pre_season',  label:'Pre-Season' },
+              { value:'active',      label:'Active - season running' },
+              { value:'mid_break',   label:'Mid-Season Break' },
+              { value:'post_season', label:'Post-Season' },
+              { value:'off_season',  label:'Off-Season' },
+            ],} )
+          , React.createElement(Input, { label: "Current Round" , value: settings.current_round||'',
+            onChange: v => set('current_round',v), placeholder: "e.g. 3" ,} )
+          , React.createElement(Input, { label: "Total Rounds" , value: settings.total_rounds||'',
+            onChange: v => set('total_rounds',v), placeholder: "e.g. 24" ,} )
+        )
+
+        /* Scoring */
+        , React.createElement(Card, null
+          , React.createElement('div', { style: { ...T.cap, color:'#FFD700', marginBottom:12 },}, "Scoring System" )
+          , React.createElement(Select, { label: "Points System" ,
+            value: settings.points_system||'standard',
+            onChange: v => set('points_system',v),
+            options: [
+              { value:'standard',    label:'Standard F1 (25-18-15...)' },
+              { value:'sprint_bonus',label:'Sprint bonus included' },
+              { value:'custom',      label:'Custom (edit manually)' },
+            ],} )
+          , React.createElement(Input, { label: "Fastest Lap Point"  , value: settings.fastest_lap_point||'',
+            onChange: v => set('fastest_lap_point',v), placeholder: "1 (optional)" ,} )
+          , React.createElement(Input, { label: "DNF Penalty" , value: settings.dnf_penalty||'',
+            onChange: v => set('dnf_penalty',v), placeholder: "e.g. 0 (no penalty)"   ,} )
+        )
+      )
+
+      /* Current values preview */
+      , React.createElement(Card, { style: { marginTop:20 },}
+        , React.createElement('div', { style: { ...T.cap, color:'#55556A', marginBottom:10 },}, "Current DB Values"  )
+        , React.createElement('div', { style: { display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:8 },}
+          , Object.entries(settings).map(([k,v]) => (
+            React.createElement('div', { key: k, style: { background:'#111114', borderRadius:6, padding:'8px 10px' },}
+              , React.createElement('div', { style: { ...T.cap, color:'#55556A' },}, k.replace(/_/g,' '))
+              , React.createElement('div', { style: { ...T.body, fontSize:13, fontWeight:600 },}, String(v))
+            )
+          ))
+          , Object.keys(settings).length === 0 && (
+            React.createElement('div', { style: { ...T.sub },}, "No settings saved yet. Fill in the form above and click Save."           )
+          )
+        )
       )
     )
   );
@@ -23993,7 +24445,7 @@ function GMAuditLog() {
               , React.createElement('span', { style: { ...T.body, fontWeight:600 },}, e.action)
               , React.createElement('span', { style: { ...T.sub },}, " - "  , e.entity, e.entity_id ? ` (${e.entity_id.slice(0,8)}...)` : '')
             )
-            , React.createElement('div', { style: { ...T.sub },}, _optionalChain([e, 'access', _232 => _232.profiles, 'optionalAccess', _233 => _233.username]) || '-')
+            , React.createElement('div', { style: { ...T.sub },}, _optionalChain([e, 'access', _235 => _235.profiles, 'optionalAccess', _236 => _236.username]) || '-')
           )
         ))
       )
@@ -24052,7 +24504,7 @@ function GMRaceControl({ sbUser }) {
 
     const engDrivers = rawDrivers.map(d => {
       const c   = d.characters;
-      const tid = _optionalChain([d, 'access', _234 => _234.league_teams, 'optionalAccess', _235 => _235.id]) || d.team_id;
+      const tid = _optionalChain([d, 'access', _237 => _237.league_teams, 'optionalAccess', _238 => _238.id]) || d.team_id;
       return {
         id: d.id.slice(0,8), name: c.name,
         abbr: (c.name||'???').substring(0,3).toUpperCase(),
@@ -24121,7 +24573,7 @@ function GMRaceControl({ sbUser }) {
       body: JSON.stringify({
         number:        parseInt(newRound.number),
         circuit_id:    newRound.circuit_id,
-        circuit_name:  _optionalChain([track, 'optionalAccess', _236 => _236.name]) || newRound.circuit_id,
+        circuit_name:  _optionalChain([track, 'optionalAccess', _239 => _239.name]) || newRound.circuit_id,
         state:         'scheduled',
         is_sprint:     newRound.is_sprint,
         scheduled_for: newRound.scheduled_for || null,
@@ -24403,6 +24855,7 @@ function F1Sim() {
   const [sbUser, setSbUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [page, setPage] = useState('dashboard');
+  const [navTarget, setNavTarget] = useState(null);
   const [authLoading, setAuthLoading] = useState(!!sbClient);
   const [unreadCount, setUnreadCount] = useState(0);
   const authInitRef = useRef(false);
@@ -24410,7 +24863,7 @@ function F1Sim() {
   if (sbClient && !authInitRef.current) {
     authInitRef.current = true;
     sbClient.auth.getSession().then(({ data: { session } }) => {
-      if (_optionalChain([session, 'optionalAccess', _237 => _237.user])) {
+      if (_optionalChain([session, 'optionalAccess', _240 => _240.user])) {
         setSbUser(session.user);
         loadProfile(session.user.id);
       } else {
@@ -24455,7 +24908,7 @@ function F1Sim() {
 
   if (!sbUser) return React.createElement(AuthScreen, { onLogin: handleLogin,} );
 
-  const pageProps = { sbUser, profile, setPage, onProfileUpdate: setProfile };
+  const pageProps = { sbUser, profile, setPage, navTarget, setNavTarget, onProfileUpdate: setProfile };
 
   const renderPage = () => {
     switch (page) {
@@ -24470,6 +24923,8 @@ function F1Sim() {
       case 'notifications': return React.createElement(NotificationsPage, { ...pageProps, onRead: () => setUnreadCount(0),} );
       case 'settings':      return React.createElement(SettingsPage, { ...pageProps,} );
       case 'gm':            return React.createElement(GMControlPage, { ...pageProps,} );
+      case 'search':         return React.createElement(SearchPage, { ...pageProps,} );
+      case 'profile':        return React.createElement(PublicProfilePage, { ...pageProps,} );
       case 'sandbox':       return React.createElement(SandboxPage, null );
       default:              return React.createElement(Dashboard, { ...pageProps,} );
     }
