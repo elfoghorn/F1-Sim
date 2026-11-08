@@ -24674,19 +24674,59 @@ function GMStats() {
 }
 
 function GMCharacters() {
-  const [chars,    setChars]    = useState(null);
-  const [loading,  setLoading]  = useState(true);
-  const [loaded,   setLoaded]   = useState(false);
-  const [editing,  setEditing]  = useState(null);
-  const [editForm, setEditForm] = useState({});
-  const [saving,   setSaving]   = useState(false);
-  const [charType, setCharType] = useState('all');
+  const [chars,       setChars]       = useState(null);
+  const [loading,     setLoading]     = useState(true);
+  const [loaded,      setLoaded]      = useState(false);
+  const [editing,     setEditing]     = useState(null);
+  const [editForm,    setEditForm]    = useState({});
+  const [saving,      setSaving]      = useState(false);
+  const [charType,    setCharType]    = useState('all');
+  const [transferring,setTransferring]= useState(null);
+  const [teams,       setTeams]       = useState([]);
+  const [xferTeam,    setXferTeam]    = useState('');
+  const [xferSaving,  setXferSaving]  = useState(false);
+  const [xferErr,     setXferErr]     = useState('');
 
   async function load() {
-    const q = charType === 'all' ? 'characters?order=name&select=*,profiles!owner_id(username)'
-              : `characters?type=eq.${charType}&order=name&select=*,profiles!owner_id(username)`;
+    const base = 'characters?order=name&select=*,profiles!owner_id(username),league_teams!team_id(id,name,color)';
+    const q = charType === 'all' ? base : base + `&type=eq.${charType}`;
     const { data } = await sbFetch(q);
     setChars(data||[]); setLoading(false);
+  }
+
+  async function openTransfer(c) {
+    setXferErr(''); setXferTeam(c.team_id||'');
+    if (!teams.length) {
+      const { data } = await sbFetch('league_teams?order=name&select=id,name,color');
+      setTeams(data||[]);
+    }
+    setTransferring(c);
+  }
+
+  async function doTransfer() {
+    if (xferSaving) return;
+    setXferSaving(true); setXferErr('');
+    const newTeam = xferTeam || null;
+
+    const r1 = await sbFetch(`characters?id=eq.${transferring.id}`, {
+      method:'PATCH', body:JSON.stringify({ team_id: newTeam }),
+    });
+    if (r1.error) { setXferErr(String(r1.error)); setXferSaving(false); return; }
+
+    // Upsert league_drivers entry
+    const { data: existing } = await sbFetch(`league_drivers?character_id=eq.${transferring.id}&select=id`);
+    if (existing && existing.length > 0) {
+      await sbFetch(`league_drivers?character_id=eq.${transferring.id}`, {
+        method:'PATCH', body:JSON.stringify({ team_id: newTeam }),
+      });
+    } else if (newTeam) {
+      await sbFetch('league_drivers', {
+        method:'POST', body:JSON.stringify({ character_id: transferring.id, team_id: newTeam }),
+      });
+    }
+
+    setXferSaving(false); setTransferring(null); setXferTeam('');
+    setLoaded(false); setLoading(true); load();
   }
 
   if (!loaded) { setLoaded(true); if (sbClient) load(); else setLoading(false); }
@@ -24718,6 +24758,41 @@ function GMCharacters() {
 
   function reloadType(t) {
     setCharType(t); setChars(null); setLoading(true); setLoaded(false);
+  }
+
+  if (transferring) {
+    const curTeam = teams.find(t => t.id === transferring.team_id);
+    return (
+      React.createElement('div', { style: { maxWidth:500 },}
+        , React.createElement('div', { style: { display:'flex', alignItems:'center', gap:12, marginBottom:20 },}
+          , React.createElement('button', { onClick: () => setTransferring(null),
+            style: { background:'none', border:'none', color:'#8888A0', cursor:'pointer',
+              fontSize:14, fontFamily:FONT_BODY, padding:0 },}, "< Back" )
+          , React.createElement('div', { style: { ...T.h2 },}, "Transfer: " , transferring.name)
+        )
+        , React.createElement(Card, null
+          , React.createElement('div', { style: { ...T.cap, color:'#8888A0', marginBottom:14 },}, "Current team: "
+              , React.createElement('span', { style: { color:'#F0F0F5' },}, curTeam ? curTeam.name : 'None')
+          )
+          , React.createElement('div', { style: { marginBottom:14 },}
+            , React.createElement('label', { style: { ...T.cap, color:'#8888A0', display:'block', marginBottom:6 },}, "Transfer to Team"  )
+            , React.createElement('select', { value: xferTeam, onChange: e => setXferTeam(e.target.value),
+              style: { width:'100%', background:'#111114', border:'1px solid #252530', borderRadius:6,
+                color:'#F0F0F5', padding:'8px 10px', fontFamily:FONT_BODY, fontSize:13 },}
+              , React.createElement('option', { value: "",}, "— Remove from team —"    )
+              , teams.map(t => React.createElement('option', { key: t.id, value: t.id,}, t.name))
+            )
+          )
+          , xferErr && React.createElement('div', { style: { color:'#E8002D', fontSize:13, marginBottom:10 },}, xferErr)
+          , React.createElement('div', { style: { display:'flex', gap:10 },}
+            , React.createElement(Button, { onClick: doTransfer, disabled: xferSaving,}
+              , xferSaving ? 'Transferring...' : 'Confirm Transfer'
+            )
+            , React.createElement(Button, { variant: "secondary", onClick: () => setTransferring(null),}, "Cancel")
+          )
+        )
+      )
+    );
   }
 
   if (editing) {
@@ -24788,10 +24863,14 @@ function GMCharacters() {
                 , React.createElement(Badge, { color: c.is_active ? '#00C46A' : '#55556A',}
                   , c.is_active ? 'Active' : 'Inactive'
                 )
+                , _optionalChain([c, 'access', _236 => _236.league_teams, 'optionalAccess', _237 => _237.name]) && (
+                  React.createElement(Badge, { color: c.league_teams.color||'#55556A',}, c.league_teams.name)
+                )
               )
-              , React.createElement('div', { style: { ...T.cap },}, c.type, _optionalChain([c, 'access', _236 => _236.profiles, 'optionalAccess', _237 => _237.username]) ? ` - ${c.profiles.username}` : '')
+              , React.createElement('div', { style: { ...T.cap },}, c.type, _optionalChain([c, 'access', _238 => _238.profiles, 'optionalAccess', _239 => _239.username]) ? ` · ${c.profiles.username}` : '', !c.team_id ? ' · No team' : '')
             )
             , React.createElement('div', { style: { display:'flex', gap:8 },}
+              , React.createElement(Button, { size: "sm", variant: "secondary", onClick: () => openTransfer(c),}, "Transfer")
               , React.createElement(Button, { size: "sm", variant: "secondary", onClick: () => startEdit(c),}, "Edit")
               , React.createElement(Button, { size: "sm", variant: c.is_active ? 'danger' : 'success',
                 onClick: () => toggleActive(c),}
@@ -24974,7 +25053,7 @@ function GMNews({ sbUser }) {
     setSaving(true);
     await sbFetch('news_posts', {
       method:'POST',
-      body: JSON.stringify({ ...form, author_id: _optionalChain([sbUser, 'optionalAccess', _238 => _238.id]) })
+      body: JSON.stringify({ ...form, author_id: _optionalChain([sbUser, 'optionalAccess', _240 => _240.id]) })
     });
     setSaving(false);
     setCreating(false);
@@ -25041,7 +25120,7 @@ function GMNews({ sbUser }) {
                   React.createElement('div', { style: { ...T.cap, color:'#FFD700', marginBottom:4 },}, "PINNED")
                 )
                 , React.createElement(Badge, { color: catColor(post.category), style: { marginBottom:6 },}
-                  , _optionalChain([post, 'access', _239 => _239.category, 'optionalAccess', _240 => _240.replace, 'call', _241 => _241(/_/g,' ')])
+                  , _optionalChain([post, 'access', _241 => _241.category, 'optionalAccess', _242 => _242.replace, 'call', _243 => _243(/_/g,' ')])
                 )
                 , React.createElement('div', { style: { ...T.h3, marginBottom:6 },}, post.title)
                 , post.body && (
@@ -25050,7 +25129,7 @@ function GMNews({ sbUser }) {
                   )
                 )
                 , React.createElement('div', { style: { ...T.cap, color:'#55556A' },}
-                  , _optionalChain([post, 'access', _242 => _242.profiles, 'optionalAccess', _243 => _243.username]) || 'GM', " · "  , new Date(post.created_at).toLocaleString()
+                  , _optionalChain([post, 'access', _244 => _244.profiles, 'optionalAccess', _245 => _245.username]) || 'GM', " · "  , new Date(post.created_at).toLocaleString()
                 )
               )
               , React.createElement('div', { style: { display:'flex', flexDirection:'column', gap:6 },}
@@ -25093,7 +25172,7 @@ function GMContracts() {
   (drivers||[]).forEach(d => {
     const tid = d.team_id;
     if (!teamSlots[tid]) teamSlots[tid] = { drivers:0, staff:0 };
-    if (_optionalChain([d, 'access', _244 => _244.characters, 'optionalAccess', _245 => _245.type]) === 'driver') teamSlots[tid].drivers++;
+    if (_optionalChain([d, 'access', _246 => _246.characters, 'optionalAccess', _247 => _247.type]) === 'driver') teamSlots[tid].drivers++;
     else teamSlots[tid].staff++;
   });
 
@@ -25166,7 +25245,7 @@ function GMContracts() {
           )
           , React.createElement(Card, { style: { padding:0, overflow:'hidden' },}
             , members.map((d, i) => {
-              const isTrans = _optionalChain([transferring, 'optionalAccess', _246 => _246.driverId]) === d.id;
+              const isTrans = _optionalChain([transferring, 'optionalAccess', _248 => _248.driverId]) === d.id;
               return (
                 React.createElement('div', { key: d.id,}
                   , React.createElement('div', { style: { display:'flex', alignItems:'center', gap:12, padding:'11px 16px',
@@ -25175,18 +25254,18 @@ function GMContracts() {
                       background:(team.color||'#55556A')+'22',
                       display:'flex', alignItems:'center', justifyContent:'center',
                       fontSize:13, fontWeight:800, color:team.color||'#55556A', fontFamily:FONT_HEAD },}
-                      , d.number || (_optionalChain([d, 'access', _247 => _247.characters, 'optionalAccess', _248 => _248.name])||'?')[0].toUpperCase()
+                      , d.number || (_optionalChain([d, 'access', _249 => _249.characters, 'optionalAccess', _250 => _250.name])||'?')[0].toUpperCase()
                     )
                     , React.createElement('div', { style: { flex:1 },}
                       , React.createElement('div', { style: { display:'flex', alignItems:'center', gap:8 },}
                         , React.createElement('span', { style: { ...T.body, fontWeight:600 },}
-                          , _optionalChain([d, 'access', _249 => _249.characters, 'optionalAccess', _250 => _250.name]) || d.name || 'Unknown'
+                          , _optionalChain([d, 'access', _251 => _251.characters, 'optionalAccess', _252 => _252.name]) || d.name || 'Unknown'
                         )
-                        , React.createElement(Badge, { color: _optionalChain([d, 'access', _251 => _251.characters, 'optionalAccess', _252 => _252.type])==='driver'?'#3B8EFF':'#FF9500',}
-                          , _optionalChain([d, 'access', _253 => _253.characters, 'optionalAccess', _254 => _254.type]) || 'unknown'
+                        , React.createElement(Badge, { color: _optionalChain([d, 'access', _253 => _253.characters, 'optionalAccess', _254 => _254.type])==='driver'?'#3B8EFF':'#FF9500',}
+                          , _optionalChain([d, 'access', _255 => _255.characters, 'optionalAccess', _256 => _256.type]) || 'unknown'
                         )
                       )
-                      , _optionalChain([d, 'access', _255 => _255.characters, 'optionalAccess', _256 => _256.nationality]) && (
+                      , _optionalChain([d, 'access', _257 => _257.characters, 'optionalAccess', _258 => _258.nationality]) && (
                         React.createElement('div', { style: { ...T.cap },}, d.characters.nationality)
                       )
                     )
@@ -25234,8 +25313,8 @@ function GMContracts() {
               React.createElement('div', { key: d.id, style: { display:'flex', alignItems:'center', gap:12, padding:'11px 16px',
                 borderBottom: i < freeAgents.length-1 ? '1px solid #252530' : 'none' },}
                 , React.createElement('div', { style: { flex:1 },}
-                  , React.createElement('span', { style: { ...T.body },}, _optionalChain([d, 'access', _257 => _257.characters, 'optionalAccess', _258 => _258.name]) || 'Unknown')
-                  , React.createElement(Badge, { color: "#55556A", style: { marginLeft:8 },}, _optionalChain([d, 'access', _259 => _259.characters, 'optionalAccess', _260 => _260.type]))
+                  , React.createElement('span', { style: { ...T.body },}, _optionalChain([d, 'access', _259 => _259.characters, 'optionalAccess', _260 => _260.name]) || 'Unknown')
+                  , React.createElement(Badge, { color: "#55556A", style: { marginLeft:8 },}, _optionalChain([d, 'access', _261 => _261.characters, 'optionalAccess', _262 => _262.type]))
                 )
               )
             ))
@@ -25286,15 +25365,44 @@ function GMLeagueSettings() {
     setTimeout(() => setSaved(false), 2000);
   }
 
-  const TIERS = ['top','upper_mid','mid','lower_mid','backmarker'];
+  const F1_DEFAULTS = {
+    league_name: 'F1 Sim League 2025',
+    season_number: '1',
+    tagline: 'The Official F1 Sim League',
+    registration_open: 'open',
+    max_characters: '2',
+    max_drivers_per_team: '2',
+    season_phase: 'pre_season',
+    current_round: '1',
+    total_rounds: '24',
+    points_system: 'standard',
+    fastest_lap_point: '1',
+    dnf_penalty: '0',
+    sprint_weekends: '6',
+    safety_car_enabled: 'true',
+    weather_enabled: 'true',
+    weather_probability: '20',
+    min_grid_size: '20',
+    race_laps_base: '52',
+  };
+
+  function applyDefaults() {
+    setSettings(s => ({ ...F1_DEFAULTS, ...s }));
+  }
 
   return (
     React.createElement('div', null
-      , React.createElement('div', { style: { display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 },}
+      , React.createElement('div', { style: { display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 },}
         , React.createElement('div', { style: { ...T.h3 },}, "League Settings" )
-        , React.createElement(Button, { onClick: save, disabled: saving,}
-          , saved ? 'Saved!' : saving ? 'Saving...' : 'Save Changes'
+        , React.createElement('div', { style: { display:'flex', gap:10 },}
+          , React.createElement(Button, { variant: "secondary", onClick: applyDefaults,}, "Apply F1 Defaults"  )
+          , React.createElement(Button, { onClick: save, disabled: saving,}
+            , saved ? 'Saved ✓' : saving ? 'Saving...' : 'Save Changes'
+          )
         )
+      )
+      , React.createElement('div', { style: { ...T.cap, color:'#55556A', marginBottom:20 },}, "\"Apply F1 Defaults\" pre-fills any empty fields with standard F1 2025 values without overwriting what you've already set."
+
       )
 
       , React.createElement('div', { style: { display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 },}
@@ -25361,6 +25469,53 @@ function GMLeagueSettings() {
           , React.createElement(Input, { label: "DNF Penalty" , value: settings.dnf_penalty||'',
             onChange: v => set('dnf_penalty',v), placeholder: "e.g. 0 (no penalty)"   ,} )
         )
+
+        /* Race Format */
+        , React.createElement(Card, null
+          , React.createElement('div', { style: { ...T.cap, color:'#00C46A', marginBottom:12 },}, "Race Format" )
+          , React.createElement(Input, { label: "Total Rounds" , value: settings.total_rounds||'',
+            onChange: v => set('total_rounds',v), placeholder: "e.g. 24" ,} )
+          , React.createElement(Input, { label: "Sprint Weekends (count)"  , value: settings.sprint_weekends||'',
+            onChange: v => set('sprint_weekends',v), placeholder: "e.g. 6" ,} )
+          , React.createElement(Input, { label: "Base Lap Count"  , value: settings.race_laps_base||'',
+            onChange: v => set('race_laps_base',v), placeholder: "e.g. 52" ,} )
+          , React.createElement(Input, { label: "Minimum Grid Size"  , value: settings.min_grid_size||'',
+            onChange: v => set('min_grid_size',v), placeholder: "e.g. 20 (AI-padded if needed)"    ,} )
+        )
+
+        /* Simulation */
+        , React.createElement(Card, null
+          , React.createElement('div', { style: { ...T.cap, color:'#9B59B6', marginBottom:12 },}, "Simulation Rules" )
+          , React.createElement('div', { style: { marginBottom:14 },}
+            , React.createElement('label', { style: { ...T.cap, color:'#8888A0', display:'flex', alignItems:'center', gap:10, cursor:'pointer' },}
+              , React.createElement('input', { type: "checkbox",
+                checked: settings.safety_car_enabled === 'true',
+                onChange: e => set('safety_car_enabled', e.target.checked ? 'true' : 'false'),
+                style: { width:16, height:16, accentColor:'#E8002D' },} ), "Safety Car enabled"
+
+            )
+          )
+          , React.createElement('div', { style: { marginBottom:14 },}
+            , React.createElement('label', { style: { ...T.cap, color:'#8888A0', display:'flex', alignItems:'center', gap:10, cursor:'pointer' },}
+              , React.createElement('input', { type: "checkbox",
+                checked: settings.weather_enabled === 'true',
+                onChange: e => set('weather_enabled', e.target.checked ? 'true' : 'false'),
+                style: { width:16, height:16, accentColor:'#E8002D' },} ), "Dynamic weather enabled"
+
+            )
+          )
+          , settings.weather_enabled === 'true' && (
+            React.createElement('div', { style: { marginBottom:14 },}
+              , React.createElement('label', { style: { ...T.cap, color:'#8888A0', display:'block', marginBottom:6 },}, "Rain probability — "
+                   , settings.weather_probability||20, "%"
+              )
+              , React.createElement('input', { type: "range", min: 0, max: 100, step: 5,
+                value: Number(settings.weather_probability||20),
+                onChange: e => set('weather_probability', e.target.value),
+                style: { width:'100%', accentColor:'#3B8EFF' },} )
+            )
+          )
+        )
       )
 
       /* Current values preview */
@@ -25411,7 +25566,7 @@ function GMAuditLog() {
               , React.createElement('span', { style: { ...T.body, fontWeight:600 },}, e.action)
               , React.createElement('span', { style: { ...T.sub },}, " - "  , e.entity, e.entity_id ? ` (${e.entity_id.slice(0,8)}...)` : '')
             )
-            , React.createElement('div', { style: { ...T.sub },}, _optionalChain([e, 'access', _261 => _261.profiles, 'optionalAccess', _262 => _262.username]) || '-')
+            , React.createElement('div', { style: { ...T.sub },}, _optionalChain([e, 'access', _263 => _263.profiles, 'optionalAccess', _264 => _264.username]) || '-')
           )
         ))
       )
@@ -25501,7 +25656,7 @@ function GMRaceControl({ sbUser }) {
 
     const engDrivers = rawDrivers.map(d => {
       const c   = d.characters;
-      const tid = _optionalChain([d, 'access', _263 => _263.league_teams, 'optionalAccess', _264 => _264.id]) || d.team_id;
+      const tid = _optionalChain([d, 'access', _265 => _265.league_teams, 'optionalAccess', _266 => _266.id]) || d.team_id;
       return {
         id:          d.id.slice(0, 8),
         name:        c.name,
@@ -25561,8 +25716,8 @@ function GMRaceControl({ sbUser }) {
           const raw = aggQual(n, driverList, teamList, track);
           setResults((raw.grid || []).map((e, i) => ({
             pos: i+1,
-            driver: _optionalChain([e, 'access', _265 => _265.driver, 'optionalAccess', _266 => _266.name]) || '',
-            team:   _optionalChain([e, 'access', _267 => _267.team, 'optionalAccess', _268 => _268.name])   || '',
+            driver: _optionalChain([e, 'access', _267 => _267.driver, 'optionalAccess', _268 => _268.name]) || '',
+            team:   _optionalChain([e, 'access', _269 => _269.team, 'optionalAccess', _270 => _270.name])   || '',
             time:   e.score ? e.score.toFixed(3) : '',
           })));
         } else {
@@ -25570,14 +25725,14 @@ function GMRaceControl({ sbUser }) {
           const raw = aggRace(n, qualResult.grid, teamList, track);
           setResults((raw.positions || []).map((e, i) => ({
             pos:    i+1,
-            driver: _optionalChain([e, 'access', _269 => _269.driver, 'optionalAccess', _270 => _270.name]) || '',
-            team:   _optionalChain([e, 'access', _271 => _271.team, 'optionalAccess', _272 => _272.name])   || '',
+            driver: _optionalChain([e, 'access', _271 => _271.driver, 'optionalAccess', _272 => _272.name]) || '',
+            team:   _optionalChain([e, 'access', _273 => _273.team, 'optionalAccess', _274 => _274.name])   || '',
             dnf:    e.dnf || false,
             time:   e.dnf ? 'DNF' : (i === 0 ? 'WINNER' : (e.gap != null ? `+${e.gap.toFixed(3)}s` : '')),
           })));
         }
       } catch(err) {
-        setSimError(String(_optionalChain([err, 'optionalAccess', _273 => _273.message]) || err));
+        setSimError(String(_optionalChain([err, 'optionalAccess', _275 => _275.message]) || err));
       }
       setRunning(false);
     }, 50);
@@ -25612,7 +25767,7 @@ function GMRaceControl({ sbUser }) {
       body: JSON.stringify({
         number:        parseInt(newRound.number),
         circuit_id:    newRound.circuit_id,
-        circuit_name:  _optionalChain([track, 'optionalAccess', _274 => _274.name]) || newRound.circuit_id,
+        circuit_name:  _optionalChain([track, 'optionalAccess', _276 => _276.name]) || newRound.circuit_id,
         state:         'scheduled',
         is_sprint:     newRound.is_sprint,
         scheduled_for: newRound.scheduled_for || null,
@@ -25855,20 +26010,20 @@ function SandboxPage() {
         if (mode === 'qualifying') {
           const raw = aggQual(n, DRIVERS, TEAMS, track);
           setResults((raw.grid||[]).map((e,i) => ({
-            pos:i+1, driver:_optionalChain([e, 'access', _275 => _275.driver, 'optionalAccess', _276 => _276.name])||'', team:_optionalChain([e, 'access', _277 => _277.team, 'optionalAccess', _278 => _278.name])||'',
+            pos:i+1, driver:_optionalChain([e, 'access', _277 => _277.driver, 'optionalAccess', _278 => _278.name])||'', team:_optionalChain([e, 'access', _279 => _279.team, 'optionalAccess', _280 => _280.name])||'',
             time:e.score?e.score.toFixed(3):'',
           })));
         } else {
           const qr = aggQual(1, DRIVERS, TEAMS, track);
           const raw = aggRace(n, qr.grid, TEAMS, track);
           setResults((raw.positions||[]).map((e,i) => ({
-            pos:i+1, driver:_optionalChain([e, 'access', _279 => _279.driver, 'optionalAccess', _280 => _280.name])||'', team:_optionalChain([e, 'access', _281 => _281.team, 'optionalAccess', _282 => _282.name])||'',
+            pos:i+1, driver:_optionalChain([e, 'access', _281 => _281.driver, 'optionalAccess', _282 => _282.name])||'', team:_optionalChain([e, 'access', _283 => _283.team, 'optionalAccess', _284 => _284.name])||'',
             dnf:e.dnf||false,
             time:e.dnf?'DNF':(i===0?'WINNER':(e.gap!=null?`+${e.gap.toFixed(3)}s`:'')),
           })));
         }
       } catch(err) {
-        setSimError(String(_optionalChain([err, 'optionalAccess', _283 => _283.message]) || err));
+        setSimError(String(_optionalChain([err, 'optionalAccess', _285 => _285.message]) || err));
       }
       setRunning(false);
     }, 50);
@@ -25935,7 +26090,7 @@ function F1Sim() {
   if (sbClient && !authInitRef.current) {
     authInitRef.current = true;
     sbClient.auth.getSession().then(({ data: { session } }) => {
-      if (_optionalChain([session, 'optionalAccess', _284 => _284.user])) {
+      if (_optionalChain([session, 'optionalAccess', _286 => _286.user])) {
         setSbUser(session.user);
         loadProfile(session.user.id);
       } else {

@@ -7423,19 +7423,59 @@ function GMStats() {
 }
 
 function GMCharacters() {
-  const [chars,    setChars]    = useState(null);
-  const [loading,  setLoading]  = useState(true);
-  const [loaded,   setLoaded]   = useState(false);
-  const [editing,  setEditing]  = useState(null);
-  const [editForm, setEditForm] = useState({});
-  const [saving,   setSaving]   = useState(false);
-  const [charType, setCharType] = useState('all');
+  const [chars,       setChars]       = useState(null);
+  const [loading,     setLoading]     = useState(true);
+  const [loaded,      setLoaded]      = useState(false);
+  const [editing,     setEditing]     = useState(null);
+  const [editForm,    setEditForm]    = useState({});
+  const [saving,      setSaving]      = useState(false);
+  const [charType,    setCharType]    = useState('all');
+  const [transferring,setTransferring]= useState(null);
+  const [teams,       setTeams]       = useState([]);
+  const [xferTeam,    setXferTeam]    = useState('');
+  const [xferSaving,  setXferSaving]  = useState(false);
+  const [xferErr,     setXferErr]     = useState('');
 
   async function load() {
-    const q = charType === 'all' ? 'characters?order=name&select=*,profiles!owner_id(username)'
-              : `characters?type=eq.${charType}&order=name&select=*,profiles!owner_id(username)`;
+    const base = 'characters?order=name&select=*,profiles!owner_id(username),league_teams!team_id(id,name,color)';
+    const q = charType === 'all' ? base : base + `&type=eq.${charType}`;
     const { data } = await sbFetch(q);
     setChars(data||[]); setLoading(false);
+  }
+
+  async function openTransfer(c) {
+    setXferErr(''); setXferTeam(c.team_id||'');
+    if (!teams.length) {
+      const { data } = await sbFetch('league_teams?order=name&select=id,name,color');
+      setTeams(data||[]);
+    }
+    setTransferring(c);
+  }
+
+  async function doTransfer() {
+    if (xferSaving) return;
+    setXferSaving(true); setXferErr('');
+    const newTeam = xferTeam || null;
+
+    const r1 = await sbFetch(`characters?id=eq.${transferring.id}`, {
+      method:'PATCH', body:JSON.stringify({ team_id: newTeam }),
+    });
+    if (r1.error) { setXferErr(String(r1.error)); setXferSaving(false); return; }
+
+    // Upsert league_drivers entry
+    const { data: existing } = await sbFetch(`league_drivers?character_id=eq.${transferring.id}&select=id`);
+    if (existing && existing.length > 0) {
+      await sbFetch(`league_drivers?character_id=eq.${transferring.id}`, {
+        method:'PATCH', body:JSON.stringify({ team_id: newTeam }),
+      });
+    } else if (newTeam) {
+      await sbFetch('league_drivers', {
+        method:'POST', body:JSON.stringify({ character_id: transferring.id, team_id: newTeam }),
+      });
+    }
+
+    setXferSaving(false); setTransferring(null); setXferTeam('');
+    setLoaded(false); setLoading(true); load();
   }
 
   if (!loaded) { setLoaded(true); if (sbClient) load(); else setLoading(false); }
@@ -7467,6 +7507,41 @@ function GMCharacters() {
 
   function reloadType(t) {
     setCharType(t); setChars(null); setLoading(true); setLoaded(false);
+  }
+
+  if (transferring) {
+    const curTeam = teams.find(t => t.id === transferring.team_id);
+    return (
+      <div style={{ maxWidth:500 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
+          <button onClick={() => setTransferring(null)}
+            style={{ background:'none', border:'none', color:'#8888A0', cursor:'pointer',
+              fontSize:14, fontFamily:FONT_BODY, padding:0 }}>&lt; Back</button>
+          <div style={{ ...T.h2 }}>Transfer: {transferring.name}</div>
+        </div>
+        <Card>
+          <div style={{ ...T.cap, color:'#8888A0', marginBottom:14 }}>
+            Current team: <span style={{ color:'#F0F0F5' }}>{curTeam ? curTeam.name : 'None'}</span>
+          </div>
+          <div style={{ marginBottom:14 }}>
+            <label style={{ ...T.cap, color:'#8888A0', display:'block', marginBottom:6 }}>Transfer to Team</label>
+            <select value={xferTeam} onChange={e => setXferTeam(e.target.value)}
+              style={{ width:'100%', background:'#111114', border:'1px solid #252530', borderRadius:6,
+                color:'#F0F0F5', padding:'8px 10px', fontFamily:FONT_BODY, fontSize:13 }}>
+              <option value="">— Remove from team —</option>
+              {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </div>
+          {xferErr && <div style={{ color:'#E8002D', fontSize:13, marginBottom:10 }}>{xferErr}</div>}
+          <div style={{ display:'flex', gap:10 }}>
+            <Button onClick={doTransfer} disabled={xferSaving}>
+              {xferSaving ? 'Transferring...' : 'Confirm Transfer'}
+            </Button>
+            <Button variant="secondary" onClick={() => setTransferring(null)}>Cancel</Button>
+          </div>
+        </Card>
+      </div>
+    );
   }
 
   if (editing) {
@@ -7537,10 +7612,14 @@ function GMCharacters() {
                 <Badge color={c.is_active ? '#00C46A' : '#55556A'}>
                   {c.is_active ? 'Active' : 'Inactive'}
                 </Badge>
+                {c.league_teams?.name && (
+                  <Badge color={c.league_teams.color||'#55556A'}>{c.league_teams.name}</Badge>
+                )}
               </div>
-              <div style={{ ...T.cap }}>{c.type}{c.profiles?.username ? ` - ${c.profiles.username}` : ''}</div>
+              <div style={{ ...T.cap }}>{c.type}{c.profiles?.username ? ` · ${c.profiles.username}` : ''}{!c.team_id ? ' · No team' : ''}</div>
             </div>
             <div style={{ display:'flex', gap:8 }}>
+              <Button size="sm" variant="secondary" onClick={() => openTransfer(c)}>Transfer</Button>
               <Button size="sm" variant="secondary" onClick={() => startEdit(c)}>Edit</Button>
               <Button size="sm" variant={c.is_active ? 'danger' : 'success'}
                 onClick={() => toggleActive(c)}>
@@ -8035,15 +8114,44 @@ function GMLeagueSettings() {
     setTimeout(() => setSaved(false), 2000);
   }
 
-  const TIERS = ['top','upper_mid','mid','lower_mid','backmarker'];
+  const F1_DEFAULTS = {
+    league_name: 'F1 Sim League 2025',
+    season_number: '1',
+    tagline: 'The Official F1 Sim League',
+    registration_open: 'open',
+    max_characters: '2',
+    max_drivers_per_team: '2',
+    season_phase: 'pre_season',
+    current_round: '1',
+    total_rounds: '24',
+    points_system: 'standard',
+    fastest_lap_point: '1',
+    dnf_penalty: '0',
+    sprint_weekends: '6',
+    safety_car_enabled: 'true',
+    weather_enabled: 'true',
+    weather_probability: '20',
+    min_grid_size: '20',
+    race_laps_base: '52',
+  };
+
+  function applyDefaults() {
+    setSettings(s => ({ ...F1_DEFAULTS, ...s }));
+  }
 
   return (
     <div>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
         <div style={{ ...T.h3 }}>League Settings</div>
-        <Button onClick={save} disabled={saving}>
-          {saved ? 'Saved!' : saving ? 'Saving...' : 'Save Changes'}
-        </Button>
+        <div style={{ display:'flex', gap:10 }}>
+          <Button variant="secondary" onClick={applyDefaults}>Apply F1 Defaults</Button>
+          <Button onClick={save} disabled={saving}>
+            {saved ? 'Saved ✓' : saving ? 'Saving...' : 'Save Changes'}
+          </Button>
+        </div>
+      </div>
+      <div style={{ ...T.cap, color:'#55556A', marginBottom:20 }}>
+        "Apply F1 Defaults" pre-fills any empty fields with standard F1 2025 values without overwriting what you've already set.
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
@@ -8109,6 +8217,53 @@ function GMLeagueSettings() {
             onChange={v => set('fastest_lap_point',v)} placeholder="1 (optional)" />
           <Input label="DNF Penalty" value={settings.dnf_penalty||''}
             onChange={v => set('dnf_penalty',v)} placeholder="e.g. 0 (no penalty)" />
+        </Card>
+
+        {/* Race Format */}
+        <Card>
+          <div style={{ ...T.cap, color:'#00C46A', marginBottom:12 }}>Race Format</div>
+          <Input label="Total Rounds" value={settings.total_rounds||''}
+            onChange={v => set('total_rounds',v)} placeholder="e.g. 24" />
+          <Input label="Sprint Weekends (count)" value={settings.sprint_weekends||''}
+            onChange={v => set('sprint_weekends',v)} placeholder="e.g. 6" />
+          <Input label="Base Lap Count" value={settings.race_laps_base||''}
+            onChange={v => set('race_laps_base',v)} placeholder="e.g. 52" />
+          <Input label="Minimum Grid Size" value={settings.min_grid_size||''}
+            onChange={v => set('min_grid_size',v)} placeholder="e.g. 20 (AI-padded if needed)" />
+        </Card>
+
+        {/* Simulation */}
+        <Card>
+          <div style={{ ...T.cap, color:'#9B59B6', marginBottom:12 }}>Simulation Rules</div>
+          <div style={{ marginBottom:14 }}>
+            <label style={{ ...T.cap, color:'#8888A0', display:'flex', alignItems:'center', gap:10, cursor:'pointer' }}>
+              <input type="checkbox"
+                checked={settings.safety_car_enabled === 'true'}
+                onChange={e => set('safety_car_enabled', e.target.checked ? 'true' : 'false')}
+                style={{ width:16, height:16, accentColor:'#E8002D' }} />
+              Safety Car enabled
+            </label>
+          </div>
+          <div style={{ marginBottom:14 }}>
+            <label style={{ ...T.cap, color:'#8888A0', display:'flex', alignItems:'center', gap:10, cursor:'pointer' }}>
+              <input type="checkbox"
+                checked={settings.weather_enabled === 'true'}
+                onChange={e => set('weather_enabled', e.target.checked ? 'true' : 'false')}
+                style={{ width:16, height:16, accentColor:'#E8002D' }} />
+              Dynamic weather enabled
+            </label>
+          </div>
+          {settings.weather_enabled === 'true' && (
+            <div style={{ marginBottom:14 }}>
+              <label style={{ ...T.cap, color:'#8888A0', display:'block', marginBottom:6 }}>
+                Rain probability — {settings.weather_probability||20}%
+              </label>
+              <input type="range" min={0} max={100} step={5}
+                value={Number(settings.weather_probability||20)}
+                onChange={e => set('weather_probability', e.target.value)}
+                style={{ width:'100%', accentColor:'#3B8EFF' }} />
+            </div>
+          )}
         </Card>
       </div>
 
