@@ -21268,7 +21268,15 @@ function CharacterDetail({ char: initChar, onBack, sbUser }) {
             , React.createElement(Badge, { color: c.is_active ? '#00C46A' : '#55556A',}
               , c.is_active ? 'Active' : 'Inactive'
             )
-            , (c.style || c.driving_style) && React.createElement(Badge, { color: "#FF9500",}, c.driving_style || c.style)
+            , (c.sim_style || c.style || c.driving_style) && (() => {
+              const styleId = c.sim_style || c.style;
+              const ds = styleId && DRIVING_STYLES.find(s => s.id === styleId);
+              return (
+                React.createElement(Badge, { color: ds ? (ds.color||'#FF9500') : '#FF9500',}
+                  , ds ? (ds.icon ? ds.icon+' ' : '') + ds.id : (c.driving_style || c.style)
+                )
+              );
+            })()
             , c.stat_roll_tier && !c.stat_roll_pending && (
               React.createElement(Badge, { color: "#FFD700",}, c.stat_roll_tier, " tier" )
             )
@@ -21335,6 +21343,42 @@ function CharacterDetail({ char: initChar, onBack, sbUser }) {
                 React.createElement('div', null
                   , React.createElement('div', { style: { ...T.cap, color:'#E8002D', marginBottom:3 },}, "Weaknesses")
                   , React.createElement('div', { style: { ...T.sub, fontSize:12 },}, c.weaknesses)
+                )
+              )
+              , (c.good_tracks || c.bad_tracks) && (
+                React.createElement('div', { style: { marginTop:10 },}
+                  , c.good_tracks && (
+                    React.createElement('div', { style: { marginBottom:6 },}
+                      , React.createElement('div', { style: { ...T.cap, color:'#00C46A', marginBottom:4 },}, "Good Tracks" )
+                      , React.createElement('div', { style: { display:'flex', flexWrap:'wrap', gap:4 },}
+                        , c.good_tracks.split(',').map(s=>s.trim()).filter(Boolean).map(id => {
+                          const t = TRACKS.find(x=>x.id===id||x.name.toLowerCase().includes(id.toLowerCase()));
+                          return t ? (
+                            React.createElement('span', { key: id, style: { ...T.cap, fontSize:11, padding:'2px 7px', borderRadius:12,
+                              background:'#00C46A22', border:'1px solid #00C46A55', color:'#00C46A' },}
+                              , t.flag, " " , t.name.replace(' GP','')
+                            )
+                          ) : null;
+                        })
+                      )
+                    )
+                  )
+                  , c.bad_tracks && (
+                    React.createElement('div', null
+                      , React.createElement('div', { style: { ...T.cap, color:'#E8002D', marginBottom:4 },}, "Bad Tracks" )
+                      , React.createElement('div', { style: { display:'flex', flexWrap:'wrap', gap:4 },}
+                        , c.bad_tracks.split(',').map(s=>s.trim()).filter(Boolean).map(id => {
+                          const t = TRACKS.find(x=>x.id===id||x.name.toLowerCase().includes(id.toLowerCase()));
+                          return t ? (
+                            React.createElement('span', { key: id, style: { ...T.cap, fontSize:11, padding:'2px 7px', borderRadius:12,
+                              background:'#E8002D22', border:'1px solid #E8002D55', color:'#E8002D' },}
+                              , t.flag, " " , t.name.replace(' GP','')
+                            )
+                          ) : null;
+                        })
+                      )
+                    )
+                  )
                 )
               )
             )
@@ -21404,6 +21448,75 @@ function CharacterDetail({ char: initChar, onBack, sbUser }) {
   );
 }
 
+// -- Track Picker (interactive good / bad track selector) ----------------------
+
+function TrackPicker({ good, bad, onChange }) {
+  const goodIds = (good||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const badIds  = (bad ||'').split(',').map(s=>s.trim()).filter(Boolean);
+
+  function toggle(id, type) {
+    const inGood = goodIds.includes(id);
+    const inBad  = badIds.includes(id);
+    let ng = [...goodIds], nb = [...badIds];
+    if (type === 'good') {
+      if (inGood) { ng = ng.filter(x=>x!==id); }
+      else if (ng.length < 3) { ng.push(id); nb = nb.filter(x=>x!==id); }
+    } else {
+      if (inBad) { nb = nb.filter(x=>x!==id); }
+      else if (nb.length < 3) { nb.push(id); ng = ng.filter(x=>x!==id); }
+    }
+    onChange(ng.join(','), nb.join(','));
+  }
+
+  function label(ids) {
+    if (!ids.length) return 'None';
+    return ids.map(id => { const t = TRACKS.find(t=>t.id===id); return t ? `${t.flag} ${t.name.replace(' GP','')}` : id; }).join('  ·  ');
+  }
+
+  return (
+    React.createElement('div', null
+      , React.createElement('div', { style: { display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))', gap:6 },}
+        , TRACKS.map(t => {
+          const isGood = goodIds.includes(t.id);
+          const isBad  = badIds.includes(t.id);
+          return (
+            React.createElement('div', { key: t.id,
+              style: { background:'#111114', border:`1px solid ${isGood?'#00C46A':isBad?'#E8002D':'#252530'}`,
+                borderRadius:6, padding:'6px 8px' },}
+              , React.createElement('div', { style: { ...T.cap, fontSize:11, marginBottom:5, whiteSpace:'nowrap', overflow:'hidden',
+                textOverflow:'ellipsis', color: isGood?'#00C46A':isBad?'#E8002D':'#8888A0' },}
+                , t.flag, " " , t.name.replace(' GP','')
+              )
+              , React.createElement('div', { style: { display:'flex', gap:4 },}
+                , (['good','bad']).map(type => {
+                  const active = type==='good' ? isGood : isBad;
+                  const clr    = type==='good' ? '#00C46A' : '#E8002D';
+                  const full   = type==='good' ? goodIds.length>=3 && !isGood : badIds.length>=3 && !isBad;
+                  return (
+                    React.createElement('button', { key: type, onClick: () => !full && toggle(t.id, type),
+                      style: { flex:1, padding:'2px 0', borderRadius:3, fontSize:9, fontFamily:FONT_BODY,
+                        fontWeight:700, letterSpacing:1, cursor: full?'not-allowed':'pointer',
+                        background: active ? clr+'22' : '#1A1A25',
+                        border: `1px solid ${active ? clr : '#252530'}`,
+                        color: active ? clr : full?'#333340':'#55556A',
+                        opacity: full?0.5:1 },}
+                      , type.toUpperCase()
+                    )
+                  );
+                })
+              )
+            )
+          );
+        })
+      )
+      , React.createElement('div', { style: { display:'flex', gap:24, marginTop:10 },}
+        , React.createElement('div', { style: { ...T.cap, color:'#00C46A', fontSize:11 },}, "✓ Good: "  , label(goodIds))
+        , React.createElement('div', { style: { ...T.cap, color:'#E8002D', fontSize:11 },}, "✗ Bad:  "   , label(badIds))
+      )
+    )
+  );
+}
+
 // -- Character Edit Form ------------------------------------------------------
 
 function CharacterEditForm({ char, onDone }) {
@@ -21428,6 +21541,8 @@ function CharacterEditForm({ char, onDone }) {
     backstory_journey: char.backstory_journey || '',
     iconic_quote: char.iconic_quote || '',
     ooc_notes: char.ooc_notes || '',
+    sim_style: char.sim_style || '',
+    mental: char.mental != null ? char.mental : 7,
   };
   const [fd, setFd] = useState(init);
   const [saving, setSaving] = useState(false);
@@ -21463,6 +21578,7 @@ function CharacterEditForm({ char, onDone }) {
     setSaving(true); setErr('');
     const patch = {};
     Object.entries(fd).forEach(([k,v]) => { patch[k] = v || null; });
+    patch.mental = Number(fd.mental) || null;
     const { error } = await sbFetch(`characters?id=eq.${char.id}`, { method:'PATCH', body:JSON.stringify(patch) });
     setSaving(false);
     if (error) { setErr(String(error)); return; }
@@ -21502,12 +21618,70 @@ function CharacterEditForm({ char, onDone }) {
       )
 
       , React.createElement(Card, { style: { marginBottom:16 },}
+        , React.createElement('div', { style: { ...T.cap, color:'#E8002D', marginBottom:12 },}, "Simulator Style" )
+        , React.createElement('div', { style: { ...T.cap, color:'#8888A0', marginBottom:8 },}, "Pick your racing style — this directly affects your performance in the simulator"
+
+        )
+        , React.createElement('div', { style: { display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:6, marginBottom:14 },}
+          , DRIVING_STYLES.map(s => {
+            const sel = fd.sim_style === s.id;
+            return (
+              React.createElement('div', { key: s.id, onClick: () => setFd(p => ({ ...p, sim_style: s.id })),
+                style: { padding:'8px 10px', borderRadius:6, cursor:'pointer', userSelect:'none',
+                  background: sel ? (s.color||'#E8002D')+'22' : '#111114',
+                  border: `1px solid ${sel ? (s.color||'#E8002D') : '#252530'}`,
+                  transition:'border-color .12s, background .12s' },}
+                , React.createElement('div', { style: { fontSize:16 },}, s.icon||'🏎')
+                , React.createElement('div', { style: { ...T.cap, color: sel ? (s.color||'#E8002D') : '#8888A0',
+                  fontSize:11, marginTop:3, textTransform:'capitalize' },}, s.id)
+              )
+            );
+          })
+        )
+        , fd.sim_style && (() => {
+          const s = DRIVING_STYLES.find(x => x.id === fd.sim_style);
+          return s ? (
+            React.createElement('div', { style: { padding:'10px 12px', borderRadius:6, background:(s.color||'#E8002D')+'11',
+              border:`1px solid ${(s.color||'#E8002D')}33`, marginBottom:14 },}
+              , React.createElement('div', { style: { ...T.cap, color: s.color||'#E8002D', marginBottom:4 },}, s.name||s.id)
+              , React.createElement('div', { style: { ...T.sub, color:'#8888A0', fontSize:12, lineHeight:1.5 },}, s.description||s.effects||'')
+            )
+          ) : null;
+        })()
+      )
+
+      , React.createElement(Card, { style: { marginBottom:16 },}
+        , React.createElement('div', { style: { ...T.cap, color:'#E8002D', marginBottom:12 },}, "Good & Bad Tracks"   )
+        , React.createElement('div', { style: { ...T.cap, color:'#8888A0', marginBottom:10, fontSize:11 },}, "Select up to 3 circuits where your driver excels and 3 where they struggle (+3/-3 sim modifier each)"
+
+        )
+        , React.createElement(TrackPicker, {
+          good: fd.good_tracks, bad: fd.bad_tracks,
+          onChange: (g,b) => setFd(p => ({ ...p, good_tracks:g, bad_tracks:b })),} )
+      )
+
+      , React.createElement(Card, { style: { marginBottom:16 },}
+        , React.createElement('div', { style: { ...T.cap, color:'#E8002D', marginBottom:12 },}, "Mental Strength" )
+        , React.createElement('div', { style: { marginBottom:14 },}
+          , React.createElement('label', { style: { ...T.cap, color:'#8888A0', display:'block', marginBottom:6 },}, "Mental Strength — "
+               , fd.mental, "/10"
+          )
+          , React.createElement('input', { type: "range", min: 1, max: 10, step: 1, value: fd.mental,
+            onChange: e => setFd(p => ({ ...p, mental: Number(e.target.value) })),
+            style: { width:'100%', accentColor:'#E8002D' },} )
+          , React.createElement('div', { style: { display:'flex', justifyContent:'space-between', marginTop:4 },}
+            , React.createElement('span', { style: { ...T.cap, fontSize:10, color:'#55556A' },}, "1 — Crumbles under pressure"    )
+            , React.createElement('span', { style: { ...T.cap, fontSize:10, color:'#55556A' },}, "10 — Unshakeable"  )
+          )
+        )
+      )
+
+      , React.createElement(Card, { style: { marginBottom:16 },}
         , React.createElement('div', { style: { ...T.cap, color:'#E8002D', marginBottom:12 },}, "Driver Profile" )
-        , React.createElement(TF, { label: "Driving Style" , fkey: "driving_style", placeholder: "e.g. Aggressive, late-braking specialist"   ,} )
+        , React.createElement(TF, { label: "Driving Style (narrative description)"   , fkey: "driving_style",
+          placeholder: "e.g. Aggressive late-braker who excels under pressure, maximises tyre life through long stints"            ,} )
         , React.createElement(TA, { label: "Strengths", fkey: "strengths", placeholder: "e.g. Tyre management, wet conditions, overtaking"     ,} )
         , React.createElement(TA, { label: "Weaknesses", fkey: "weaknesses", placeholder: "e.g. Single-lap qualifying pace, high-speed corners"     ,} )
-        , React.createElement(TF, { label: "Good Tracks (3, comma-separated)"   , fkey: "good_tracks", placeholder: "Monaco, Suzuka, Singapore"  ,} )
-        , React.createElement(TF, { label: "Bad Tracks (3, comma-separated)"   , fkey: "bad_tracks", placeholder: "Monza, Baku, COTA"  ,} )
         , React.createElement(TF, { label: "Preferred Conditions" , fkey: "preferred_conditions", placeholder: "e.g. Intermediate, overcast"  ,} )
         , React.createElement(TA, { label: "Personality", fkey: "personality", placeholder: "Describe your character's on and off-track personality"      ,} )
         , React.createElement(TA, { label: "Media Reputation" , fkey: "media_persona", placeholder: "How the media portrays them publicly"     ,} )
@@ -25299,7 +25473,7 @@ function GMRaceControl({ sbUser }) {
   async function loadLeagueData() {
     setLoadingLeague(true);
     const [dr, tr] = await Promise.all([
-      sbFetch('league_drivers?select=*,characters(name,number,pace,consistency,wet,overtaking,defense,experience,mental,driving_style,good_tracks,bad_tracks),league_teams(id,name,color,car_pace,reliability,pit_speed,tyre_life,strategy)'),
+      sbFetch('league_drivers?select=*,characters(name,number,pace,consistency,wet,overtaking,defense,experience,mental,driving_style,sim_style,good_tracks,bad_tracks),league_teams(id,name,color,car_pace,reliability,pit_speed,tyre_life,strategy)'),
       sbFetch('league_teams?select=*'),
     ]);
     const rawDrivers = (dr.data||[]).filter(d => d.characters);
@@ -25332,7 +25506,7 @@ function GMRaceControl({ sbUser }) {
         defense:     c.defense     || 70,
         experience:  c.experience  || 50,
         mental:      c.mental      || 7,
-        style:       mapDrivingStyle(c.driving_style),
+        style:       c.sim_style || mapDrivingStyle(c.driving_style),
         goodTracks:  parseTrackIds(c.good_tracks),
         badTracks:   parseTrackIds(c.bad_tracks),
         rivals:      [],
