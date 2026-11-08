@@ -4100,7 +4100,7 @@ function CharacterDetail({ char: initChar, onBack, sbUser }) {
                     <div style={{ marginBottom:6 }}>
                       <div style={{ ...T.cap, color:'#00C46A', marginBottom:4 }}>Good Tracks</div>
                       <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
-                        {c.good_tracks.split(',').map(s=>s.trim()).filter(Boolean).map(id => {
+                        {(Array.isArray(c.good_tracks) ? c.good_tracks : String(c.good_tracks).split(',')).map(s=>s.trim()).filter(Boolean).map(id => {
                           const t = TRACKS.find(x=>x.id===id||x.name.toLowerCase().includes(id.toLowerCase()));
                           return t ? (
                             <span key={id} style={{ ...T.cap, fontSize:11, padding:'2px 7px', borderRadius:12,
@@ -4116,7 +4116,7 @@ function CharacterDetail({ char: initChar, onBack, sbUser }) {
                     <div>
                       <div style={{ ...T.cap, color:'#E8002D', marginBottom:4 }}>Bad Tracks</div>
                       <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
-                        {c.bad_tracks.split(',').map(s=>s.trim()).filter(Boolean).map(id => {
+                        {(Array.isArray(c.bad_tracks) ? c.bad_tracks : String(c.bad_tracks).split(',')).map(s=>s.trim()).filter(Boolean).map(id => {
                           const t = TRACKS.find(x=>x.id===id||x.name.toLowerCase().includes(id.toLowerCase()));
                           return t ? (
                             <span key={id} style={{ ...T.cap, fontSize:11, padding:'2px 7px', borderRadius:12,
@@ -4200,8 +4200,8 @@ function CharacterDetail({ char: initChar, onBack, sbUser }) {
 // -- Track Picker (interactive good / bad track selector) ----------------------
 
 function TrackPicker({ good, bad, onChange }) {
-  const goodIds = (good||'').split(',').map(s=>s.trim()).filter(Boolean);
-  const badIds  = (bad ||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const goodIds = (Array.isArray(good) ? good : (good||'').split(',')).map(s=>s.trim()).filter(Boolean);
+  const badIds  = (Array.isArray(bad)  ? bad  : (bad ||'').split(',')).map(s=>s.trim()).filter(Boolean);
 
   function toggle(id, type) {
     const inGood = goodIds.includes(id);
