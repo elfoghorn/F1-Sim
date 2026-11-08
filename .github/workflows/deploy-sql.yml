@@ -1,0 +1,35 @@
+name: Deploy SQL Migrations
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+
+jobs:
+  migrate:
+    name: Run Supabase migrations
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install psql client
+        run: sudo apt-get install -y postgresql-client
+
+      - name: Run all migrations in order
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          for f in $(ls supabase/migrations/*.sql | sort); do
+            echo "▸ Running $f"
+            psql \
+              --host="${{ secrets.SUPABASE_DB_HOST }}" \
+              --port=5432 \
+              --username="postgres" \
+              --dbname="postgres" \
+              -v ON_ERROR_STOP=1 \
+              -f "$f"
+            echo "  ✓ Done"
+          done

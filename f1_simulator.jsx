@@ -5432,7 +5432,7 @@ function TeamDetail({ team, onBack }) {
 
   if (!loaded) {
     setLoaded(true);
-    const isDbTeam = sbClient && team.id && String(team.id).includes('-');
+    const isDbTeam = !!sbClient && !!team.id;
     if (isDbTeam) {
       Promise.all([
         sbFetch(`characters?team_id=eq.${team.id}&is_active=eq.true&select=*&order=type`),
