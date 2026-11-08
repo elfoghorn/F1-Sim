@@ -3535,39 +3535,215 @@ function AuthScreen({ onLogin }) {
 
 // -- Dashboard ----------------------------------------------------------------
 
-function Dashboard({ profile, setPage }) {
+function Dashboard({ profile, setPage, sbUser }) {
+  const [chars,     setChars]     = useState(null);
+  const [nextRound, setNextRound] = useState(null);
+  const [appStats,  setAppStats]  = useState({ pending:0, approved:0 });
+  const [activity,  setActivity]  = useState([]);
+  const [loaded,    setLoaded]    = useState(false);
   const isGM = profile?.role === 'gm' || profile?.role === 'admin';
-  const tiles = [
-    { label:'My Characters', sub:'Create and manage characters', page:'characters', color:'#3B8EFF' },
-    { label:'Apply',          sub:'Submit a character application', page:'apply',   color:'#FF9500' },
-    { label:'Teams',          sub:'View teams and rosters',         page:'teams',   color:'#E8002D' },
-    { label:'Championship',   sub:'Standings and points',           page:'championship', color:'#FFD700' },
+
+  if (!loaded) {
+    setLoaded(true);
+    if (sbClient && sbUser) {
+      sbFetch(`characters?owner_id=eq.${sbUser.id}&order=created_at.desc&limit=6`)
+        .then(({ data }) => setChars(data || []));
+      sbFetch('rounds?state=in.(scheduled,orders_open,locked,in_progress)&order=scheduled_for.asc&limit=1')
+        .then(({ data }) => setNextRound(data?.[0] || null));
+      sbFetch(`applications?applicant_id=eq.${sbUser.id}&select=status`)
+        .then(({ data }) => {
+          const apps = data || [];
+          setAppStats({
+            pending:  apps.filter(a => ['submitted','under_review','revision_requested'].includes(a.status)).length,
+            approved: apps.filter(a => a.status === 'approved').length,
+          });
+        });
+      sbFetch(`notifications?recipient_id=eq.${sbUser.id}&order=created_at.desc&limit=5`)
+        .then(({ data }) => setActivity(data || []));
+    } else {
+      setChars([]);
+    }
+  }
+
+  const rlbl = s => ({ scheduled:'Scheduled', orders_open:'Orders Open', locked:'Locked',
+    in_progress:'Live', complete:'Complete' }[s] || s);
+  const rclr = s => ({ scheduled:'#55556A', orders_open:'#3B8EFF', locked:'#FF9500',
+    in_progress:'#E8002D', complete:'#00C46A' }[s] || '#55556A');
+
+  const statCards = [
+    { label:'Characters',    value: chars === null ? '...' : chars.length,  color:'#3B8EFF', page:'characters' },
+    { label:'Applications',  value: appStats.pending,                        color:'#FF9500', page:'apply' },
+    { label:'Approved',      value: appStats.approved,                       color:'#00C46A', page:'apply' },
+    { label:'Next Race',
+      value: nextRound ? (nextRound.circuit_id || 'TBD') : '--',
+      color:'#E8002D', page:'calendar' },
   ];
+
   return (
     <div>
-      <div style={{ marginBottom:24 }}>
-        <div style={{ ...T.h1 }}>Welcome back, {profile?.username}</div>
+      <div style={{ marginBottom:28 }}>
+        <div style={{ ...T.cap, color:'#E8002D', marginBottom:6 }}>Player Portal</div>
+        <div style={{ ...T.h1, marginBottom:4 }}>Welcome back, {profile?.username}</div>
         <div style={{ ...T.sub }}>Formula One 2027 Roleplay Championship</div>
       </div>
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))', gap:14, marginBottom:24 }}>
-        {tiles.map(item => (
-          <Card key={item.page} onClick={() => setPage(item.page)}>
-            <div style={{ width:4, height:28, background:item.color, borderRadius:2, marginBottom:12 }} />
-            <div style={{ ...T.h3, marginBottom:4, color:item.color }}>{item.label}</div>
-            <div style={{ ...T.sub }}>{item.sub}</div>
+
+      {/* Stat strip */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:28 }}>
+        {statCards.map(s => (
+          <Card key={s.label} onClick={() => setPage(s.page)} style={{ padding:'16px 20px' }}>
+            <div style={{ ...T.cap, marginBottom:8 }}>{s.label}</div>
+            <div style={{ fontSize:32, fontWeight:900, fontFamily:FONT_HEAD,
+              color:s.color, lineHeight:1 }}>{s.value}</div>
           </Card>
         ))}
       </div>
-      {isGM && (
-        <Card onClick={() => setPage('gm')} style={{ borderColor:'rgba(232,0,45,0.4)' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:14 }}>
-            <div style={{ width:4, height:48, background:'#E8002D', borderRadius:2 }} />
-            <div>
-              <div style={{ ...T.h3, color:'#E8002D' }}>GM Control Centre</div>
-              <div style={{ ...T.sub }}>Manage players, approve applications, run races</div>
-            </div>
+
+      {/* Two-column layout */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 280px', gap:20, alignItems:'start' }}>
+
+        {/* Characters */}
+        <div>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+            <div style={{ ...T.h2 }}>My Characters</div>
+            <Button size='sm' onClick={() => setPage('characters')}>+ New</Button>
           </div>
-        </Card>
+          {chars === null ? <Spinner /> : chars.length === 0 ? (
+            <Card style={{ textAlign:'center', padding:'32px 20px' }}>
+              <div style={{ ...T.h3, marginBottom:6, color:'#55556A' }}>No characters yet</div>
+              <div style={{ ...T.sub, marginBottom:16 }}>Create your first driver or staff character to join the grid</div>
+              <Button onClick={() => setPage('characters')}>Create Character</Button>
+            </Card>
+          ) : (
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:12 }}>
+              {chars.map(c => (
+                <Card key={c.id}>
+                  <div style={{ display:'flex', alignItems:'center', gap:12,
+                    marginBottom: c.type === 'driver' ? 12 : 0 }}>
+                    <div style={{ width:44, height:44, borderRadius:'50%', background:'#252530',
+                      display:'flex', alignItems:'center', justifyContent:'center',
+                      fontSize:16, fontWeight:800, color:'#E8002D',
+                      fontFamily:FONT_HEAD, flexShrink:0 }}>
+                      {c.number || (c.name||'?')[0].toUpperCase()}
+                    </div>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ ...T.h3, whiteSpace:'nowrap', overflow:'hidden',
+                        textOverflow:'ellipsis' }}>{c.name}</div>
+                      <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:3 }}>
+                        <span style={{ ...T.cap }}>{c.type}</span>
+                        <Badge color={c.is_active ? '#00C46A' : '#55556A'}>
+                          {c.is_active ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                  {c.type === 'driver' && (
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 16px' }}>
+                      <StatBar label="Pace"        value={c.pace||0}        color="#E8002D" />
+                      <StatBar label="Consistency" value={c.consistency||0} color="#3B8EFF" />
+                    </div>
+                  )}
+                  {c.bio && (
+                    <div style={{ ...T.sub, fontSize:12, marginTop:8, fontStyle:'italic',
+                      borderTop:'1px solid #252530', paddingTop:8 }}>
+                      "{c.bio}"
+                    </div>
+                  )}
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Right sidebar */}
+        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+
+          {/* Next race */}
+          <Card>
+            <div style={{ ...T.cap, color:'#E8002D', marginBottom:10 }}>Next Race</div>
+            {nextRound ? (
+              <div>
+                <div style={{ ...T.h3, marginBottom:6 }}>{nextRound.circuit_id || 'Circuit TBD'}</div>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <div style={{ ...T.sub, fontSize:12 }}>
+                    {nextRound.scheduled_for
+                      ? new Date(nextRound.scheduled_for).toLocaleDateString('en-GB',
+                          { day:'numeric', month:'short', year:'numeric' })
+                      : 'Date TBD'}
+                  </div>
+                  <Badge color={rclr(nextRound.state)}>{rlbl(nextRound.state)}</Badge>
+                </div>
+                <Button size='sm' variant='secondary' style={{ width:'100%', marginTop:12 }}
+                  onClick={() => setPage('calendar')}>View Calendar</Button>
+              </div>
+            ) : (
+              <div>
+                <div style={{ ...T.sub, marginBottom:10 }}>No upcoming races scheduled</div>
+                <Button size='sm' variant='secondary' style={{ width:'100%' }}
+                  onClick={() => setPage('calendar')}>View Calendar</Button>
+              </div>
+            )}
+          </Card>
+
+          {/* Quick actions */}
+          <Card>
+            <div style={{ ...T.cap, color:'#E8002D', marginBottom:10 }}>Quick Actions</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+              {[
+                ['Create Character',   'characters'],
+                ['Submit Application', 'apply'],
+                ['View Championship',  'championship'],
+                ['Browse Teams',       'teams'],
+              ].map(([lbl, pg]) => (
+                <button key={pg} onClick={() => setPage(pg)}
+                  style={{ width:'100%', padding:'9px 14px', background:'#111114',
+                    border:'1px solid #252530', borderRadius:7,
+                    color:'#8888A0', fontSize:13, fontFamily:FONT_BODY,
+                    textAlign:'left', cursor:'pointer', transition:'all .15s' }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor='#3A3A48';
+                    e.currentTarget.style.color='#F0F0F5'; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor='#252530';
+                    e.currentTarget.style.color='#8888A0'; }}>
+                  {lbl}
+                </button>
+              ))}
+            </div>
+          </Card>
+
+          {/* Recent activity */}
+          {activity.length > 0 && (
+            <Card>
+              <div style={{ ...T.cap, color:'#E8002D', marginBottom:10 }}>Recent Activity</div>
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                {activity.map(n => (
+                  <div key={n.id} style={{ paddingBottom:8, borderBottom:'1px solid #252530' }}>
+                    <div style={{ ...T.sub, fontSize:12 }}>
+                      {n.payload?.message || n.kind || 'Notification'}
+                    </div>
+                    <div style={{ ...T.cap, marginTop:3, fontSize:10 }}>
+                      {new Date(n.created_at).toLocaleDateString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+        </div>
+      </div>
+
+      {/* GM banner */}
+      {isGM && (
+        <div style={{ marginTop:24 }}>
+          <Card onClick={() => setPage('gm')} style={{ borderColor:'rgba(232,0,45,0.4)', cursor:'pointer' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:14 }}>
+              <div style={{ width:4, height:48, background:'#E8002D', borderRadius:2, flexShrink:0 }} />
+              <div style={{ flex:1 }}>
+                <div style={{ ...T.h3, color:'#E8002D' }}>GM Control Centre</div>
+                <div style={{ ...T.sub }}>Manage players, approve applications, run races</div>
+              </div>
+              <div style={{ ...T.cap, color:'#E8002D' }}>Open &gt;</div>
+            </div>
+          </Card>
+        </div>
       )}
     </div>
   );
@@ -4246,31 +4422,182 @@ function SettingsPage({ profile, sbUser, onProfileUpdate }) {
   );
 }
 
-// -- GM Control Centre --------------------------------------------------------
+// -- GM Overview --------------------------------------------------------------
 
-function GMControlPage({ sbUser }) {
-  const [tab, setTab] = useState('applications');
-  const tabs = [
-    { id:'applications', label:'Applications' },
-    { id:'players',      label:'Players' },
-    { id:'stats',        label:'Edit Stats' },
-    { id:'race',         label:'Race Control' },
-    { id:'audit',        label:'Audit Log' },
-  ];
+function GMOverview({ setPage }) {
+  const [stats,    setStats]    = useState(null);
+  const [pending,  setPending]  = useState([]);
+  const [loaded,   setLoaded]   = useState(false);
+
+  if (!loaded) {
+    setLoaded(true);
+    if (sbClient) {
+      Promise.all([
+        sbFetch('profiles?select=id,role'),
+        sbFetch('characters?select=id,is_active,type'),
+        sbFetch('applications?select=id,status&order=created_at.desc'),
+        sbFetch('rounds?select=id,state,circuit_id,scheduled_for&order=scheduled_for.asc&limit=3'),
+      ]).then(([profiles, chars, apps, rounds]) => {
+        const p = profiles.data || [];
+        const c = chars.data    || [];
+        const a = apps.data     || [];
+        const r = rounds.data   || [];
+        setStats({
+          totalPlayers:  p.length,
+          activePlayers: p.filter(x => x.role !== 'admin').length,
+          totalChars:    c.length,
+          activeDrivers: c.filter(x => x.is_active && x.type === 'driver').length,
+          staffCount:    c.filter(x => x.is_active && x.type !== 'driver').length,
+          pendingApps:   a.filter(x => ['submitted','under_review'].includes(x.status)).length,
+          totalApps:     a.length,
+          nextRound:     r[0] || null,
+        });
+        setPending(a.filter(x => ['submitted','under_review'].includes(x.status)).slice(0,5));
+      });
+    }
+  }
+
+  const S = stats;
+  const statTiles = S ? [
+    { label:'Total Players',  value:S.totalPlayers,  color:'#3B8EFF' },
+    { label:'Active Drivers', value:S.activeDrivers, color:'#E8002D' },
+    { label:'Staff Members',  value:S.staffCount,    color:'#FF9500' },
+    { label:'Pending Apps',   value:S.pendingApps,   color: S.pendingApps > 0 ? '#FF9500' : '#00C46A' },
+  ] : [];
+
+  const rlbl = s => ({ scheduled:'Scheduled', orders_open:'Orders Open', locked:'Locked',
+    in_progress:'Live', complete:'Complete' }[s] || s);
+  const rclr = s => ({ scheduled:'#55556A', orders_open:'#3B8EFF', locked:'#FF9500',
+    in_progress:'#E8002D', complete:'#00C46A' }[s] || '#55556A');
+
   return (
     <div>
-      <div style={{ ...T.h1, marginBottom:8 }}>GM Control Centre</div>
-      <div style={{ ...T.sub, marginBottom:16 }}>League management tools</div>
+      {/* Stat strip */}
+      {!S ? <Spinner /> : (
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:28 }}>
+          {statTiles.map(s => (
+            <Card key={s.label} style={{ padding:'16px 20px' }}>
+              <div style={{ ...T.cap, marginBottom:8 }}>{s.label}</div>
+              <div style={{ fontSize:32, fontWeight:900, fontFamily:FONT_HEAD,
+                color:s.color, lineHeight:1 }}>{s.value}</div>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, alignItems:'start' }}>
+
+        {/* Application queue */}
+        <Card>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+            <div style={{ ...T.h3 }}>Application Queue</div>
+            {S && S.pendingApps > 0 && <Badge color='#FF9500'>{S.pendingApps} pending</Badge>}
+          </div>
+          {pending.length === 0 ? (
+            <div style={{ ...T.sub }}>No pending applications</div>
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {pending.map(a => (
+                <div key={a.id} style={{ display:'flex', justifyContent:'space-between',
+                  alignItems:'center', padding:'8px 0', borderBottom:'1px solid #252530' }}>
+                  <div style={{ ...T.sub, fontSize:12 }}>App #{a.id.slice(0,8)}</div>
+                  <StatusBadge status={a.status} />
+                </div>
+              ))}
+              <Button size='sm' variant='secondary' style={{ marginTop:6 }}
+                onClick={() => setPage('applications')}>
+                View All Applications
+              </Button>
+            </div>
+          )}
+        </Card>
+
+        {/* Quick actions */}
+        <Card>
+          <div style={{ ...T.h3, marginBottom:14 }}>Quick Actions</div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+            {[
+              ['Review Applications', 'applications'],
+              ['Manage Players',      'players'],
+              ['Edit Statistics',     'stats'],
+              ['Race Control',        'race'],
+              ['Audit Log',           'audit'],
+              ['Teams',               'teams'],
+            ].map(([lbl, pg]) => (
+              <button key={pg} onClick={() => setPage(pg)}
+                style={{ padding:'10px 14px', background:'#111114', border:'1px solid #252530',
+                  borderRadius:7, color:'#8888A0', fontSize:12, fontFamily:FONT_BODY,
+                  textAlign:'left', cursor:'pointer', transition:'all .15s' }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor='#E8002D';
+                  e.currentTarget.style.color='#F0F0F5'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor='#252530';
+                  e.currentTarget.style.color='#8888A0'; }}>
+                {lbl}
+              </button>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      {/* Season summary */}
+      {S?.nextRound && (
+        <Card style={{ marginTop:20 }}>
+          <div style={{ ...T.cap, color:'#E8002D', marginBottom:10 }}>Next Race</div>
+          <div style={{ display:'flex', alignItems:'center', gap:16 }}>
+            <div style={{ flex:1 }}>
+              <div style={{ ...T.h3, marginBottom:4 }}>
+                {S.nextRound.circuit_id || 'Circuit TBD'}
+              </div>
+              <div style={{ ...T.sub, fontSize:12 }}>
+                {S.nextRound.scheduled_for
+                  ? new Date(S.nextRound.scheduled_for).toLocaleDateString('en-GB',
+                      { day:'numeric', month:'short', year:'numeric' })
+                  : 'Date TBD'}
+              </div>
+            </div>
+            <Badge color={rclr(S.nextRound.state)}>{rlbl(S.nextRound.state)}</Badge>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// -- GM Control Centre --------------------------------------------------------
+
+function GMControlPage({ sbUser, setPage: _setPage }) {
+  const [tab, setTab] = useState('overview');
+  const tabs = [
+    { id:'overview',      label:'Overview' },
+    { id:'applications',  label:'Applications' },
+    { id:'players',       label:'Players' },
+    { id:'stats',         label:'Edit Stats' },
+    { id:'race',          label:'Race Control' },
+    { id:'audit',         label:'Audit Log' },
+  ];
+
+  // Allow GMOverview quick actions to switch tabs within GMControlPage
+  function goTab(t) { setTab(t); }
+
+  return (
+    <div>
+      <div style={{ marginBottom:24 }}>
+        <div style={{ ...T.cap, color:'#E8002D', marginBottom:6 }}>GM Tools</div>
+        <div style={{ ...T.h1, marginBottom:4 }}>GM Control Centre</div>
+        <div style={{ ...T.sub }}>League management and race operations</div>
+      </div>
       <div style={{ display:'flex', gap:4, marginBottom:24, flexWrap:'wrap' }}>
         {tabs.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{ padding:'8px 16px', border:'none', borderRadius:6, fontSize:13, fontWeight:600,
               cursor:'pointer', background: tab === t.id ? '#E8002D' : '#111114',
-              color: tab === t.id ? '#fff' : '#8888A0', transition:'all .15s' }}>
+              color: tab === t.id ? '#fff' : '#8888A0', transition:'all .15s',
+              fontFamily:FONT_BODY }}>
             {t.label}
           </button>
         ))}
       </div>
+      {tab === 'overview'     && <GMOverview setPage={goTab} />}
       {tab === 'applications' && <GMApplications />}
       {tab === 'players'      && <GMPlayers />}
       {tab === 'stats'        && <GMStats />}
