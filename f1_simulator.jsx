@@ -3215,6 +3215,10 @@ async function sbFetch(path, opts = {}) {
 
 // -- Design tokens ------------------------------------------------------------
 
+const FONT_HEAD = "'Barlow Condensed', sans-serif";
+const FONT_BODY = "'IBM Plex Sans', system-ui, sans-serif";
+const FONT_MONO = "'IBM Plex Mono', monospace";
+
 const C = {
   bg:        '#0A0A0C',
   surface:   '#111114',
@@ -3238,12 +3242,12 @@ const C = {
 };
 
 const T = {
-  h1:   { fontSize:28, fontWeight:700, letterSpacing:-0.5, color:'#F0F0F5' },
-  h2:   { fontSize:20, fontWeight:700, color:'#F0F0F5' },
-  h3:   { fontSize:15, fontWeight:600, color:'#F0F0F5' },
-  body: { fontSize:14, color:'#F0F0F5' },
-  sub:  { fontSize:13, color:'#8888A0' },
-  cap:  { fontSize:11, fontWeight:600, letterSpacing:1, textTransform:'uppercase', color:'#55556A' },
+  h1:   { fontSize:38, fontWeight:900, letterSpacing:-0.5, color:'#F0F0F5', fontFamily:FONT_HEAD, lineHeight:1.1 },
+  h2:   { fontSize:26, fontWeight:700, color:'#F0F0F5', fontFamily:FONT_HEAD },
+  h3:   { fontSize:18, fontWeight:600, color:'#F0F0F5', fontFamily:FONT_HEAD },
+  body: { fontSize:14, color:'#F0F0F5', fontFamily:FONT_BODY },
+  sub:  { fontSize:13, color:'#8888A0', fontFamily:FONT_BODY },
+  cap:  { fontSize:11, fontWeight:500, letterSpacing:1.5, textTransform:'uppercase', color:'#55556A', fontFamily:FONT_MONO },
 };
 
 // -- Utility components -------------------------------------------------------
@@ -3414,8 +3418,8 @@ function Sidebar({ page, setPage, profile, unreadCount=0 }) {
       borderRight:'1px solid #252530', display:'flex', flexDirection:'column',
       height:'100vh', position:'sticky', top:0, overflowY:'auto' }}>
       <div style={{ padding:'20px 16px 16px', borderBottom:'1px solid #252530' }}>
-        <div style={{ fontSize:18, fontWeight:900, letterSpacing:1, color:'#E8002D' }}>F1 SIM</div>
-        <div style={{ fontSize:10, color:'#55556A', letterSpacing:2, textTransform:'uppercase' }}>2027 League</div>
+        <div style={{ fontSize:22, fontWeight:900, letterSpacing:2, color:'#E8002D', fontFamily:FONT_HEAD }}>F1 SIM</div>
+        <div style={{ fontSize:10, color:'#55556A', letterSpacing:2, textTransform:'uppercase', fontFamily:FONT_MONO }}>2027 League</div>
       </div>
       <nav style={{ flex:1, padding:'8px 0' }}>
         {NAV_ITEMS.map((item, i) => {
@@ -3491,11 +3495,11 @@ function AuthScreen({ onLogin }) {
 
   return (
     <div style={{ minHeight:'100vh', background:'#0A0A0C', display:'flex',
-      alignItems:'center', justifyContent:'center', fontFamily:'-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif' }}>
+      alignItems:'center', justifyContent:'center', fontFamily:FONT_BODY }}>
       <div style={{ width:'100%', maxWidth:400, padding:20 }}>
         <div style={{ textAlign:'center', marginBottom:40 }}>
-          <div style={{ fontSize:36, fontWeight:900, letterSpacing:2, color:'#E8002D' }}>F1 SIM</div>
-          <div style={{ fontSize:12, color:'#55556A', letterSpacing:3, textTransform:'uppercase' }}>2027 Championship</div>
+          <div style={{ fontSize:48, fontWeight:900, letterSpacing:2, color:'#E8002D', fontFamily:FONT_HEAD }}>F1 SIM</div>
+          <div style={{ fontSize:11, color:'#55556A', letterSpacing:3, textTransform:'uppercase', fontFamily:FONT_MONO }}>2027 Championship</div>
         </div>
         <Card>
           <div style={{ display:'flex', gap:0, marginBottom:20, background:'#111114',
@@ -3980,7 +3984,7 @@ function TeamDetail({ team, onBack }) {
         {[['Car Pace',team.car_pace],['Reliability',team.reliability],
           ['Pit Speed',team.pit_speed],['Tyre Life',team.tyre_life]].map(([l,v]) => (
           <Card key={l} style={{ textAlign:'center', padding:14 }}>
-            <div style={{ fontSize:22, fontWeight:800, color: team.color || '#E8002D' }}>{v}</div>
+            <div style={{ fontSize:28, fontWeight:900, color: team.color || '#E8002D', fontFamily:FONT_HEAD }}>{v}</div>
             <div style={{ ...T.cap }}>{l}</div>
           </Card>
         ))}
@@ -4748,7 +4752,7 @@ export default function F1Sim() {
   if (authLoading) return (
     <div style={{ minHeight:'100vh', background:'#0A0A0C', display:'flex',
       alignItems:'center', justifyContent:'center',
-      fontFamily:'-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif' }}>
+      fontFamily:FONT_BODY }}>
       <Spinner />
     </div>
   );
@@ -4776,7 +4780,7 @@ export default function F1Sim() {
 
   return (
     <div style={{ display:'flex', minHeight:'100vh', background:'#0A0A0C',
-      fontFamily:'-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif', color:'#F0F0F5' }}>
+      fontFamily:FONT_BODY, color:'#F0F0F5' }}>
       <Sidebar page={page} setPage={setPage} profile={profile} unreadCount={unreadCount} />
       <main style={{ flex:1, padding:'28px 32px', overflowY:'auto', maxHeight:'100vh' }}>
         {renderPage()}
