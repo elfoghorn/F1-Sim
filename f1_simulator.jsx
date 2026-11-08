@@ -3145,19 +3145,84 @@ const SUPABASE_URL  = "https://tdsmjrbuplbjnajdzjnu.supabase.co";
 const SUPABASE_KEY  = "sb_publishable_XsC9JcwIvUb1ns7qeFegXw_CzsjStu2";
 const COMMUNITY_ENABLED_BY_DEFAULT = true;   // on by default - repo is private
 
+// Supabase JS client — loaded via CDN in index.html (window.supabase).
+// Used for Auth (Discord OAuth) and Realtime. REST fetch used for data reads/writes.
+const sbClient = (typeof window !== 'undefined' && window.supabase && !SUPABASE_URL.includes('YOUR_PROJECT'))
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: { autoRefreshToken: true, persistSession: true, storageKey: 'f1sim_auth' }
+    })
+  : null;
 
-const sbHeaders = () => ({
+async function sbSignInDiscord() {
+  if (!sbClient) return;
+  await sbClient.auth.signInWithOAuth({
+    provider: 'discord',
+    options: { redirectTo: window.location.origin + window.location.pathname }
+  });
+}
+async function sbSignOut() {
+  if (!sbClient) return;
+  await sbClient.auth.signOut();
+}
+
+// Update player-owned profile fields (bio, social_handle, notify_prefs)
+async function sbUpdateProfile(userId, fields) {
+  if (!sbClient || !userId) return null;
+  const { data, error } = await sbClient
+    .from('profiles')
+    .update({ ...fields, updated_at: new Date().toISOString() })
+    .eq('id', userId)
+    .select()
+    .single();
+  return error ? null : data;
+}
+
+// Fetch the signed-in user's profile row
+async function sbGetProfile(userId) {
+  if (!sbClient || !userId) return null;
+  const { data } = await sbClient.from('profiles').select('*').eq('id', userId).single();
+  return data;
+}
+
+// League data helpers — read seasons/teams/drivers for the active season
+async function sbGetActiveSeason() {
+  if (!sbClient) return null;
+  const { data } = await sbClient.from('seasons').select('*').eq('status','active').maybeSingle();
+  return data;
+}
+async function sbGetLeagueTeams(seasonId) {
+  if (!sbClient || !seasonId) return null;
+  const { data } = await sbClient.from('league_teams').select('*').eq('season_id', seasonId);
+  return data;
+}
+async function sbGetLeagueDrivers(seasonId) {
+  if (!sbClient || !seasonId) return null;
+  const { data } = await sbClient.from('league_drivers').select('*').eq('season_id', seasonId);
+  return data;
+}
+async function sbGetNotifications(userId, limit = 30) {
+  if (!sbClient || !userId) return [];
+  const { data } = await sbClient.from('notifications')
+    .select('*').eq('recipient_id', userId).order('created_at',{ascending:false}).limit(limit);
+  return data || [];
+}
+async function sbMarkRead(notifId) {
+  if (!sbClient || !notifId) return;
+  await sbClient.from('notifications').update({read_at: new Date().toISOString()}).eq('id', notifId);
+}
+
+const sbHeaders = (token) => ({
   "apikey": SUPABASE_KEY,
-  "Authorization": `Bearer ${SUPABASE_KEY}`,
+  "Authorization": `Bearer ${token || SUPABASE_KEY}`,
   "Content-Type": "application/json",
   "Prefer": "return=minimal",
 });
 
-async function sbInsert(table, row) {
+async function sbInsert(table, row, token) {
   if(SUPABASE_URL.includes("YOUR_PROJECT")||SUPABASE_KEY.includes("YOUR_")||!SUPABASE_KEY) return null;
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
-      method: "POST", headers: sbHeaders(), body: JSON.stringify(row),
+      method: "POST", headers: sbHeaders(token), body: JSON.stringify(row),
     });
     return r.ok;
   } catch(e) { return null; }
@@ -4612,6 +4677,42 @@ const SERIES = [
   },
 ];
 
+// Profile editor — lets a signed-in player update their bio and social handle
+function ProfileEditor({profile, userId, onSave}) {
+  const [bio,setBio]=React.useState(profile?.bio||"");
+  const [handle,setHandle]=React.useState(profile?.social_handle||"");
+  const [saving,setSaving]=React.useState(false);
+  const [err,setErr]=React.useState(null);
+
+  const save=async()=>{
+    setSaving(true);setErr(null);
+    const updated=await sbUpdateProfile(userId,{bio:bio.slice(0,280),social_handle:handle.slice(0,40)});
+    setSaving(false);
+    if(updated) onSave(updated);
+    else setErr("Save failed — check your connection");
+  };
+
+  const inp={background:"#0C0C0F",border:"1px solid #2A2A30",borderRadius:4,color:"#F0F0F0",fontFamily:"inherit",fontSize:13,padding:"8px 10px",width:"100%",outline:"none",resize:"none"};
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div>
+        <div style={{fontSize:11,color:"#556",letterSpacing:1.5,marginBottom:5}}>BIO (280 chars)</div>
+        <textarea value={bio} onChange={e=>setBio(e.target.value)} maxLength={280} rows={3} style={inp} placeholder="A few words about your driver..."/>
+        <div style={{fontSize:10,color:"#445",textAlign:"right",marginTop:3}}>{bio.length}/280</div>
+      </div>
+      <div>
+        <div style={{fontSize:11,color:"#556",letterSpacing:1.5,marginBottom:5}}>SOCIAL HANDLE</div>
+        <input value={handle} onChange={e=>setHandle(e.target.value)} maxLength={40} style={inp} placeholder="@yourhandle"/>
+      </div>
+      {err&&<div style={{fontSize:12,color:"#E8002D"}}>{err}</div>}
+      <button onClick={save} disabled={saving}
+        style={{background:saving?"#333":"#E8002D",color:"#fff",border:"none",padding:"9px 20px",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,letterSpacing:1.5,borderRadius:4}}>
+        {saving?"SAVING...":"SAVE PROFILE"}
+      </button>
+    </div>
+  );
+}
+
 function EntryMenu({onSelect}) {
   const [hovered, setHovered] = React.useState(null);
   const [entering, setEntering] = React.useState(false);
@@ -4757,6 +4858,49 @@ export default function F1Sim(){
   const [dbSaving,setDbSaving]=useState(false);
   const [selectedRound,setSelectedRound]=useState(null);
   const [teamBudgets,setTeamBudgets]=useState(()=>{try{const s=localStorage.getItem('f1sim_budgets');return s?JSON.parse(s):initBudgets();}catch{return initBudgets();}});
+
+  // ── Auth / League state ────────────────────────────────────────────────────
+  const [sbUser,setSbUser]=useState(null);
+  const [sbSession,setSbSession]=useState(null);
+  const [sbProfile,setSbProfile]=useState(null);
+  const [sbNotifs,setSbNotifs]=useState([]);
+  const [showAuthModal,setShowAuthModal]=useState(false);
+  const [authLoading,setAuthLoading]=useState(!!sbClient);
+  const [activeSeason,setActiveSeason]=useState(null);
+  const [leagueDrivers,setLeagueDrivers]=useState(null);
+  const [leagueTeams,setLeagueTeams]=useState(null);
+
+  React.useEffect(()=>{
+    if(!sbClient){setAuthLoading(false);return;}
+    // Initial session
+    sbClient.auth.getSession().then(({data:{session}})=>{
+      setSbSession(session);
+      setSbUser(session?.user??null);
+      setAuthLoading(false);
+    });
+    // Listen for auth changes (OAuth redirect, sign-out, token refresh)
+    const {data:{subscription}}=sbClient.auth.onAuthStateChange(async(event,session)=>{
+      setSbSession(session);
+      setSbUser(session?.user??null);
+    });
+    return ()=>subscription.unsubscribe();
+  },[]);
+
+  // Load profile + notifications when user changes
+  React.useEffect(()=>{
+    if(!sbUser){setSbProfile(null);setSbNotifs([]);setActiveSeason(null);setLeagueDrivers(null);setLeagueTeams(null);return;}
+    sbGetProfile(sbUser.id).then(p=>setSbProfile(p));
+    sbGetNotifications(sbUser.id).then(n=>setSbNotifs(n));
+    sbGetActiveSeason().then(async season=>{
+      setActiveSeason(season);
+      if(season){
+        const[t,d]=await Promise.all([sbGetLeagueTeams(season.id),sbGetLeagueDrivers(season.id)]);
+        setLeagueTeams(t);
+        setLeagueDrivers(d);
+      }
+    });
+  },[sbUser]);
+
   // auto-save
   React.useEffect(()=>{
     try{localStorage.setItem('f1sim_drivers',JSON.stringify(drivers));}catch(e){}
@@ -5452,6 +5596,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
     {v:"stats",l:"📈 STATS"},
     {v:"commentary",l:"COMMENTARY",locked:!race},
     {v:"championship",l:"🏆 CHAMP"},
+    {v:"league",l:"🌐 LEAGUE",hidden:!sbClient},
     {v:"guide",l:"📖 GUIDE"},
   ];
   const nb=(a,lk)=>({background:a?"#E8002D":"transparent",color:a?"#fff":lk?"#2A2A2A":"#bbb",border:"none",padding:"0 12px",height:58,cursor:lk?"default":"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:1.5,transition:"all 0.15s",borderRight:"1px solid #1A1A1E",pointerEvents:lk?"none":"auto"});
@@ -5517,6 +5662,31 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
           )}
           {communityEnabled&&dbError&&(
             <span style={{fontSize:10,color:"#E8002D",fontWeight:700}} title="Check browser console (F12) for details">⚠️ DB error</span>
+          )}
+          {sbClient&&(
+            <>
+              <div style={{width:1,height:20,background:"#2A2A30"}}/>
+              {sbUser?(
+                <button onClick={()=>{setView("league");setShowAuthModal(true);}} title={`${sbProfile?.display_name||sbUser.email} — click for profile`}
+                  style={{background:"transparent",border:"1px solid #2A2A30",padding:"3px 9px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1,borderRadius:2,display:"flex",alignItems:"center",gap:6,color:"#F0F0F0",whiteSpace:"nowrap"}}>
+                  {sbProfile?.avatar_url
+                    ?<img src={sbProfile.avatar_url} style={{width:20,height:20,borderRadius:"50%",objectFit:"cover"}}/>
+                    :<span style={{width:20,height:20,background:"#5865F2",borderRadius:"50%",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:"#fff"}}>DC</span>
+                  }
+                  <span style={{maxWidth:90,overflow:"hidden",textOverflow:"ellipsis"}}>{sbProfile?.display_name||"MY ACCOUNT"}</span>
+                  {sbNotifs.filter(n=>!n.read_at).length>0&&(
+                    <span style={{background:"#E8002D",color:"#fff",borderRadius:"50%",width:16,height:16,fontSize:9,fontWeight:700,display:"inline-flex",alignItems:"center",justifyContent:"center"}}>
+                      {sbNotifs.filter(n=>!n.read_at).length}
+                    </span>
+                  )}
+                </button>
+              ):(
+                <button onClick={sbSignInDiscord} disabled={authLoading}
+                  style={{background:"#5865F233",color:"#8EB4FF",border:"1px solid #5865F255",padding:"3px 10px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1,borderRadius:2,whiteSpace:"nowrap",transition:"all 0.15s"}}>
+                  {authLoading?"...":"⚡ SIGN IN"}
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -7504,6 +7674,152 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
 
 
         
+        {view==="league"&&(()=>{
+          const unread=sbNotifs.filter(n=>!n.read_at);
+          const myDriver=leagueDrivers?.find(d=>d.owner_id===sbUser?.id);
+          const myTeam=leagueTeams?.find(t=>t.id===myDriver?.team_id);
+          const roleBadge={player:"PLAYER",gm:"GM",admin:"ADMIN"};
+          const roleColor={player:"#5865F2",gm:"#E8002D",admin:"#FFB700"};
+          return(
+            <div style={{animation:"fadeIn 0.2s ease"}}>
+              <div style={{fontSize:26,fontWeight:700,letterSpacing:3,marginBottom:16}}>🌐 LEAGUE</div>
+
+              {!sbClient&&(
+                <div style={{background:"#111115",border:"1px solid #2A2A30",borderRadius:6,padding:24,textAlign:"center",color:"#556"}}>
+                  <div style={{fontSize:16,marginBottom:8}}>League mode is not configured.</div>
+                  <div style={{fontSize:13}}>Set SUPABASE_URL and SUPABASE_KEY to enable accounts and league data.</div>
+                </div>
+              )}
+
+              {sbClient&&!sbUser&&(
+                <div style={{background:"#111115",border:"1px solid #5865F255",borderRadius:8,padding:32,textAlign:"center",maxWidth:420,margin:"0 auto"}}>
+                  <div style={{fontSize:36,marginBottom:12}}>🎮</div>
+                  <div style={{fontSize:20,fontWeight:700,letterSpacing:2,marginBottom:8}}>JOIN THE LEAGUE</div>
+                  <div style={{fontSize:13,color:"#778",marginBottom:24,lineHeight:1.6}}>
+                    Sign in with Discord to claim your seat, manage your driver profile, and join live race weekends.
+                  </div>
+                  <button onClick={sbSignInDiscord}
+                    style={{background:"#5865F2",color:"#fff",border:"none",padding:"10px 28px",cursor:"pointer",fontFamily:"inherit",fontSize:15,fontWeight:700,letterSpacing:2,borderRadius:6,display:"inline-flex",alignItems:"center",gap:10}}>
+                    <span style={{fontSize:20}}>💬</span> SIGN IN WITH DISCORD
+                  </button>
+                  <div style={{fontSize:11,color:"#445",marginTop:16}}>Sandbox mode works offline — sign in only needed for league play</div>
+                </div>
+              )}
+
+              {sbClient&&sbUser&&(
+                <div style={{display:"grid",gridTemplateColumns:"320px 1fr",gap:16,alignItems:"start"}}>
+
+                  {/* Profile card */}
+                  <div style={{background:"#111115",border:"1px solid #2A2A30",borderRadius:8,overflow:"hidden"}}>
+                    <div style={{background:"linear-gradient(135deg,#5865F222,#1A1A2A)",padding:"20px 20px 14px",display:"flex",alignItems:"center",gap:14}}>
+                      {sbProfile?.avatar_url
+                        ?<img src={sbProfile.avatar_url} style={{width:60,height:60,borderRadius:"50%",objectFit:"cover",border:"2px solid #5865F244"}}/>
+                        :<div style={{width:60,height:60,background:"#5865F2",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,color:"#fff",fontWeight:700}}>{(sbProfile?.display_name||"?")[0]}</div>
+                      }
+                      <div>
+                        <div style={{fontSize:18,fontWeight:700,letterSpacing:1}}>{sbProfile?.display_name||sbUser.email}</div>
+                        {sbProfile?.role&&(
+                          <span style={{background:`${roleColor[sbProfile.role]}22`,color:roleColor[sbProfile.role],border:`1px solid ${roleColor[sbProfile.role]}44`,padding:"2px 8px",fontSize:10,fontWeight:700,letterSpacing:1.5,borderRadius:3,marginTop:4,display:"inline-block"}}>
+                            {roleBadge[sbProfile.role]||sbProfile.role.toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {sbProfile?.bio&&(
+                      <div style={{padding:"10px 16px",fontSize:12,color:"#889",borderBottom:"1px solid #1E1E22",fontStyle:"italic"}}>"{sbProfile.bio}"</div>
+                    )}
+                    <div style={{padding:"12px 16px",display:"flex",flexDirection:"column",gap:8}}>
+                      {myDriver&&(
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <span style={{fontSize:11,color:"#556",letterSpacing:1,width:70}}>DRIVER</span>
+                          <span style={{fontSize:13,fontWeight:700,color:myTeam?.color||"#F0F0F0"}}>{myDriver.flag} {myDriver.name} #{myDriver.number}</span>
+                        </div>
+                      )}
+                      {myTeam&&(
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <span style={{fontSize:11,color:"#556",letterSpacing:1,width:70}}>TEAM</span>
+                          <span style={{fontSize:13,fontWeight:700,color:myTeam.color||"#F0F0F0"}}>{myTeam.name}</span>
+                        </div>
+                      )}
+                      {activeSeason&&(
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <span style={{fontSize:11,color:"#556",letterSpacing:1,width:70}}>SEASON</span>
+                          <span style={{fontSize:13,fontWeight:700}}>{activeSeason.name}</span>
+                        </div>
+                      )}
+                      {!myDriver&&!activeSeason&&(
+                        <div style={{fontSize:12,color:"#445",fontStyle:"italic"}}>No active season · Waiting for GM to open a season</div>
+                      )}
+                    </div>
+                    <div style={{padding:"10px 16px",borderTop:"1px solid #1E1E22",display:"flex",gap:8}}>
+                      <button onClick={()=>sbSignOut().then(()=>setSbUser(null))}
+                        style={{flex:1,background:"transparent",color:"#E8002D",border:"1px solid #E8002D44",padding:"6px 10px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1.5,borderRadius:3}}>
+                        SIGN OUT
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Notifications + league info */}
+                  <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                    <div style={{background:"#111115",border:"1px solid #2A2A30",borderRadius:8,overflow:"hidden"}}>
+                      <div style={{padding:"12px 16px",borderBottom:"1px solid #1E1E22",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                        <span style={{fontSize:14,fontWeight:700,letterSpacing:2}}>INBOX</span>
+                        {unread.length>0&&(
+                          <span style={{background:"#E8002D",color:"#fff",borderRadius:3,padding:"2px 7px",fontSize:10,fontWeight:700}}>{unread.length} NEW</span>
+                        )}
+                      </div>
+                      <div style={{maxHeight:300,overflowY:"auto"}}>
+                        {sbNotifs.length===0&&(
+                          <div style={{padding:20,color:"#445",fontSize:12,textAlign:"center"}}>No notifications yet</div>
+                        )}
+                        {sbNotifs.map(n=>(
+                          <div key={n.id} onClick={()=>!n.read_at&&sbMarkRead(n.id).then(()=>setSbNotifs(p=>p.map(x=>x.id===n.id?{...x,read_at:new Date().toISOString()}:x)))}
+                            style={{padding:"10px 16px",borderBottom:"1px solid #1A1A1E",cursor:n.read_at?"default":"pointer",background:n.read_at?"transparent":"#1A1A2E",display:"flex",gap:10,alignItems:"flex-start"}}>
+                            <div style={{width:6,height:6,borderRadius:"50%",background:n.read_at?"transparent":"#5865F2",marginTop:5,flexShrink:0}}/>
+                            <div>
+                              <div style={{fontSize:12,fontWeight:700,color:n.read_at?"#556":"#F0F0F0",letterSpacing:0.5}}>{n.kind.replace(/_/g," ").toUpperCase()}</div>
+                              <div style={{fontSize:11,color:"#667",marginTop:2}}>{n.payload?.message||JSON.stringify(n.payload)}</div>
+                              <div style={{fontSize:10,color:"#445",marginTop:3}}>{new Date(n.created_at).toLocaleString()}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {activeSeason&&(
+                      <div style={{background:"#111115",border:"1px solid #2A2A30",borderRadius:8,padding:16}}>
+                        <div style={{fontSize:14,fontWeight:700,letterSpacing:2,marginBottom:12}}>CURRENT SEASON</div>
+                        <div style={{fontSize:22,fontWeight:700,marginBottom:4}}>{activeSeason.name}</div>
+                        <div style={{fontSize:12,color:"#778"}}>
+                          {leagueTeams?.length||0} teams · {leagueDrivers?.length||0} drivers
+                        </div>
+                        {leagueDrivers&&leagueDrivers.filter(d=>!d.owner_id).length>0&&(
+                          <div style={{marginTop:12,background:"#1A2A1A",border:"1px solid #44CC8844",borderRadius:4,padding:"8px 12px",fontSize:12,color:"#44CC88"}}>
+                            {leagueDrivers.filter(d=>!d.owner_id).length} open seat{leagueDrivers.filter(d=>!d.owner_id).length!==1?"s":""} available — contact a GM to claim yours
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Auth modal overlay for inline edit */}
+              {showAuthModal&&sbUser&&(
+                <div style={{position:"fixed",inset:0,background:"#000A",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999}} onClick={()=>setShowAuthModal(false)}>
+                  <div style={{background:"#111115",border:"1px solid #2A2A30",borderRadius:10,width:460,maxWidth:"95vw",padding:24}} onClick={e=>e.stopPropagation()}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+                      <div style={{fontSize:16,fontWeight:700,letterSpacing:2}}>EDIT PROFILE</div>
+                      <button onClick={()=>setShowAuthModal(false)} style={{background:"transparent",border:"none",color:"#778",cursor:"pointer",fontSize:18,lineHeight:1}}>✕</button>
+                    </div>
+                    <ProfileEditor profile={sbProfile} userId={sbUser.id} onSave={p=>{setSbProfile(p);setShowAuthModal(false);}}/>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         {view==="guide"&&(
           <div style={{animation:"fadeIn 0.2s ease",maxWidth:860,margin:"0 auto"}}>
 
