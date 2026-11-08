@@ -16,32 +16,33 @@ create type public.request_status as enum ('pending','approved','rejected');
 
 create table public.profiles (
   id            uuid primary key references auth.users(id) on delete cascade,
-  discord_id    text,
+  username      text        not null unique,
   display_name  text        not null default '',
-  avatar_url    text,
-  bio           text        default '',
-  social_handle text        default '',
+  bio           text        not null default '',
+  social_handle text        not null default '',
   role          user_role   not null default 'player',
-  notify_prefs  jsonb       not null default '{"in_app":true,"discord":true}'::jsonb,
+  notify_prefs  jsonb       not null default '{"in_app":true}'::jsonb,
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now()
 );
 
--- Auto-create profile on sign-up
+-- Auto-create profile on sign-up.
+-- The app stores the username in auth.users.raw_user_meta_data->>'username'.
+-- Email is synthetic (username@f1sim.league) and never shown to users.
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  v_username text;
 begin
-  insert into public.profiles (id, discord_id, display_name, avatar_url)
-  values (
-    new.id,
-    new.raw_user_meta_data->>'provider_id',
-    coalesce(new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'name', 'Player'),
-    new.raw_user_meta_data->>'avatar_url'
-  )
+  v_username := coalesce(
+    new.raw_user_meta_data->>'username',
+    split_part(new.email, '@', 1)   -- fallback: strip the synthetic suffix
+  );
+  insert into public.profiles (id, username, display_name)
+  values (new.id, v_username, v_username)
   on conflict (id) do update set
-    discord_id   = excluded.discord_id,
+    username     = coalesce(excluded.username, profiles.username),
     display_name = coalesce(excluded.display_name, profiles.display_name),
-    avatar_url   = coalesce(excluded.avatar_url,   profiles.avatar_url),
     updated_at   = now();
   return new;
 end;

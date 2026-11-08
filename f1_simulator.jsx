@@ -3146,19 +3146,33 @@ const SUPABASE_KEY  = "sb_publishable_XsC9JcwIvUb1ns7qeFegXw_CzsjStu2";
 const COMMUNITY_ENABLED_BY_DEFAULT = true;   // on by default - repo is private
 
 // Supabase JS client — loaded via CDN in index.html (window.supabase).
-// Used for Auth (Discord OAuth) and Realtime. REST fetch used for data reads/writes.
+// Used for Auth (username/password) and Realtime. REST fetch used for data reads/writes.
 const sbClient = (typeof window !== 'undefined' && window.supabase && !SUPABASE_URL.includes('YOUR_PROJECT'))
   ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
       auth: { autoRefreshToken: true, persistSession: true, storageKey: 'f1sim_auth' }
     })
   : null;
 
-async function sbSignInDiscord() {
-  if (!sbClient) return;
-  await sbClient.auth.signInWithOAuth({
-    provider: 'discord',
-    options: { redirectTo: window.location.origin + window.location.pathname }
+// Username/password auth — email is synthetic and never shown to users.
+// In Supabase: disable "Confirm email" under Auth → Settings.
+const sbFakeEmail = (username) => `${username.toLowerCase().replace(/[^a-z0-9_]/g,'')}@f1sim.league`;
+
+async function sbSignUp(username, password) {
+  if (!sbClient) return { error: 'Not configured' };
+  const { data, error } = await sbClient.auth.signUp({
+    email: sbFakeEmail(username),
+    password,
+    options: { data: { username, display_name: username } }
   });
+  return { data, error: error?.message || null };
+}
+async function sbSignIn(username, password) {
+  if (!sbClient) return { error: 'Not configured' };
+  const { data, error } = await sbClient.auth.signInWithPassword({
+    email: sbFakeEmail(username),
+    password,
+  });
+  return { data, error: error?.message || null };
 }
 async function sbSignOut() {
   if (!sbClient) return;
@@ -4677,6 +4691,82 @@ const SERIES = [
   },
 ];
 
+// Username + password sign-in / sign-up panel (no email shown to users)
+function LeagueAuthPanel({showAuthModal, setShowAuthModal}) {
+  const [mode,setMode]=React.useState("signin");   // "signin" | "signup"
+  const [username,setUsername]=React.useState("");
+  const [password,setPassword]=React.useState("");
+  const [confirm,setConfirm]=React.useState("");
+  const [loading,setLoading]=React.useState(false);
+  const [err,setErr]=React.useState(null);
+  const [info,setInfo]=React.useState(null);
+
+  const inp={background:"#0C0C0F",border:"1px solid #2A2A30",borderRadius:4,color:"#F0F0F0",fontFamily:"inherit",fontSize:14,padding:"9px 12px",width:"100%",outline:"none",letterSpacing:0.5};
+
+  const submit=async()=>{
+    setErr(null);setInfo(null);
+    if(!username.trim()){setErr("Enter a username");return;}
+    if(password.length<6){setErr("Password must be at least 6 characters");return;}
+    if(mode==="signup"&&password!==confirm){setErr("Passwords do not match");return;}
+    if(mode==="signup"&&!/^[a-zA-Z0-9_]{3,20}$/.test(username)){
+      setErr("Username: 3–20 characters, letters/numbers/underscore only");return;
+    }
+    setLoading(true);
+    if(mode==="signup"){
+      const {error}=await sbSignUp(username.trim(),password);
+      setLoading(false);
+      if(error) setErr(error);
+      else setInfo("Account created — you can now sign in.");
+    } else {
+      const {error}=await sbSignIn(username.trim(),password);
+      setLoading(false);
+      if(error) setErr("Wrong username or password");
+    }
+  };
+
+  return(
+    <div style={{maxWidth:400,margin:"0 auto"}}>
+      <div style={{background:"#111115",border:"1px solid #2A2A30",borderRadius:8,overflow:"hidden"}}>
+        <div style={{borderBottom:"1px solid #1E1E22",display:"flex"}}>
+          {["signin","signup"].map(m=>(
+            <button key={m} onClick={()=>{setMode(m);setErr(null);setInfo(null);}}
+              style={{flex:1,padding:"13px 0",background:mode===m?"#1A1A1E":"transparent",color:mode===m?"#F0F0F0":"#556",border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:700,letterSpacing:1.5,borderBottom:mode===m?"2px solid #E8002D":"2px solid transparent"}}>
+              {m==="signin"?"SIGN IN":"CREATE ACCOUNT"}
+            </button>
+          ))}
+        </div>
+        <div style={{padding:24,display:"flex",flexDirection:"column",gap:14}}>
+          <div>
+            <div style={{fontSize:11,color:"#556",letterSpacing:1.5,marginBottom:6}}>USERNAME</div>
+            <input value={username} onChange={e=>setUsername(e.target.value)} style={inp} placeholder="your_username"
+              onKeyDown={e=>e.key==="Enter"&&submit()} autoCapitalize="none" autoCorrect="off" spellCheck={false}/>
+            {mode==="signup"&&<div style={{fontSize:10,color:"#445",marginTop:4}}>3–20 chars, letters/numbers/underscore</div>}
+          </div>
+          <div>
+            <div style={{fontSize:11,color:"#556",letterSpacing:1.5,marginBottom:6}}>PASSWORD</div>
+            <input type="password" value={password} onChange={e=>setPassword(e.target.value)} style={inp} placeholder="••••••••"
+              onKeyDown={e=>e.key==="Enter"&&submit()}/>
+          </div>
+          {mode==="signup"&&(
+            <div>
+              <div style={{fontSize:11,color:"#556",letterSpacing:1.5,marginBottom:6}}>CONFIRM PASSWORD</div>
+              <input type="password" value={confirm} onChange={e=>setConfirm(e.target.value)} style={inp} placeholder="••••••••"
+                onKeyDown={e=>e.key==="Enter"&&submit()}/>
+            </div>
+          )}
+          {err&&<div style={{fontSize:12,color:"#E8002D",background:"#E8002D11",border:"1px solid #E8002D33",borderRadius:4,padding:"8px 12px"}}>{err}</div>}
+          {info&&<div style={{fontSize:12,color:"#44CC88",background:"#44CC8811",border:"1px solid #44CC8833",borderRadius:4,padding:"8px 12px"}}>{info}</div>}
+          <button onClick={submit} disabled={loading}
+            style={{background:loading?"#333":"#E8002D",color:"#fff",border:"none",padding:"11px 20px",cursor:loading?"not-allowed":"pointer",fontFamily:"inherit",fontSize:14,fontWeight:700,letterSpacing:2,borderRadius:4,marginTop:4}}>
+            {loading?"...":(mode==="signin"?"SIGN IN":"CREATE ACCOUNT")}
+          </button>
+          <div style={{fontSize:11,color:"#445",textAlign:"center"}}>Sandbox mode works offline — sign in only needed for league play</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Profile editor — lets a signed-in player update their bio and social handle
 function ProfileEditor({profile, userId, onSave}) {
   const [bio,setBio]=React.useState(profile?.bio||"");
@@ -5669,10 +5759,9 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
               {sbUser?(
                 <button onClick={()=>{setView("league");setShowAuthModal(true);}} title={`${sbProfile?.display_name||sbUser.email} — click for profile`}
                   style={{background:"transparent",border:"1px solid #2A2A30",padding:"3px 9px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1,borderRadius:2,display:"flex",alignItems:"center",gap:6,color:"#F0F0F0",whiteSpace:"nowrap"}}>
-                  {sbProfile?.avatar_url
-                    ?<img src={sbProfile.avatar_url} style={{width:20,height:20,borderRadius:"50%",objectFit:"cover"}}/>
-                    :<span style={{width:20,height:20,background:"#5865F2",borderRadius:"50%",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:"#fff"}}>DC</span>
-                  }
+                  <span style={{width:20,height:20,background:"#E8002D33",border:"1px solid #E8002D55",borderRadius:"50%",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:900,color:"#E8002D"}}>
+                    {(sbProfile?.display_name||"?")[0].toUpperCase()}
+                  </span>
                   <span style={{maxWidth:90,overflow:"hidden",textOverflow:"ellipsis"}}>{sbProfile?.display_name||"MY ACCOUNT"}</span>
                   {sbNotifs.filter(n=>!n.read_at).length>0&&(
                     <span style={{background:"#E8002D",color:"#fff",borderRadius:"50%",width:16,height:16,fontSize:9,fontWeight:700,display:"inline-flex",alignItems:"center",justifyContent:"center"}}>
@@ -5681,8 +5770,8 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
                   )}
                 </button>
               ):(
-                <button onClick={sbSignInDiscord} disabled={authLoading}
-                  style={{background:"#5865F233",color:"#8EB4FF",border:"1px solid #5865F255",padding:"3px 10px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1,borderRadius:2,whiteSpace:"nowrap",transition:"all 0.15s"}}>
+                <button onClick={()=>{setView("league");setShowAuthModal(true);}} disabled={authLoading}
+                  style={{background:"#E8002D22",color:"#FF6677",border:"1px solid #E8002D44",padding:"3px 10px",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,letterSpacing:1,borderRadius:2,whiteSpace:"nowrap",transition:"all 0.15s"}}>
                   {authLoading?"...":"⚡ SIGN IN"}
                 </button>
               )}
@@ -7692,18 +7781,7 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
               )}
 
               {sbClient&&!sbUser&&(
-                <div style={{background:"#111115",border:"1px solid #5865F255",borderRadius:8,padding:32,textAlign:"center",maxWidth:420,margin:"0 auto"}}>
-                  <div style={{fontSize:36,marginBottom:12}}>🎮</div>
-                  <div style={{fontSize:20,fontWeight:700,letterSpacing:2,marginBottom:8}}>JOIN THE LEAGUE</div>
-                  <div style={{fontSize:13,color:"#778",marginBottom:24,lineHeight:1.6}}>
-                    Sign in with Discord to claim your seat, manage your driver profile, and join live race weekends.
-                  </div>
-                  <button onClick={sbSignInDiscord}
-                    style={{background:"#5865F2",color:"#fff",border:"none",padding:"10px 28px",cursor:"pointer",fontFamily:"inherit",fontSize:15,fontWeight:700,letterSpacing:2,borderRadius:6,display:"inline-flex",alignItems:"center",gap:10}}>
-                    <span style={{fontSize:20}}>💬</span> SIGN IN WITH DISCORD
-                  </button>
-                  <div style={{fontSize:11,color:"#445",marginTop:16}}>Sandbox mode works offline — sign in only needed for league play</div>
-                </div>
+                <LeagueAuthPanel onSignedIn={()=>{}} showAuthModal={showAuthModal} setShowAuthModal={setShowAuthModal}/>
               )}
 
               {sbClient&&sbUser&&(
@@ -7711,13 +7789,12 @@ Return ONLY valid JSON — no markdown, preamble, or trailing text:
 
                   {/* Profile card */}
                   <div style={{background:"#111115",border:"1px solid #2A2A30",borderRadius:8,overflow:"hidden"}}>
-                    <div style={{background:"linear-gradient(135deg,#5865F222,#1A1A2A)",padding:"20px 20px 14px",display:"flex",alignItems:"center",gap:14}}>
-                      {sbProfile?.avatar_url
-                        ?<img src={sbProfile.avatar_url} style={{width:60,height:60,borderRadius:"50%",objectFit:"cover",border:"2px solid #5865F244"}}/>
-                        :<div style={{width:60,height:60,background:"#5865F2",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,color:"#fff",fontWeight:700}}>{(sbProfile?.display_name||"?")[0]}</div>
-                      }
+                    <div style={{background:"linear-gradient(135deg,#E8002D11,#1A1A1E)",padding:"20px 20px 14px",display:"flex",alignItems:"center",gap:14}}>
+                      <div style={{width:56,height:56,background:"#E8002D22",border:"2px solid #E8002D44",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,fontWeight:900,color:"#E8002D",letterSpacing:0,flexShrink:0}}>
+                        {(sbProfile?.display_name||"?")[0].toUpperCase()}
+                      </div>
                       <div>
-                        <div style={{fontSize:18,fontWeight:700,letterSpacing:1}}>{sbProfile?.display_name||sbUser.email}</div>
+                        <div style={{fontSize:18,fontWeight:700,letterSpacing:1}}>{sbProfile?.display_name||sbProfile?.username||"PLAYER"}</div>
                         {sbProfile?.role&&(
                           <span style={{background:`${roleColor[sbProfile.role]}22`,color:roleColor[sbProfile.role],border:`1px solid ${roleColor[sbProfile.role]}44`,padding:"2px 8px",fontSize:10,fontWeight:700,letterSpacing:1.5,borderRadius:3,marginTop:4,display:"inline-block"}}>
                             {roleBadge[sbProfile.role]||sbProfile.role.toUpperCase()}

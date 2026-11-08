@@ -135,3 +135,5 @@ create policy "audit_read_gm"           on public.audit_log for select using (pu
 -- ── Realtime: allow players to subscribe to their own notifications ───────────
 
 -- (Enable Realtime on the notifications table in the Supabase dashboard)
+-- Auth setup note: in Supabase → Auth → Settings, disable "Confirm email"
+-- so users can sign in immediately after creating their account.
