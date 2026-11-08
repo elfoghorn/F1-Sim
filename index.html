@@ -20724,6 +20724,106 @@ function EmptyState({ title, sub, action }) {
   );
 }
 
+// Shared tab bar — replaces all raw <button> tab patterns
+function Tabs({ tabs, active, onChange, style={} }) {
+  return (
+    React.createElement('div', { style: { display:'flex', gap:4, flexWrap:'wrap', ...style },}
+      , tabs.map(t => {
+        const id    = typeof t === 'string' ? t : t.id;
+        const label = typeof t === 'string' ? t.charAt(0).toUpperCase()+t.slice(1) : t.label;
+        return (
+          React.createElement('button', { key: id, onClick: () => onChange(id),
+            style: { padding:'8px 16px', border:'none', borderRadius:6, fontSize:13, fontWeight:600,
+              cursor:'pointer', transition:'all .15s', fontFamily:FONT_BODY,
+              background: id === active ? '#E8002D' : '#111114',
+              color:       id === active ? '#fff'    : '#8888A0' },}
+            , label
+          )
+        );
+      })
+    )
+  );
+}
+
+// Consistent back-navigation button
+function BackButton({ onClick, label='Back' }) {
+  return (
+    React.createElement('button', { onClick: onClick, style: { background:'none', border:'none',
+      color:'#8888A0', cursor:'pointer', fontSize:13, fontFamily:FONT_BODY,
+      display:'flex', alignItems:'center', gap:6, padding:0, marginBottom:20 },}
+      , '‹', " " , label
+    )
+  );
+}
+
+// Standard page-level header: optional red cap label, h1 title, optional sub, optional right action
+function PageHeader({ cat, title, sub, action }) {
+  return (
+    React.createElement('div', { style: { display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:28 },}
+      , React.createElement('div', null
+        , cat && React.createElement('div', { style: { ...T.cap, color:'#E8002D', marginBottom:6 },}, cat)
+        , React.createElement('div', { style: { ...T.h1, marginBottom: sub ? 4 : 0 },}, title)
+        , sub && React.createElement('div', { style: { ...T.sub },}, sub)
+      )
+      , action && React.createElement('div', { style: { flexShrink:0, paddingTop: cat ? 20 : 0 },}, action)
+    )
+  );
+}
+
+// Section-level header: h2 + optional right element
+function SectionHeader({ title, action, style={} }) {
+  return (
+    React.createElement('div', { style: { display:'flex', justifyContent:'space-between', alignItems:'center',
+      marginBottom:14, ...style },}
+      , React.createElement('div', { style: { ...T.h2 },}, title)
+      , action
+    )
+  );
+}
+
+// Quick-action nav button (overview panels)
+function NavBtn({ children, onClick }) {
+  const [hov, setHov] = useState(false);
+  return (
+    React.createElement('button', { onClick: onClick,
+      onMouseEnter: () => setHov(true), onMouseLeave: () => setHov(false),
+      style: { padding:'10px 14px', border:`1px solid ${hov ? '#E8002D' : '#252530'}`,
+        borderRadius:7, color: hov ? '#F0F0F5' : '#8888A0', fontSize:13, width:'100%',
+        fontFamily:FONT_BODY, textAlign:'left', cursor:'pointer',
+        transition:'all .15s', background: hov ? 'rgba(232,0,45,0.08)' : '#111114' },}
+      , children
+    )
+  );
+}
+
+// Inline error/success banners
+function ErrorMsg({ children }) {
+  if (!children) return null;
+  return (
+    React.createElement('div', { style: { background:'rgba(232,0,45,0.1)', border:'1px solid #E8002D',
+      borderRadius:7, padding:'10px 14px', marginBottom:16, fontSize:13, color:'#E8002D' },}
+      , children
+    )
+  );
+}
+function SuccessMsg({ children }) {
+  if (!children) return null;
+  return (
+    React.createElement('div', { style: { background:'rgba(0,196,106,0.1)', border:'1px solid #00C46A',
+      borderRadius:7, padding:'10px 14px', marginBottom:16, fontSize:13, color:'#00C46A' },}
+      , children
+    )
+  );
+}
+
+// Shared round-state helpers (used in Dashboard, CalendarPage, GMOverview)
+const ROUND_STATE_LABEL = { scheduled:'Scheduled', orders_open:'Orders Open',
+  locked:'Locked', in_progress:'Live', complete:'Complete' };
+const ROUND_STATE_COLOR = { scheduled:'#55556A', orders_open:'#3B8EFF',
+  locked:'#FF9500', in_progress:'#E8002D', complete:'#00C46A' };
+const roundLabel = s => ROUND_STATE_LABEL[s] || s;
+const roundColor = s => ROUND_STATE_COLOR[s] || '#55556A';
+
 // -- Sidebar ------------------------------------------------------------------
 
 const NAV_ITEMS = [
@@ -20929,11 +21029,6 @@ function Dashboard({ profile, setPage, sbUser }) {
     }
   }
 
-  const rlbl = s => ({ scheduled:'Scheduled', orders_open:'Orders Open', locked:'Locked',
-    in_progress:'Live', complete:'Complete' }[s] || s);
-  const rclr = s => ({ scheduled:'#55556A', orders_open:'#3B8EFF', locked:'#FF9500',
-    in_progress:'#E8002D', complete:'#00C46A' }[s] || '#55556A');
-
   const statCards = [
     { label:'Characters',    value: chars === null ? '...' : chars.length,  color:'#3B8EFF', page:'characters' },
     { label:'Applications',  value: appStats.pending,                        color:'#FF9500', page:'apply' },
@@ -21034,7 +21129,7 @@ function Dashboard({ profile, setPage, sbUser }) {
                           { day:'numeric', month:'short', year:'numeric' })
                       : 'Date TBD'
                   )
-                  , React.createElement(Badge, { color: rclr(nextRound.state),}, rlbl(nextRound.state))
+                  , React.createElement(Badge, { color: roundColor(nextRound.state),}, roundLabel(nextRound.state))
                 )
                 , React.createElement(Button, { size: "sm", variant: "secondary", style: { width:'100%', marginTop:12 },
                   onClick: () => setPage('calendar'),}, "View Calendar" )
@@ -21058,17 +21153,7 @@ function Dashboard({ profile, setPage, sbUser }) {
                 ['View Championship',  'championship'],
                 ['Browse Teams',       'teams'],
               ].map(([lbl, pg]) => (
-                React.createElement('button', { key: pg, onClick: () => setPage(pg),
-                  style: { width:'100%', padding:'9px 14px', background:'#111114',
-                    border:'1px solid #252530', borderRadius:7,
-                    color:'#8888A0', fontSize:13, fontFamily:FONT_BODY,
-                    textAlign:'left', cursor:'pointer', transition:'all .15s' },
-                  onMouseEnter: e => { e.currentTarget.style.borderColor='#3A3A48';
-                    e.currentTarget.style.color='#F0F0F5'; },
-                  onMouseLeave: e => { e.currentTarget.style.borderColor='#252530';
-                    e.currentTarget.style.color='#8888A0'; },}
-                  , lbl
-                )
+                React.createElement(NavBtn, { key: pg, onClick: () => setPage(pg),}, lbl)
               ))
             )
           )
@@ -21917,16 +22002,13 @@ function CharactersPage({ sbUser }) {
 
   return (
     React.createElement('div', null
-      , React.createElement('div', { style: { display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24 },}
-        , React.createElement('div', null
-          , React.createElement('div', { style: { ...T.h1 },}, "My Characters" )
-          , React.createElement('div', { style: { ...T.sub },}, "Your driver and staff characters"    )
-        )
-        , React.createElement('div', { style: { display:'flex', gap:10 },}
-          , React.createElement(Button, { variant: "secondary", onClick: () => setApplying(true),}, "Apply for Team Slot"   )
-          , React.createElement(Button, { onClick: () => setCreating(true),}, "+ New Character"  )
-        )
-      )
+      , React.createElement(PageHeader, { cat: "Player Portal" , title: "My Characters" , sub: "Your driver and staff characters"    ,
+        action: 
+          React.createElement('div', { style: { display:'flex', gap:10 },}
+            , React.createElement(Button, { variant: "secondary", onClick: () => setApplying(true),}, "Apply for Team Slot"   )
+            , React.createElement(Button, { onClick: () => setCreating(true),}, "+ New Character"  )
+          )
+        ,} )
       , !chars || chars.length === 0 ? (
         React.createElement(EmptyState, { title: "No characters yet"  , sub: "Create a driver or staff character to get started"        ,
           action: React.createElement(Button, { onClick: () => setCreating(true),}, "Create Character" ),} )
@@ -22019,8 +22101,7 @@ function CreateCharacterForm({ sbUser, onDone, onCancel }) {
   return (
     React.createElement('div', { style: { maxWidth:600 },}
       , React.createElement('div', { style: { display:'flex', alignItems:'center', gap:12, marginBottom:24 },}
-        , React.createElement('button', { onClick: onCancel, style: { background:'none', border:'none',
-          color:'#8888A0', cursor:'pointer', fontSize:20, lineHeight:1 },}, '<')
+        , React.createElement(BackButton, { onClick: onCancel, label: "Cancel",} )
         , React.createElement('div', null
           , React.createElement('div', { style: { ...T.h1 },}, "New Character" )
           , React.createElement('div', { style: { ...T.sub },}, "Step " , step+1, " of "  , steps.length, ": " , steps[step])
@@ -22032,8 +22113,7 @@ function CreateCharacterForm({ sbUser, onDone, onCancel }) {
             background: i <= step ? '#E8002D' : '#252530', transition:'background .2s' },} )
         ))
       )
-      , error && React.createElement('div', { style: { background:'rgba(232,0,45,0.1)', border:'1px solid #E8002D', borderRadius:7,
-        padding:'10px 14px', marginBottom:16, fontSize:13, color:'#E8002D' },}, error)
+      , React.createElement(ErrorMsg, null, error)
       , step === 0 && (
         React.createElement(Card, null
           , React.createElement(Select, { label: "Character Type" , value: type, onChange: setType,
@@ -22145,13 +22225,8 @@ function ApplyPage({ sbUser }) {
 
   return (
     React.createElement('div', null
-      , React.createElement('div', { style: { display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24 },}
-        , React.createElement('div', null
-          , React.createElement('div', { style: { ...T.h1 },}, "Applications")
-          , React.createElement('div', { style: { ...T.sub },}, "Submit and track your character applications"     )
-        )
-        , React.createElement(Button, { onClick: () => setCreating(true),}, "+ New Application"  )
-      )
+      , React.createElement(PageHeader, { cat: "Player Portal" , title: "Applications", sub: "Submit and track your character applications"     ,
+        action: React.createElement(Button, { onClick: () => setCreating(true),}, "+ New Application"  ),} )
       , !apps || apps.length === 0 ? (
         React.createElement(EmptyState, { title: "No applications yet"  , sub: "Apply to join a team as a driver or staff member"          ,
           action: React.createElement(Button, { onClick: () => setCreating(true),}, "Apply Now" ),} )
@@ -22291,10 +22366,7 @@ function ApplicationForm({ sbUser, onDone, onCancel }) {
     React.createElement('div', { style: { maxWidth:640 },}
       /* Header */
       , React.createElement('div', { style: { display:'flex', alignItems:'center', gap:12, marginBottom:20 },}
-        , React.createElement('button', { onClick: onCancel, style: { background:'none', border:'none',
-          color:'#8888A0', cursor:'pointer', fontSize:14, fontFamily:FONT_BODY, padding:0 },}, "< Cancel"
-
-        )
+        , React.createElement(BackButton, { onClick: onCancel, label: "Cancel",} )
         , React.createElement('div', { style: { flex:1 },}
           , React.createElement('div', { style: { ...T.cap, color:'#E8002D', marginBottom:2 },}, "Section "
              , step+1, " of "  , totalSteps
@@ -22312,12 +22384,7 @@ function ApplicationForm({ sbUser, onDone, onCancel }) {
         ))
       )
 
-      , error && (
-        React.createElement('div', { style: { background:'rgba(232,0,45,0.1)', border:'1px solid #E8002D',
-          borderRadius:7, padding:'10px 14px', marginBottom:16, fontSize:13, color:'#E8002D' },}
-          , error
-        )
-      )
+      , React.createElement(ErrorMsg, null, error)
 
       /* Section 0 — New Character & Team */
       , step === 0 && (
@@ -22682,8 +22749,7 @@ function TeamsPage() {
 
   return (
     React.createElement('div', null
-      , React.createElement('div', { style: { ...T.h1, marginBottom:8 },}, "Teams")
-      , React.createElement('div', { style: { ...T.sub, marginBottom:24 },}, "Click any team to see their full roster and stats"         )
+      , React.createElement(PageHeader, { cat: "Formula One" , title: "Teams", sub: "Click any team to see their full roster and stats"         ,} )
       , React.createElement('div', { style: { display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:14 },}
         , displayTeams.map(t => (
           React.createElement(Card, { key: t.id, onClick: () => setSelected(t),}
@@ -22759,7 +22825,7 @@ function TeamDetail({ team, onBack }) {
   return (
     React.createElement('div', null
       , React.createElement('div', { style: { display:'flex', alignItems:'center', gap:12, marginBottom:24 },}
-        , React.createElement('button', { onClick: onBack, style: { background:'none', border:'none', color:'#8888A0', cursor:'pointer', fontSize:20 },}, '<')
+        , React.createElement(BackButton, { onClick: onBack,} )
         , React.createElement('div', { style: { width:6, height:48, background:tc, borderRadius:3 },} )
         , React.createElement('div', null
           , React.createElement('div', { style: { ...T.h1 },}, team.name)
@@ -22958,8 +23024,7 @@ function ChampionshipPage({ profile }) {
   if (!standings || standings.length === 0) {
     return (
       React.createElement('div', null
-        , React.createElement('div', { style: { ...T.cap, color:'#E8002D', marginBottom:4 },}, "Formula One" )
-        , React.createElement('div', { style: { ...T.h1, marginBottom:8 },}, "Championship")
+        , React.createElement(PageHeader, { cat: "Formula One" , title: "Championship",} )
         , React.createElement(EmptyState, { title: "No standings yet"  ,
           sub: "Race results will appear here once the season begins"        ,} )
       )
@@ -22968,18 +23033,9 @@ function ChampionshipPage({ profile }) {
 
   return (
     React.createElement('div', null
-      /* Season header */
-      , React.createElement('div', { style: { ...T.cap, color:'#E8002D', marginBottom:4 },}, "Formula One" )
-      , React.createElement('div', { style: { display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:24 },}
-        , React.createElement('div', null
-          , React.createElement('div', { style: { ...T.h1, marginBottom:4 },}, "Championship")
-          , total > 0 && (
-            React.createElement('div', { style: { ...T.sub },}
-              , complete, "/", total, " rounds complete"
-            )
-          )
-        )
-        , leader && (
+      , React.createElement(PageHeader, { cat: "Formula One" , title: "Championship",
+        sub: total > 0 ? `${complete}/${total} rounds complete` : null,
+        action: leader && (
           React.createElement('div', { style: { textAlign:'right' },}
             , React.createElement('div', { style: { ...T.cap, marginBottom:2 },}, "Drivers Leader" )
             , React.createElement('div', { style: { ...T.h2 },}, leader.driver_name)
@@ -22992,20 +23048,11 @@ function ChampionshipPage({ profile }) {
               )
             )
           )
-        )
-      )
+        ),} )
 
-      /* Tabs */
-      , React.createElement('div', { style: { display:'flex', gap:4, marginBottom:20 },}
-        , [['drivers','Drivers'],['constructors','Constructors']].map(([id,label]) => (
-          React.createElement('button', { key: id, onClick: () => setTab(id),
-            style: { padding:'8px 18px', border:'none', borderRadius:6, fontSize:13, fontWeight:600,
-              cursor:'pointer', background: tab === id ? '#E8002D' : '#111114',
-              color: tab === id ? '#fff' : '#8888A0', fontFamily:FONT_BODY },}
-            , label
-          )
-        ))
-      )
+      , React.createElement(Tabs, { style: { marginBottom:20 },
+        tabs: [{id:'drivers',label:'Drivers'},{id:'constructors',label:'Constructors'}],
+        active: tab, onChange: setTab,} )
 
       /* Driver standings */
       , tab === 'drivers' && (
@@ -23099,12 +23146,7 @@ function RoundDetail({ round, onBack }) {
 
   return (
     React.createElement('div', null
-      , React.createElement('button', { onClick: onBack,
-        style: { background:'none', border:'none', color:'#8888A0', cursor:'pointer',
-          fontSize:14, fontFamily:FONT_BODY, display:'flex', alignItems:'center', gap:6,
-          marginBottom:20, padding:0 },}, "< Back to Calendar"
-
-      )
+      , React.createElement(BackButton, { onClick: onBack, label: "Back to Calendar"  ,} )
 
       , React.createElement('div', { style: { ...T.cap, color:'#E8002D', marginBottom:4 },}, "Round " , round.number)
       , React.createElement('div', { style: { ...T.h1, marginBottom:4 },}, round.circuit_name || round.circuit_id)
@@ -23207,10 +23249,6 @@ function CalendarPage({ profile }) {
   const isGM = _optionalChain([profile, 'optionalAccess', _206 => _206.role]) === 'gm' || _optionalChain([profile, 'optionalAccess', _207 => _207.role]) === 'admin';
 
   const STATE_PIPELINE = ['scheduled','orders_open','locked','in_progress','complete'];
-  const STATE_LABEL    = { scheduled:'Scheduled', orders_open:'Orders Open', locked:'Locked',
-    in_progress:'In Progress', complete:'Complete' };
-  const STATE_COLOR    = { scheduled:'#55556A', orders_open:'#3B8EFF', locked:'#FF9500',
-    in_progress:'#E8002D', complete:'#00C46A' };
 
   function nextState(s) {
     const i = STATE_PIPELINE.indexOf(s);
@@ -23231,9 +23269,7 @@ function CalendarPage({ profile }) {
   if (!rounds || rounds.length === 0) {
     return (
       React.createElement('div', null
-        , React.createElement('div', { style: { ...T.cap, color:'#E8002D', marginBottom:4 },}, "Season")
-        , React.createElement('div', { style: { ...T.h1, marginBottom:8 },}, "Race Calendar" )
-        , React.createElement('div', { style: { ...T.sub, marginBottom:24 },}, "No season schedule set - circuit list"      )
+        , React.createElement(PageHeader, { cat: "Season", title: "Race Calendar" , sub: "No season schedule set — circuit list"      ,} )
         , React.createElement('div', { style: { display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:12 },}
           , TRACKS.map((t, i) => (
             React.createElement(Card, { key: t.id,}
@@ -23259,22 +23295,17 @@ function CalendarPage({ profile }) {
 
   return (
     React.createElement('div', null
-      , React.createElement('div', { style: { ...T.cap, color:'#E8002D', marginBottom:4 },}, "Season")
-      , React.createElement('div', { style: { display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:24 },}
-        , React.createElement('div', null
-          , React.createElement('div', { style: { ...T.h1, marginBottom:4 },}, "Race Calendar" )
-          , React.createElement('div', { style: { ...T.sub },}, complete, "/", raceRounds.length, " rounds complete"
-            , testingRounds.length > 0 && React.createElement('span', { style: { marginLeft:10, color:'#55556A' },}, "+", testingRounds.length, " testing" )
-          )
-        )
-      )
+      , React.createElement(PageHeader, { cat: "Season", title: "Race Calendar" ,
+        sub: React.createElement('span', null, complete, "/", raceRounds.length, " rounds complete"
+          , testingRounds.length > 0 && React.createElement('span', { style: { marginLeft:10, color:'#55556A' },}, "+", testingRounds.length, " testing" )
+        ),} )
 
       /* Next round spotlight */
       , nextRound && (
         React.createElement('div', { style: { marginBottom:24, padding:20, borderRadius:10,
           background:'linear-gradient(135deg,#1A1A25,#111114)',
-          border:`1px solid ${STATE_COLOR[nextRound.state]}44` },}
-          , React.createElement('div', { style: { ...T.cap, color:STATE_COLOR[nextRound.state], marginBottom:6 },}
+          border:`1px solid ${roundColor(nextRound.state)}44` },}
+          , React.createElement('div', { style: { ...T.cap, color:roundColor(nextRound.state), marginBottom:6 },}
             , nextRound.state === 'in_progress' ? 'NOW RACING' : 'NEXT ROUND'
           )
           , React.createElement('div', { style: { display:'flex', justifyContent:'space-between', alignItems:'flex-start' },}
@@ -23287,8 +23318,8 @@ function CalendarPage({ profile }) {
                 , nextRound.is_sprint && React.createElement('span', { style: { marginLeft:8 },}, React.createElement(Badge, { color: "#FF9500",}, "Sprint"))
               )
             )
-            , React.createElement(Badge, { color: STATE_COLOR[nextRound.state], style: { fontSize:12 },}
-              , STATE_LABEL[nextRound.state]
+            , React.createElement(Badge, { color: roundColor(nextRound.state), style: { fontSize:12 },}
+              , roundLabel(nextRound.state)
             )
           )
 
@@ -23297,14 +23328,14 @@ function CalendarPage({ profile }) {
             , STATE_PIPELINE.map((s, i) => {
               const done   = STATE_PIPELINE.indexOf(nextRound.state) > i;
               const active = nextRound.state === s;
-              const color  = done ? '#00C46A' : active ? STATE_COLOR[s] : '#252530';
+              const color  = done ? '#00C46A' : active ? roundColor(s) : '#252530';
               return (
                 React.createElement(React.Fragment, { key: s,}
                   , React.createElement('div', { style: { display:'flex', flexDirection:'column', alignItems:'center', gap:4 },}
                     , React.createElement('div', { style: { width:12, height:12, borderRadius:'50%', background:color,
                       boxShadow: active ? `0 0 8px ${color}` : 'none', transition:'all .3s' },} )
                     , React.createElement('div', { style: { ...T.cap, fontSize:9, color:active?color:'#55556A', whiteSpace:'nowrap' },}
-                      , STATE_LABEL[s].split(' ')[0]
+                      , roundLabel(s).split(' ')[0]
                     )
                   )
                   , i < STATE_PIPELINE.length-1 && (
@@ -23323,7 +23354,7 @@ function CalendarPage({ profile }) {
                 disabled: advancing === nextRound.id,}
                 , advancing === nextRound.id
                   ? 'Advancing...'
-                  : `Advance to: ${STATE_LABEL[nextState(nextRound.state)]}`
+                  : `Advance to: ${roundLabel(nextState(nextRound.state))}`
               )
             )
           )
@@ -23336,7 +23367,7 @@ function CalendarPage({ profile }) {
           , React.createElement('div', { style: { ...T.cap, color:'#3B8EFF', marginBottom:10 },}, "Pre-Season Testing" )
           , React.createElement('div', { style: { display:'flex', flexDirection:'column', gap:8 },}
             , testingRounds.map((r, idx) => {
-              const sc = STATE_COLOR[r.state] || '#3B8EFF';
+              const sc = roundColor(r.state) || '#3B8EFF';
               const done = r.state === 'complete';
               return (
                 React.createElement(Card, { key: r.id,
@@ -23355,7 +23386,7 @@ function CalendarPage({ profile }) {
                       )
                     )
                     , React.createElement('div', { style: { display:'flex', gap:8, alignItems:'center' },}
-                      , React.createElement(Badge, { color: sc,}, STATE_LABEL[r.state]||r.state)
+                      , React.createElement(Badge, { color: sc,}, roundLabel(r.state))
                       , done && React.createElement('span', { style: { ...T.cap, fontSize:10, color:'#00C46A' },}, "View Results ›"  )
                       , isGM && !done && nextState(r.state) && (
                         React.createElement(Button, { size: "sm", variant: "secondary",
@@ -23376,7 +23407,7 @@ function CalendarPage({ profile }) {
       /* Full schedule */
       , React.createElement('div', { style: { display:'flex', flexDirection:'column', gap:8 },}
         , raceRounds.map(r => {
-          const sc = STATE_COLOR[r.state] || '#55556A';
+          const sc = roundColor(r.state) || '#55556A';
           const done = r.state === 'complete';
           return (
             React.createElement(Card, { key: r.id,
@@ -23397,7 +23428,7 @@ function CalendarPage({ profile }) {
                 )
                 , React.createElement('div', { style: { display:'flex', gap:8, alignItems:'center' },}
                   , r.is_sprint && React.createElement(Badge, { color: "#FF9500",}, "Sprint")
-                  , React.createElement(Badge, { color: sc,}, STATE_LABEL[r.state]||r.state)
+                  , React.createElement(Badge, { color: sc,}, roundLabel(r.state))
                   , done && React.createElement('span', { style: { ...T.cap, fontSize:10, color:'#00C46A' },}, "View Results ›"  )
                   , isGM && !done && nextState(r.state) && (
                     React.createElement(Button, { size: "sm", variant: "secondary",
@@ -23486,20 +23517,10 @@ function StatsPage({ sbUser }) {
 
   return (
     React.createElement('div', null
-      , React.createElement('div', { style: { ...T.cap, color:'#E8002D', marginBottom:4 },}, "Season Data" )
-      , React.createElement('div', { style: { ...T.h1, marginBottom:24 },}, "Statistics")
-
-      , React.createElement('div', { style: { display:'flex', gap:4, marginBottom:20 },}
-        , [['results','Race Results'],['wins','Wins Table'],['my','My Career']].map(([id,label]) => (
-          React.createElement('button', { key: id, onClick: () => setTab(id),
-            style: { padding:'8px 18px', border:'none', borderRadius:6, fontSize:13, fontWeight:600,
-              cursor:'pointer', background: tab === id ? '#E8002D' : '#111114',
-              color: tab === id ? '#fff' : '#8888A0', fontFamily:FONT_BODY },}
-            , label
-          )
-        ))
-      )
-
+      , React.createElement(PageHeader, { cat: "Season Data" , title: "Statistics",} )
+      , React.createElement(Tabs, { style: { marginBottom:20 },
+        tabs: [{id:'results',label:'Race Results'},{id:'wins',label:'Wins Table'},{id:'my',label:'My Career'}],
+        active: tab, onChange: setTab,} )
       , tab === 'results' && (
         React.createElement('div', null
           , (!sessions || sessions.length === 0) && (
@@ -23706,8 +23727,7 @@ function SearchPage({ setPage, setNavTarget }) {
 
   return (
     React.createElement('div', null
-      , React.createElement('div', { style: { ...T.cap, color:'#E8002D', marginBottom:4 },}, "League")
-      , React.createElement('div', { style: { ...T.h1, marginBottom:20 },}, "Search")
+      , React.createElement(PageHeader, { cat: "League", title: "Search",} )
 
       /* Search input */
       , React.createElement('div', { style: { position:'relative', marginBottom:24 },}
@@ -24036,28 +24056,16 @@ function NotificationsPage({ sbUser, onRead }) {
 
   return (
     React.createElement('div', null
-      , React.createElement('div', { style: { ...T.cap, color:'#E8002D', marginBottom:4 },}, "Inbox")
-      , React.createElement('div', { style: { display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 },}
-        , React.createElement('div', { style: { ...T.h1 },}, "Notifications")
-        , unreadCount > 0 && tab === 'notifications' && (
-          React.createElement(Button, { size: "sm", variant: "secondary", onClick: markAllRead,}, "Mark all read"
-
-          )
-        )
-      )
-
-      /* Tabs */
-      , React.createElement('div', { style: { display:'flex', gap:4, marginBottom:20 },}
-        , [['notifications', `Notifications${unreadCount > 0 ? ` (${unreadCount})` : ''}`],
-          ['news', 'League News']].map(([id,label]) => (
-          React.createElement('button', { key: id, onClick: () => setTab(id),
-            style: { padding:'8px 18px', border:'none', borderRadius:6, fontSize:13, fontWeight:600,
-              cursor:'pointer', background: tab === id ? '#E8002D' : '#111114',
-              color: tab === id ? '#fff' : '#8888A0', fontFamily:FONT_BODY },}
-            , label
-          )
-        ))
-      )
+      , React.createElement(PageHeader, { cat: "Inbox", title: "Notifications",
+        action: unreadCount > 0 && tab === 'notifications'
+          ? React.createElement(Button, { size: "sm", variant: "secondary", onClick: markAllRead,}, "Mark all read"  )
+          : null,} )
+      , React.createElement(Tabs, { style: { marginBottom:20 },
+        tabs: [
+          {id:'notifications', label:`Notifications${unreadCount > 0 ? ` (${unreadCount})` : ''}`},
+          {id:'news',          label:'League News'},
+        ],
+        active: tab, onChange: setTab,} )
 
       /* Personal notifications */
       , tab === 'notifications' && (
@@ -24171,8 +24179,7 @@ function SettingsPage({ profile, sbUser, onProfileUpdate }) {
 
   return (
     React.createElement('div', { style: { maxWidth:500 },}
-      , React.createElement('div', { style: { ...T.h1, marginBottom:8 },}, "Settings")
-      , React.createElement('div', { style: { ...T.sub, marginBottom:24 },}, "Manage your profile"  )
+      , React.createElement(PageHeader, { cat: "Account", title: "Settings", sub: "Manage your profile"  ,} )
       , React.createElement(Card, { style: { marginBottom:16 },}
         , React.createElement('div', { style: { ...T.cap, marginBottom:12 },}, "Account")
         , React.createElement('div', { style: { display:'flex', gap:10, marginBottom:8 },}
@@ -24242,11 +24249,6 @@ function GMOverview({ setPage }) {
     { label:'Pending Apps',   value:S.pendingApps,   color: S.pendingApps > 0 ? '#FF9500' : '#00C46A' },
   ] : [];
 
-  const rlbl = s => ({ scheduled:'Scheduled', orders_open:'Orders Open', locked:'Locked',
-    in_progress:'Live', complete:'Complete' }[s] || s);
-  const rclr = s => ({ scheduled:'#55556A', orders_open:'#3B8EFF', locked:'#FF9500',
-    in_progress:'#E8002D', complete:'#00C46A' }[s] || '#55556A');
-
   return (
     React.createElement('div', null
       /* Stat strip */
@@ -24301,16 +24303,7 @@ function GMOverview({ setPage }) {
               ['Audit Log',           'audit'],
               ['Teams',               'teams'],
             ].map(([lbl, pg]) => (
-              React.createElement('button', { key: pg, onClick: () => setPage(pg),
-                style: { padding:'10px 14px', background:'#111114', border:'1px solid #252530',
-                  borderRadius:7, color:'#8888A0', fontSize:12, fontFamily:FONT_BODY,
-                  textAlign:'left', cursor:'pointer', transition:'all .15s' },
-                onMouseEnter: e => { e.currentTarget.style.borderColor='#E8002D';
-                  e.currentTarget.style.color='#F0F0F5'; },
-                onMouseLeave: e => { e.currentTarget.style.borderColor='#252530';
-                  e.currentTarget.style.color='#8888A0'; },}
-                , lbl
-              )
+              React.createElement(NavBtn, { key: pg, onClick: () => setPage(pg),}, lbl)
             ))
           )
         )
@@ -24332,7 +24325,7 @@ function GMOverview({ setPage }) {
                   : 'Date TBD'
               )
             )
-            , React.createElement(Badge, { color: rclr(S.nextRound.state),}, rlbl(S.nextRound.state))
+            , React.createElement(Badge, { color: roundColor(S.nextRound.state),}, roundLabel(S.nextRound.state))
           )
         )
       )
@@ -24368,17 +24361,7 @@ function GMControlPage({ sbUser, setPage: _setPage }) {
         , React.createElement('div', { style: { ...T.h1, marginBottom:4 },}, "GM Control Centre"  )
         , React.createElement('div', { style: { ...T.sub },}, "League management and race operations"    )
       )
-      , React.createElement('div', { style: { display:'flex', gap:4, marginBottom:24, flexWrap:'wrap' },}
-        , tabs.map(t => (
-          React.createElement('button', { key: t.id, onClick: () => setTab(t.id),
-            style: { padding:'8px 16px', border:'none', borderRadius:6, fontSize:13, fontWeight:600,
-              cursor:'pointer', background: tab === t.id ? '#E8002D' : '#111114',
-              color: tab === t.id ? '#fff' : '#8888A0', transition:'all .15s',
-              fontFamily:FONT_BODY },}
-            , t.label
-          )
-        ))
-      )
+      , React.createElement(Tabs, { style: { marginBottom:24 }, tabs: tabs, active: tab, onChange: setTab,} )
       , tab === 'overview'     && React.createElement(GMOverview, { setPage: goTab,} )
       , tab === 'applications' && React.createElement(GMApplications, null )
       , tab === 'players'      && React.createElement(GMPlayers, null )
@@ -24831,18 +24814,9 @@ function GMStats() {
   return (
     React.createElement('div', { style: { display:'grid', gridTemplateColumns:'1fr 300px', gap:20, alignItems:'start' },}
       , React.createElement('div', null
-        /* Type filter */
-        , React.createElement('div', { style: { display:'flex', gap:6, marginBottom:16 },}
-          , ['driver','staff','all'].map(t => (
-            React.createElement('button', { key: t, onClick: () => reloadType(t),
-              style: { padding:'5px 12px', border:'none', borderRadius:5, fontSize:11, fontWeight:600,
-                cursor:'pointer', textTransform:'uppercase', letterSpacing:'0.8px',
-                background: charType === t ? '#E8002D' : '#111114',
-                color: charType === t ? '#fff' : '#8888A0', fontFamily:FONT_MONO },}
-              , t
-            )
-          ))
-        )
+        , React.createElement(Tabs, { style: { marginBottom:16 },
+          tabs: [{id:'all',label:'All'},{id:'driver',label:'Drivers'},{id:'staff',label:'Staff'}],
+          active: charType, onChange: reloadType,} )
         , (!chars || chars.length === 0) && React.createElement(EmptyState, { title: "No characters" ,} )
         , React.createElement('div', { style: { display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:12 },}
           , (chars||[]).map(c => (
@@ -25002,7 +24976,7 @@ function GMCharacters() {
               , teams.map(t => React.createElement('option', { key: t.id, value: t.id,}, t.name))
             )
           )
-          , xferErr && React.createElement('div', { style: { color:'#E8002D', fontSize:13, marginBottom:10 },}, xferErr)
+          , React.createElement(ErrorMsg, null, xferErr)
           , React.createElement('div', { style: { display:'flex', gap:10 },}
             , React.createElement(Button, { onClick: doTransfer, disabled: xferSaving,}
               , xferSaving ? 'Transferring...' : 'Confirm Transfer'
@@ -25682,7 +25656,7 @@ function GMLeagueSettings() {
         , React.createElement('div', { style: { ...T.cap, color:'#55556A' },}, "\"Apply F1 Defaults\" pre-fills empty fields · \"Generate 2027 Calendar\" inserts 2 testing + 24 race rounds"
 
         )
-        , genMsg && React.createElement('div', { style: { ...T.cap, color:'#00C46A', fontSize:11 },}, genMsg)
+        , React.createElement(SuccessMsg, null, genMsg)
       )
 
       , React.createElement('div', { style: { display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 },}
@@ -26060,10 +26034,6 @@ function GMRaceControl({ sbUser }) {
   }
 
   const STATE_PIPELINE = ['scheduled','orders_open','locked','in_progress','complete'];
-  const STATE_LABEL    = { scheduled:'Scheduled', orders_open:'Orders Open', locked:'Locked',
-    in_progress:'In Progress', complete:'Complete' };
-  const STATE_COLOR    = { scheduled:'#55556A', orders_open:'#3B8EFF', locked:'#FF9500',
-    in_progress:'#E8002D', complete:'#00C46A' };
   function nextState(s) {
     const i = STATE_PIPELINE.indexOf(s);
     return i >= 0 && i < STATE_PIPELINE.length-1 ? STATE_PIPELINE[i+1] : null;
@@ -26244,12 +26214,12 @@ function GMRaceControl({ sbUser }) {
                 , React.createElement('div', { style: { display:'flex', justifyContent:'space-between', alignItems:'center' },}
                   , React.createElement('div', { style: { display:'flex', gap:14, alignItems:'center' },}
                     , React.createElement('div', { style: { fontWeight:900, fontSize:18, fontFamily:FONT_HEAD,
-                      color: STATE_COLOR[r.state]||'#55556A', minWidth:36 },}, "R", r.number)
+                      color: roundColor(r.state), minWidth:36 },}, "R", r.number)
                     , React.createElement('div', null
                       , React.createElement('div', { style: { ...T.h3 },}, r.circuit_name||r.circuit_id)
                       , React.createElement('div', { style: { display:'flex', gap:6, alignItems:'center' },}
-                        , React.createElement(Badge, { color: STATE_COLOR[r.state]||'#55556A',}
-                          , STATE_LABEL[r.state]||r.state
+                        , React.createElement(Badge, { color: roundColor(r.state),}
+                          , roundLabel(r.state)
                         )
                         , r.is_sprint && React.createElement(Badge, { color: "#FF9500",}, "Sprint")
                       )
@@ -26259,7 +26229,7 @@ function GMRaceControl({ sbUser }) {
                     React.createElement(Button, { size: "sm", variant: "secondary",
                       onClick: () => advanceState(r),
                       disabled: advancing === r.id,}
-                      , advancing === r.id ? '...' : `-> ${STATE_LABEL[nextState(r.state)]}`
+                      , advancing === r.id ? '...' : `-> ${roundLabel(nextState(r.state))}`
                     )
                   )
                 )

@@ -3473,6 +3473,106 @@ function EmptyState({ title, sub, action }) {
   );
 }
 
+// Shared tab bar — replaces all raw <button> tab patterns
+function Tabs({ tabs, active, onChange, style={} }) {
+  return (
+    <div style={{ display:'flex', gap:4, flexWrap:'wrap', ...style }}>
+      {tabs.map(t => {
+        const id    = typeof t === 'string' ? t : t.id;
+        const label = typeof t === 'string' ? t.charAt(0).toUpperCase()+t.slice(1) : t.label;
+        return (
+          <button key={id} onClick={() => onChange(id)}
+            style={{ padding:'8px 16px', border:'none', borderRadius:6, fontSize:13, fontWeight:600,
+              cursor:'pointer', transition:'all .15s', fontFamily:FONT_BODY,
+              background: id === active ? '#E8002D' : '#111114',
+              color:       id === active ? '#fff'    : '#8888A0' }}>
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// Consistent back-navigation button
+function BackButton({ onClick, label='Back' }) {
+  return (
+    <button onClick={onClick} style={{ background:'none', border:'none',
+      color:'#8888A0', cursor:'pointer', fontSize:13, fontFamily:FONT_BODY,
+      display:'flex', alignItems:'center', gap:6, padding:0, marginBottom:20 }}>
+      {'‹'} {label}
+    </button>
+  );
+}
+
+// Standard page-level header: optional red cap label, h1 title, optional sub, optional right action
+function PageHeader({ cat, title, sub, action }) {
+  return (
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:28 }}>
+      <div>
+        {cat && <div style={{ ...T.cap, color:'#E8002D', marginBottom:6 }}>{cat}</div>}
+        <div style={{ ...T.h1, marginBottom: sub ? 4 : 0 }}>{title}</div>
+        {sub && <div style={{ ...T.sub }}>{sub}</div>}
+      </div>
+      {action && <div style={{ flexShrink:0, paddingTop: cat ? 20 : 0 }}>{action}</div>}
+    </div>
+  );
+}
+
+// Section-level header: h2 + optional right element
+function SectionHeader({ title, action, style={} }) {
+  return (
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
+      marginBottom:14, ...style }}>
+      <div style={{ ...T.h2 }}>{title}</div>
+      {action}
+    </div>
+  );
+}
+
+// Quick-action nav button (overview panels)
+function NavBtn({ children, onClick }) {
+  const [hov, setHov] = useState(false);
+  return (
+    <button onClick={onClick}
+      onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      style={{ padding:'10px 14px', border:`1px solid ${hov ? '#E8002D' : '#252530'}`,
+        borderRadius:7, color: hov ? '#F0F0F5' : '#8888A0', fontSize:13, width:'100%',
+        fontFamily:FONT_BODY, textAlign:'left', cursor:'pointer',
+        transition:'all .15s', background: hov ? 'rgba(232,0,45,0.08)' : '#111114' }}>
+      {children}
+    </button>
+  );
+}
+
+// Inline error/success banners
+function ErrorMsg({ children }) {
+  if (!children) return null;
+  return (
+    <div style={{ background:'rgba(232,0,45,0.1)', border:'1px solid #E8002D',
+      borderRadius:7, padding:'10px 14px', marginBottom:16, fontSize:13, color:'#E8002D' }}>
+      {children}
+    </div>
+  );
+}
+function SuccessMsg({ children }) {
+  if (!children) return null;
+  return (
+    <div style={{ background:'rgba(0,196,106,0.1)', border:'1px solid #00C46A',
+      borderRadius:7, padding:'10px 14px', marginBottom:16, fontSize:13, color:'#00C46A' }}>
+      {children}
+    </div>
+  );
+}
+
+// Shared round-state helpers (used in Dashboard, CalendarPage, GMOverview)
+const ROUND_STATE_LABEL = { scheduled:'Scheduled', orders_open:'Orders Open',
+  locked:'Locked', in_progress:'Live', complete:'Complete' };
+const ROUND_STATE_COLOR = { scheduled:'#55556A', orders_open:'#3B8EFF',
+  locked:'#FF9500', in_progress:'#E8002D', complete:'#00C46A' };
+const roundLabel = s => ROUND_STATE_LABEL[s] || s;
+const roundColor = s => ROUND_STATE_COLOR[s] || '#55556A';
+
 // -- Sidebar ------------------------------------------------------------------
 
 const NAV_ITEMS = [
@@ -3678,11 +3778,6 @@ function Dashboard({ profile, setPage, sbUser }) {
     }
   }
 
-  const rlbl = s => ({ scheduled:'Scheduled', orders_open:'Orders Open', locked:'Locked',
-    in_progress:'Live', complete:'Complete' }[s] || s);
-  const rclr = s => ({ scheduled:'#55556A', orders_open:'#3B8EFF', locked:'#FF9500',
-    in_progress:'#E8002D', complete:'#00C46A' }[s] || '#55556A');
-
   const statCards = [
     { label:'Characters',    value: chars === null ? '...' : chars.length,  color:'#3B8EFF', page:'characters' },
     { label:'Applications',  value: appStats.pending,                        color:'#FF9500', page:'apply' },
@@ -3783,7 +3878,7 @@ function Dashboard({ profile, setPage, sbUser }) {
                           { day:'numeric', month:'short', year:'numeric' })
                       : 'Date TBD'}
                   </div>
-                  <Badge color={rclr(nextRound.state)}>{rlbl(nextRound.state)}</Badge>
+                  <Badge color={roundColor(nextRound.state)}>{roundLabel(nextRound.state)}</Badge>
                 </div>
                 <Button size='sm' variant='secondary' style={{ width:'100%', marginTop:12 }}
                   onClick={() => setPage('calendar')}>View Calendar</Button>
@@ -3807,17 +3902,7 @@ function Dashboard({ profile, setPage, sbUser }) {
                 ['View Championship',  'championship'],
                 ['Browse Teams',       'teams'],
               ].map(([lbl, pg]) => (
-                <button key={pg} onClick={() => setPage(pg)}
-                  style={{ width:'100%', padding:'9px 14px', background:'#111114',
-                    border:'1px solid #252530', borderRadius:7,
-                    color:'#8888A0', fontSize:13, fontFamily:FONT_BODY,
-                    textAlign:'left', cursor:'pointer', transition:'all .15s' }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor='#3A3A48';
-                    e.currentTarget.style.color='#F0F0F5'; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor='#252530';
-                    e.currentTarget.style.color='#8888A0'; }}>
-                  {lbl}
-                </button>
+                <NavBtn key={pg} onClick={() => setPage(pg)}>{lbl}</NavBtn>
               ))}
             </div>
           </Card>
@@ -4666,16 +4751,13 @@ function CharactersPage({ sbUser }) {
 
   return (
     <div>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24 }}>
-        <div>
-          <div style={{ ...T.h1 }}>My Characters</div>
-          <div style={{ ...T.sub }}>Your driver and staff characters</div>
-        </div>
-        <div style={{ display:'flex', gap:10 }}>
-          <Button variant="secondary" onClick={() => setApplying(true)}>Apply for Team Slot</Button>
-          <Button onClick={() => setCreating(true)}>+ New Character</Button>
-        </div>
-      </div>
+      <PageHeader cat="Player Portal" title="My Characters" sub="Your driver and staff characters"
+        action={
+          <div style={{ display:'flex', gap:10 }}>
+            <Button variant="secondary" onClick={() => setApplying(true)}>Apply for Team Slot</Button>
+            <Button onClick={() => setCreating(true)}>+ New Character</Button>
+          </div>
+        } />
       {!chars || chars.length === 0 ? (
         <EmptyState title="No characters yet" sub="Create a driver or staff character to get started"
           action={<Button onClick={() => setCreating(true)}>Create Character</Button>} />
@@ -4768,8 +4850,7 @@ function CreateCharacterForm({ sbUser, onDone, onCancel }) {
   return (
     <div style={{ maxWidth:600 }}>
       <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:24 }}>
-        <button onClick={onCancel} style={{ background:'none', border:'none',
-          color:'#8888A0', cursor:'pointer', fontSize:20, lineHeight:1 }}>{'<'}</button>
+        <BackButton onClick={onCancel} label="Cancel" />
         <div>
           <div style={{ ...T.h1 }}>New Character</div>
           <div style={{ ...T.sub }}>Step {step+1} of {steps.length}: {steps[step]}</div>
@@ -4781,8 +4862,7 @@ function CreateCharacterForm({ sbUser, onDone, onCancel }) {
             background: i <= step ? '#E8002D' : '#252530', transition:'background .2s' }} />
         ))}
       </div>
-      {error && <div style={{ background:'rgba(232,0,45,0.1)', border:'1px solid #E8002D', borderRadius:7,
-        padding:'10px 14px', marginBottom:16, fontSize:13, color:'#E8002D' }}>{error}</div>}
+      <ErrorMsg>{error}</ErrorMsg>
       {step === 0 && (
         <Card>
           <Select label="Character Type" value={type} onChange={setType}
@@ -4894,13 +4974,8 @@ function ApplyPage({ sbUser }) {
 
   return (
     <div>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24 }}>
-        <div>
-          <div style={{ ...T.h1 }}>Applications</div>
-          <div style={{ ...T.sub }}>Submit and track your character applications</div>
-        </div>
-        <Button onClick={() => setCreating(true)}>+ New Application</Button>
-      </div>
+      <PageHeader cat="Player Portal" title="Applications" sub="Submit and track your character applications"
+        action={<Button onClick={() => setCreating(true)}>+ New Application</Button>} />
       {!apps || apps.length === 0 ? (
         <EmptyState title="No applications yet" sub="Apply to join a team as a driver or staff member"
           action={<Button onClick={() => setCreating(true)}>Apply Now</Button>} />
@@ -5040,10 +5115,7 @@ function ApplicationForm({ sbUser, onDone, onCancel }) {
     <div style={{ maxWidth:640 }}>
       {/* Header */}
       <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
-        <button onClick={onCancel} style={{ background:'none', border:'none',
-          color:'#8888A0', cursor:'pointer', fontSize:14, fontFamily:FONT_BODY, padding:0 }}>
-          &lt; Cancel
-        </button>
+        <BackButton onClick={onCancel} label="Cancel" />
         <div style={{ flex:1 }}>
           <div style={{ ...T.cap, color:'#E8002D', marginBottom:2 }}>
             Section {step+1} of {totalSteps}
@@ -5061,12 +5133,7 @@ function ApplicationForm({ sbUser, onDone, onCancel }) {
         ))}
       </div>
 
-      {error && (
-        <div style={{ background:'rgba(232,0,45,0.1)', border:'1px solid #E8002D',
-          borderRadius:7, padding:'10px 14px', marginBottom:16, fontSize:13, color:'#E8002D' }}>
-          {error}
-        </div>
-      )}
+      <ErrorMsg>{error}</ErrorMsg>
 
       {/* Section 0 — New Character & Team */}
       {step === 0 && (
@@ -5431,8 +5498,7 @@ function TeamsPage() {
 
   return (
     <div>
-      <div style={{ ...T.h1, marginBottom:8 }}>Teams</div>
-      <div style={{ ...T.sub, marginBottom:24 }}>Click any team to see their full roster and stats</div>
+      <PageHeader cat="Formula One" title="Teams" sub="Click any team to see their full roster and stats" />
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:14 }}>
         {displayTeams.map(t => (
           <Card key={t.id} onClick={() => setSelected(t)}>
@@ -5508,7 +5574,7 @@ function TeamDetail({ team, onBack }) {
   return (
     <div>
       <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:24 }}>
-        <button onClick={onBack} style={{ background:'none', border:'none', color:'#8888A0', cursor:'pointer', fontSize:20 }}>{'<'}</button>
+        <BackButton onClick={onBack} />
         <div style={{ width:6, height:48, background:tc, borderRadius:3 }} />
         <div>
           <div style={{ ...T.h1 }}>{team.name}</div>
@@ -5707,8 +5773,7 @@ function ChampionshipPage({ profile }) {
   if (!standings || standings.length === 0) {
     return (
       <div>
-        <div style={{ ...T.cap, color:'#E8002D', marginBottom:4 }}>Formula One</div>
-        <div style={{ ...T.h1, marginBottom:8 }}>Championship</div>
+        <PageHeader cat="Formula One" title="Championship" />
         <EmptyState title="No standings yet"
           sub="Race results will appear here once the season begins" />
       </div>
@@ -5717,18 +5782,9 @@ function ChampionshipPage({ profile }) {
 
   return (
     <div>
-      {/* Season header */}
-      <div style={{ ...T.cap, color:'#E8002D', marginBottom:4 }}>Formula One</div>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:24 }}>
-        <div>
-          <div style={{ ...T.h1, marginBottom:4 }}>Championship</div>
-          {total > 0 && (
-            <div style={{ ...T.sub }}>
-              {complete}/{total} rounds complete
-            </div>
-          )}
-        </div>
-        {leader && (
+      <PageHeader cat="Formula One" title="Championship"
+        sub={total > 0 ? `${complete}/${total} rounds complete` : null}
+        action={leader && (
           <div style={{ textAlign:'right' }}>
             <div style={{ ...T.cap, marginBottom:2 }}>Drivers Leader</div>
             <div style={{ ...T.h2 }}>{leader.driver_name}</div>
@@ -5741,20 +5797,11 @@ function ChampionshipPage({ profile }) {
               </div>
             )}
           </div>
-        )}
-      </div>
+        )} />
 
-      {/* Tabs */}
-      <div style={{ display:'flex', gap:4, marginBottom:20 }}>
-        {[['drivers','Drivers'],['constructors','Constructors']].map(([id,label]) => (
-          <button key={id} onClick={() => setTab(id)}
-            style={{ padding:'8px 18px', border:'none', borderRadius:6, fontSize:13, fontWeight:600,
-              cursor:'pointer', background: tab === id ? '#E8002D' : '#111114',
-              color: tab === id ? '#fff' : '#8888A0', fontFamily:FONT_BODY }}>
-            {label}
-          </button>
-        ))}
-      </div>
+      <Tabs style={{ marginBottom:20 }}
+        tabs={[{id:'drivers',label:'Drivers'},{id:'constructors',label:'Constructors'}]}
+        active={tab} onChange={setTab} />
 
       {/* Driver standings */}
       {tab === 'drivers' && (
@@ -5848,12 +5895,7 @@ function RoundDetail({ round, onBack }) {
 
   return (
     <div>
-      <button onClick={onBack}
-        style={{ background:'none', border:'none', color:'#8888A0', cursor:'pointer',
-          fontSize:14, fontFamily:FONT_BODY, display:'flex', alignItems:'center', gap:6,
-          marginBottom:20, padding:0 }}>
-        &lt; Back to Calendar
-      </button>
+      <BackButton onClick={onBack} label="Back to Calendar" />
 
       <div style={{ ...T.cap, color:'#E8002D', marginBottom:4 }}>Round {round.number}</div>
       <div style={{ ...T.h1, marginBottom:4 }}>{round.circuit_name || round.circuit_id}</div>
@@ -5956,10 +5998,6 @@ function CalendarPage({ profile }) {
   const isGM = profile?.role === 'gm' || profile?.role === 'admin';
 
   const STATE_PIPELINE = ['scheduled','orders_open','locked','in_progress','complete'];
-  const STATE_LABEL    = { scheduled:'Scheduled', orders_open:'Orders Open', locked:'Locked',
-    in_progress:'In Progress', complete:'Complete' };
-  const STATE_COLOR    = { scheduled:'#55556A', orders_open:'#3B8EFF', locked:'#FF9500',
-    in_progress:'#E8002D', complete:'#00C46A' };
 
   function nextState(s) {
     const i = STATE_PIPELINE.indexOf(s);
@@ -5980,9 +6018,7 @@ function CalendarPage({ profile }) {
   if (!rounds || rounds.length === 0) {
     return (
       <div>
-        <div style={{ ...T.cap, color:'#E8002D', marginBottom:4 }}>Season</div>
-        <div style={{ ...T.h1, marginBottom:8 }}>Race Calendar</div>
-        <div style={{ ...T.sub, marginBottom:24 }}>No season schedule set - circuit list</div>
+        <PageHeader cat="Season" title="Race Calendar" sub="No season schedule set — circuit list" />
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:12 }}>
           {TRACKS.map((t, i) => (
             <Card key={t.id}>
@@ -6008,22 +6044,17 @@ function CalendarPage({ profile }) {
 
   return (
     <div>
-      <div style={{ ...T.cap, color:'#E8002D', marginBottom:4 }}>Season</div>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:24 }}>
-        <div>
-          <div style={{ ...T.h1, marginBottom:4 }}>Race Calendar</div>
-          <div style={{ ...T.sub }}>{complete}/{raceRounds.length} rounds complete
-            {testingRounds.length > 0 && <span style={{ marginLeft:10, color:'#55556A' }}>+{testingRounds.length} testing</span>}
-          </div>
-        </div>
-      </div>
+      <PageHeader cat="Season" title="Race Calendar"
+        sub={<span>{complete}/{raceRounds.length} rounds complete
+          {testingRounds.length > 0 && <span style={{ marginLeft:10, color:'#55556A' }}>+{testingRounds.length} testing</span>}
+        </span>} />
 
       {/* Next round spotlight */}
       {nextRound && (
         <div style={{ marginBottom:24, padding:20, borderRadius:10,
           background:'linear-gradient(135deg,#1A1A25,#111114)',
-          border:`1px solid ${STATE_COLOR[nextRound.state]}44` }}>
-          <div style={{ ...T.cap, color:STATE_COLOR[nextRound.state], marginBottom:6 }}>
+          border:`1px solid ${roundColor(nextRound.state)}44` }}>
+          <div style={{ ...T.cap, color:roundColor(nextRound.state), marginBottom:6 }}>
             {nextRound.state === 'in_progress' ? 'NOW RACING' : 'NEXT ROUND'}
           </div>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
@@ -6036,8 +6067,8 @@ function CalendarPage({ profile }) {
                 {nextRound.is_sprint && <span style={{ marginLeft:8 }}><Badge color="#FF9500">Sprint</Badge></span>}
               </div>
             </div>
-            <Badge color={STATE_COLOR[nextRound.state]} style={{ fontSize:12 }}>
-              {STATE_LABEL[nextRound.state]}
+            <Badge color={roundColor(nextRound.state)} style={{ fontSize:12 }}>
+              {roundLabel(nextRound.state)}
             </Badge>
           </div>
 
@@ -6046,14 +6077,14 @@ function CalendarPage({ profile }) {
             {STATE_PIPELINE.map((s, i) => {
               const done   = STATE_PIPELINE.indexOf(nextRound.state) > i;
               const active = nextRound.state === s;
-              const color  = done ? '#00C46A' : active ? STATE_COLOR[s] : '#252530';
+              const color  = done ? '#00C46A' : active ? roundColor(s) : '#252530';
               return (
                 <React.Fragment key={s}>
                   <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
                     <div style={{ width:12, height:12, borderRadius:'50%', background:color,
                       boxShadow: active ? `0 0 8px ${color}` : 'none', transition:'all .3s' }} />
                     <div style={{ ...T.cap, fontSize:9, color:active?color:'#55556A', whiteSpace:'nowrap' }}>
-                      {STATE_LABEL[s].split(' ')[0]}
+                      {roundLabel(s).split(' ')[0]}
                     </div>
                   </div>
                   {i < STATE_PIPELINE.length-1 && (
@@ -6072,7 +6103,7 @@ function CalendarPage({ profile }) {
                 disabled={advancing === nextRound.id}>
                 {advancing === nextRound.id
                   ? 'Advancing...'
-                  : `Advance to: ${STATE_LABEL[nextState(nextRound.state)]}`}
+                  : `Advance to: ${roundLabel(nextState(nextRound.state))}`}
               </Button>
             </div>
           )}
@@ -6085,7 +6116,7 @@ function CalendarPage({ profile }) {
           <div style={{ ...T.cap, color:'#3B8EFF', marginBottom:10 }}>Pre-Season Testing</div>
           <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
             {testingRounds.map((r, idx) => {
-              const sc = STATE_COLOR[r.state] || '#3B8EFF';
+              const sc = roundColor(r.state) || '#3B8EFF';
               const done = r.state === 'complete';
               return (
                 <Card key={r.id}
@@ -6104,7 +6135,7 @@ function CalendarPage({ profile }) {
                       </div>
                     </div>
                     <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                      <Badge color={sc}>{STATE_LABEL[r.state]||r.state}</Badge>
+                      <Badge color={sc}>{roundLabel(r.state)}</Badge>
                       {done && <span style={{ ...T.cap, fontSize:10, color:'#00C46A' }}>View Results ›</span>}
                       {isGM && !done && nextState(r.state) && (
                         <Button size="sm" variant="secondary"
@@ -6125,7 +6156,7 @@ function CalendarPage({ profile }) {
       {/* Full schedule */}
       <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
         {raceRounds.map(r => {
-          const sc = STATE_COLOR[r.state] || '#55556A';
+          const sc = roundColor(r.state) || '#55556A';
           const done = r.state === 'complete';
           return (
             <Card key={r.id}
@@ -6146,7 +6177,7 @@ function CalendarPage({ profile }) {
                 </div>
                 <div style={{ display:'flex', gap:8, alignItems:'center' }}>
                   {r.is_sprint && <Badge color="#FF9500">Sprint</Badge>}
-                  <Badge color={sc}>{STATE_LABEL[r.state]||r.state}</Badge>
+                  <Badge color={sc}>{roundLabel(r.state)}</Badge>
                   {done && <span style={{ ...T.cap, fontSize:10, color:'#00C46A' }}>View Results ›</span>}
                   {isGM && !done && nextState(r.state) && (
                     <Button size="sm" variant="secondary"
@@ -6235,20 +6266,10 @@ function StatsPage({ sbUser }) {
 
   return (
     <div>
-      <div style={{ ...T.cap, color:'#E8002D', marginBottom:4 }}>Season Data</div>
-      <div style={{ ...T.h1, marginBottom:24 }}>Statistics</div>
-
-      <div style={{ display:'flex', gap:4, marginBottom:20 }}>
-        {[['results','Race Results'],['wins','Wins Table'],['my','My Career']].map(([id,label]) => (
-          <button key={id} onClick={() => setTab(id)}
-            style={{ padding:'8px 18px', border:'none', borderRadius:6, fontSize:13, fontWeight:600,
-              cursor:'pointer', background: tab === id ? '#E8002D' : '#111114',
-              color: tab === id ? '#fff' : '#8888A0', fontFamily:FONT_BODY }}>
-            {label}
-          </button>
-        ))}
-      </div>
-
+      <PageHeader cat="Season Data" title="Statistics" />
+      <Tabs style={{ marginBottom:20 }}
+        tabs={[{id:'results',label:'Race Results'},{id:'wins',label:'Wins Table'},{id:'my',label:'My Career'}]}
+        active={tab} onChange={setTab} />
       {tab === 'results' && (
         <div>
           {(!sessions || sessions.length === 0) && (
@@ -6455,8 +6476,7 @@ function SearchPage({ setPage, setNavTarget }) {
 
   return (
     <div>
-      <div style={{ ...T.cap, color:'#E8002D', marginBottom:4 }}>League</div>
-      <div style={{ ...T.h1, marginBottom:20 }}>Search</div>
+      <PageHeader cat="League" title="Search" />
 
       {/* Search input */}
       <div style={{ position:'relative', marginBottom:24 }}>
@@ -6785,28 +6805,16 @@ function NotificationsPage({ sbUser, onRead }) {
 
   return (
     <div>
-      <div style={{ ...T.cap, color:'#E8002D', marginBottom:4 }}>Inbox</div>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-        <div style={{ ...T.h1 }}>Notifications</div>
-        {unreadCount > 0 && tab === 'notifications' && (
-          <Button size="sm" variant="secondary" onClick={markAllRead}>
-            Mark all read
-          </Button>
-        )}
-      </div>
-
-      {/* Tabs */}
-      <div style={{ display:'flex', gap:4, marginBottom:20 }}>
-        {[['notifications', `Notifications${unreadCount > 0 ? ` (${unreadCount})` : ''}`],
-          ['news', 'League News']].map(([id,label]) => (
-          <button key={id} onClick={() => setTab(id)}
-            style={{ padding:'8px 18px', border:'none', borderRadius:6, fontSize:13, fontWeight:600,
-              cursor:'pointer', background: tab === id ? '#E8002D' : '#111114',
-              color: tab === id ? '#fff' : '#8888A0', fontFamily:FONT_BODY }}>
-            {label}
-          </button>
-        ))}
-      </div>
+      <PageHeader cat="Inbox" title="Notifications"
+        action={unreadCount > 0 && tab === 'notifications'
+          ? <Button size="sm" variant="secondary" onClick={markAllRead}>Mark all read</Button>
+          : null} />
+      <Tabs style={{ marginBottom:20 }}
+        tabs={[
+          {id:'notifications', label:`Notifications${unreadCount > 0 ? ` (${unreadCount})` : ''}`},
+          {id:'news',          label:'League News'},
+        ]}
+        active={tab} onChange={setTab} />
 
       {/* Personal notifications */}
       {tab === 'notifications' && (
@@ -6920,8 +6928,7 @@ function SettingsPage({ profile, sbUser, onProfileUpdate }) {
 
   return (
     <div style={{ maxWidth:500 }}>
-      <div style={{ ...T.h1, marginBottom:8 }}>Settings</div>
-      <div style={{ ...T.sub, marginBottom:24 }}>Manage your profile</div>
+      <PageHeader cat="Account" title="Settings" sub="Manage your profile" />
       <Card style={{ marginBottom:16 }}>
         <div style={{ ...T.cap, marginBottom:12 }}>Account</div>
         <div style={{ display:'flex', gap:10, marginBottom:8 }}>
@@ -6991,11 +6998,6 @@ function GMOverview({ setPage }) {
     { label:'Pending Apps',   value:S.pendingApps,   color: S.pendingApps > 0 ? '#FF9500' : '#00C46A' },
   ] : [];
 
-  const rlbl = s => ({ scheduled:'Scheduled', orders_open:'Orders Open', locked:'Locked',
-    in_progress:'Live', complete:'Complete' }[s] || s);
-  const rclr = s => ({ scheduled:'#55556A', orders_open:'#3B8EFF', locked:'#FF9500',
-    in_progress:'#E8002D', complete:'#00C46A' }[s] || '#55556A');
-
   return (
     <div>
       {/* Stat strip */}
@@ -7050,16 +7052,7 @@ function GMOverview({ setPage }) {
               ['Audit Log',           'audit'],
               ['Teams',               'teams'],
             ].map(([lbl, pg]) => (
-              <button key={pg} onClick={() => setPage(pg)}
-                style={{ padding:'10px 14px', background:'#111114', border:'1px solid #252530',
-                  borderRadius:7, color:'#8888A0', fontSize:12, fontFamily:FONT_BODY,
-                  textAlign:'left', cursor:'pointer', transition:'all .15s' }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor='#E8002D';
-                  e.currentTarget.style.color='#F0F0F5'; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor='#252530';
-                  e.currentTarget.style.color='#8888A0'; }}>
-                {lbl}
-              </button>
+              <NavBtn key={pg} onClick={() => setPage(pg)}>{lbl}</NavBtn>
             ))}
           </div>
         </Card>
@@ -7081,7 +7074,7 @@ function GMOverview({ setPage }) {
                   : 'Date TBD'}
               </div>
             </div>
-            <Badge color={rclr(S.nextRound.state)}>{rlbl(S.nextRound.state)}</Badge>
+            <Badge color={roundColor(S.nextRound.state)}>{roundLabel(S.nextRound.state)}</Badge>
           </div>
         </Card>
       )}
@@ -7117,17 +7110,7 @@ function GMControlPage({ sbUser, setPage: _setPage }) {
         <div style={{ ...T.h1, marginBottom:4 }}>GM Control Centre</div>
         <div style={{ ...T.sub }}>League management and race operations</div>
       </div>
-      <div style={{ display:'flex', gap:4, marginBottom:24, flexWrap:'wrap' }}>
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            style={{ padding:'8px 16px', border:'none', borderRadius:6, fontSize:13, fontWeight:600,
-              cursor:'pointer', background: tab === t.id ? '#E8002D' : '#111114',
-              color: tab === t.id ? '#fff' : '#8888A0', transition:'all .15s',
-              fontFamily:FONT_BODY }}>
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <Tabs style={{ marginBottom:24 }} tabs={tabs} active={tab} onChange={setTab} />
       {tab === 'overview'     && <GMOverview setPage={goTab} />}
       {tab === 'applications' && <GMApplications />}
       {tab === 'players'      && <GMPlayers />}
@@ -7580,18 +7563,9 @@ function GMStats() {
   return (
     <div style={{ display:'grid', gridTemplateColumns:'1fr 300px', gap:20, alignItems:'start' }}>
       <div>
-        {/* Type filter */}
-        <div style={{ display:'flex', gap:6, marginBottom:16 }}>
-          {['driver','staff','all'].map(t => (
-            <button key={t} onClick={() => reloadType(t)}
-              style={{ padding:'5px 12px', border:'none', borderRadius:5, fontSize:11, fontWeight:600,
-                cursor:'pointer', textTransform:'uppercase', letterSpacing:'0.8px',
-                background: charType === t ? '#E8002D' : '#111114',
-                color: charType === t ? '#fff' : '#8888A0', fontFamily:FONT_MONO }}>
-              {t}
-            </button>
-          ))}
-        </div>
+        <Tabs style={{ marginBottom:16 }}
+          tabs={[{id:'all',label:'All'},{id:'driver',label:'Drivers'},{id:'staff',label:'Staff'}]}
+          active={charType} onChange={reloadType} />
         {(!chars || chars.length === 0) && <EmptyState title="No characters" />}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:12 }}>
           {(chars||[]).map(c => (
@@ -7751,7 +7725,7 @@ function GMCharacters() {
               {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </div>
-          {xferErr && <div style={{ color:'#E8002D', fontSize:13, marginBottom:10 }}>{xferErr}</div>}
+          <ErrorMsg>{xferErr}</ErrorMsg>
           <div style={{ display:'flex', gap:10 }}>
             <Button onClick={doTransfer} disabled={xferSaving}>
               {xferSaving ? 'Transferring...' : 'Confirm Transfer'}
@@ -8431,7 +8405,7 @@ function GMLeagueSettings() {
         <div style={{ ...T.cap, color:'#55556A' }}>
           "Apply F1 Defaults" pre-fills empty fields · "Generate 2027 Calendar" inserts 2 testing + 24 race rounds
         </div>
-        {genMsg && <div style={{ ...T.cap, color:'#00C46A', fontSize:11 }}>{genMsg}</div>}
+        <SuccessMsg>{genMsg}</SuccessMsg>
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
@@ -8809,10 +8783,6 @@ function GMRaceControl({ sbUser }) {
   }
 
   const STATE_PIPELINE = ['scheduled','orders_open','locked','in_progress','complete'];
-  const STATE_LABEL    = { scheduled:'Scheduled', orders_open:'Orders Open', locked:'Locked',
-    in_progress:'In Progress', complete:'Complete' };
-  const STATE_COLOR    = { scheduled:'#55556A', orders_open:'#3B8EFF', locked:'#FF9500',
-    in_progress:'#E8002D', complete:'#00C46A' };
   function nextState(s) {
     const i = STATE_PIPELINE.indexOf(s);
     return i >= 0 && i < STATE_PIPELINE.length-1 ? STATE_PIPELINE[i+1] : null;
@@ -8993,12 +8963,12 @@ function GMRaceControl({ sbUser }) {
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                   <div style={{ display:'flex', gap:14, alignItems:'center' }}>
                     <div style={{ fontWeight:900, fontSize:18, fontFamily:FONT_HEAD,
-                      color: STATE_COLOR[r.state]||'#55556A', minWidth:36 }}>R{r.number}</div>
+                      color: roundColor(r.state), minWidth:36 }}>R{r.number}</div>
                     <div>
                       <div style={{ ...T.h3 }}>{r.circuit_name||r.circuit_id}</div>
                       <div style={{ display:'flex', gap:6, alignItems:'center' }}>
-                        <Badge color={STATE_COLOR[r.state]||'#55556A'}>
-                          {STATE_LABEL[r.state]||r.state}
+                        <Badge color={roundColor(r.state)}>
+                          {roundLabel(r.state)}
                         </Badge>
                         {r.is_sprint && <Badge color="#FF9500">Sprint</Badge>}
                       </div>
@@ -9008,7 +8978,7 @@ function GMRaceControl({ sbUser }) {
                     <Button size="sm" variant="secondary"
                       onClick={() => advanceState(r)}
                       disabled={advancing === r.id}>
-                      {advancing === r.id ? '...' : `-> ${STATE_LABEL[nextState(r.state)]}`}
+                      {advancing === r.id ? '...' : `-> ${roundLabel(nextState(r.state))}`}
                     </Button>
                   )}
                 </div>
