@@ -7622,9 +7622,31 @@ function GMRaceControl({ sbUser }) {
     setLoadingLeague(false);
   }
 
+  function buildSimGrid(realDrivers, realTeams) {
+    const MIN = 20;
+    if (realDrivers.length >= MIN) return { drivers: realDrivers, teams: realTeams };
+    const needed = MIN - realDrivers.length;
+    const usedIds = new Set(realDrivers.map(d => d.id));
+    const aiDrivers = DRIVERS.filter(d => !usedIds.has(d.id)).slice(0, needed).map(d => ({
+      ...d, name: `[AI] ${d.name}`, id: `ai_${d.id}`,
+    }));
+    const aiTeamIds = new Set(aiDrivers.map(d => d.teamId));
+    const aiTeams   = TEAMS.filter(t => aiTeamIds.has(t.id));
+    return {
+      drivers: [...realDrivers, ...aiDrivers],
+      teams:   [...realTeams, ...aiTeams],
+    };
+  }
+
   function runSim() {
-    const driverList = leagueMode && leagueDrivers.length > 0 ? leagueDrivers : DRIVERS;
-    const teamList   = leagueMode && leagueTeams.length > 0   ? leagueTeams   : TEAMS;
+    let driverList = leagueMode && leagueDrivers.length > 0 ? leagueDrivers : DRIVERS;
+    let teamList   = leagueMode && leagueTeams.length > 0   ? leagueTeams   : TEAMS;
+
+    if (leagueMode) {
+      const padded = buildSimGrid(driverList, teamList);
+      driverList = padded.drivers;
+      teamList   = padded.teams;
+    }
 
     setSimError('');
     setRunning(true);
@@ -7740,7 +7762,9 @@ function GMRaceControl({ sbUser }) {
               </div>
               <div style={{ ...T.sub, fontSize:12 }}>
                 {leagueMode
-                  ? `Using ${leagueDrivers.length} league drivers from DB`
+                  ? leagueDrivers.length < 20
+                    ? `${leagueDrivers.length} league driver${leagueDrivers.length !== 1 ? 's' : ''} + ${20 - leagueDrivers.length} AI fill drivers`
+                    : `Using ${leagueDrivers.length} league drivers from DB`
                   : 'Using built-in F1 2027 engine drivers'}
               </div>
             </div>
