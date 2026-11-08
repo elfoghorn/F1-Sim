@@ -3753,9 +3753,171 @@ function Dashboard({ profile, setPage, sbUser }) {
 
 // -- Character Detail View --------------------------------------------------
 
-function CharacterDetail({ char: c, onBack }) {
+function StatRollerSection({ char: c, onSaved }) {
+  const TIER_RANGES = {
+    rookie:  { min:55, max:70,  pts:8  },
+    regular: { min:65, max:80,  pts:8  },
+    veteran: { min:72, max:85,  pts:10 },
+    elite:   { min:80, max:90,  pts:10 },
+    legend:  { min:87, max:96,  pts:12 },
+  };
+  const tier     = c.stat_roll_tier || 'regular';
+  const range    = TIER_RANGES[tier] || TIER_RANGES.regular;
   const isDriver = c.type === 'driver';
-  const statColor = i => ['#E8002D','#3B8EFF','#3B8EFF','#FF9500','#FF9500','#55556A'][i] || '#55556A';
+
+  const DRIVER_STATS = ['pace','consistency','wet','overtaking','defense'];
+  const STAFF_STATS  = ['technical','strategy_skill','leadership','morale'];
+  const statKeys     = isDriver ? DRIVER_STATS : STAFF_STATS;
+  const statLabels   = {
+    pace:'Pace', consistency:'Consistency', wet:'Wet Skill',
+    overtaking:'Overtaking', defense:'Defense',
+    technical:'Technical', strategy_skill:'Strategy', leadership:'Leadership', morale:'Morale',
+  };
+  const statColors   = {
+    pace:'#E8002D', consistency:'#3B8EFF', wet:'#3B8EFF',
+    overtaking:'#FF9500', defense:'#FF9500',
+    technical:'#3B8EFF', strategy_skill:'#E8002D', leadership:'#FF9500', morale:'#00C46A',
+  };
+
+  function roll() {
+    const r = {};
+    statKeys.forEach(k => {
+      r[k] = Math.floor(Math.random() * (range.max - range.min + 1)) + range.min;
+    });
+    return r;
+  }
+
+  const [rolled,  setRolled]  = useState(null);
+  const [boosts,  setBoosts]  = useState(() => Object.fromEntries(statKeys.map(k => [k, 0])));
+  const [saving,  setSaving]  = useState(false);
+  const [locked,  setLocked]  = useState(false);
+
+  const totalBoost = Object.values(boosts).reduce((a,b)=>a+b, 0);
+  const ptsLeft    = range.pts - totalBoost;
+
+  function doRoll() {
+    setRolled(roll());
+    setBoosts(Object.fromEntries(statKeys.map(k => [k, 0])));
+    setLocked(false);
+  }
+
+  function adjustBoost(k, delta) {
+    const cur = boosts[k];
+    const next = cur + delta;
+    if (next < 0) return;
+    if (next > 5) return;
+    if (delta > 0 && ptsLeft < 1) return;
+    setBoosts(b => ({...b, [k]: next}));
+  }
+
+  async function save() {
+    if (!rolled) return;
+    setSaving(true);
+    const payload = {};
+    statKeys.forEach(k => {
+      payload[k] = Math.min(range.max + 5, (rolled[k] || range.min) + (boosts[k] || 0));
+    });
+    payload.stat_roll_pending = false;
+    await sbFetch(`characters?id=eq.${c.id}`, {
+      method:'PATCH', body: JSON.stringify(payload)
+    });
+    setSaving(false);
+    setLocked(true);
+    onSaved && onSaved(payload);
+  }
+
+  const TIER_COLORS = { rookie:'#3B8EFF', regular:'#F0F0F5', veteran:'#FF9500', elite:'#FFD700', legend:'#E8002D' };
+  const tColor = TIER_COLORS[tier] || '#F0F0F5';
+
+  return (
+    <Card style={{ border:'1px solid #FFD70088', marginBottom:0 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+        <div>
+          <div style={{ ...T.cap, color:'#FFD700', marginBottom:4 }}>Stat Roll Available</div>
+          <div style={{ ...T.h3 }}>
+            Tier: <span style={{ color:tColor }}>{tier.charAt(0).toUpperCase()+tier.slice(1)}</span>
+            <span style={{ ...T.cap, marginLeft:12 }}>Range {range.min}–{range.max}</span>
+          </div>
+        </div>
+        {!locked && (
+          <Button onClick={doRoll} variant={rolled?'secondary':'success'}>
+            {rolled ? 'Re-Roll' : 'Roll Stats'}
+          </Button>
+        )}
+      </div>
+
+      {!rolled && (
+        <div style={{ ...T.sub, fontSize:13 }}>
+          Click Roll Stats to generate your base stats within your tier range.
+          You will have {range.pts} influence points to boost individual stats by up to +5 each.
+        </div>
+      )}
+
+      {rolled && !locked && (
+        <div>
+          <div style={{ display:'flex', justifyContent:'space-between', marginBottom:10 }}>
+            <div style={{ ...T.cap }}>Adjust with influence points</div>
+            <div style={{ ...T.cap, color: ptsLeft === 0 ? '#00C46A' : '#FFD700' }}>
+              {ptsLeft} pts remaining
+            </div>
+          </div>
+          {statKeys.map(k => {
+            const base  = rolled[k] || range.min;
+            const boost = boosts[k] || 0;
+            const final = base + boost;
+            const color = statColors[k] || '#55556A';
+            return (
+              <div key={k} style={{ marginBottom:10 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4, alignItems:'center' }}>
+                  <span style={{ ...T.cap }}>{statLabels[k]}</span>
+                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    <span style={{ fontSize:11, color:'#55556A', fontFamily:FONT_MONO }}>
+                      {base} {boost > 0 && `+${boost}`}
+                    </span>
+                    <span style={{ fontSize:16, fontWeight:900, color, fontFamily:FONT_HEAD, width:28, textAlign:'right' }}>
+                      {final}
+                    </span>
+                    <button onClick={() => adjustBoost(k, -1)} disabled={boost===0}
+                      style={{ width:24, height:24, border:'1px solid #252530', borderRadius:4,
+                        background:'#111114', color:'#F0F0F5', cursor:'pointer', fontSize:14,
+                        lineHeight:1, opacity: boost===0?0.4:1 }}>-</button>
+                    <button onClick={() => adjustBoost(k, 1)}
+                      disabled={boost>=5 || ptsLeft===0}
+                      style={{ width:24, height:24, border:'1px solid #252530', borderRadius:4,
+                        background:'#111114', color:'#F0F0F5', cursor:'pointer', fontSize:14,
+                        lineHeight:1, opacity:(boost>=5||ptsLeft===0)?0.4:1 }}>+</button>
+                  </div>
+                </div>
+                <div style={{ height:4, background:'#252530', borderRadius:2 }}>
+                  <div style={{ height:'100%', background:color, borderRadius:2,
+                    width:`${final}%`, transition:'width .2s' }} />
+                </div>
+              </div>
+            );
+          })}
+          <Button onClick={save} disabled={saving} style={{ marginTop:12 }}>
+            {saving ? 'Saving...' : 'Confirm & Save Stats'}
+          </Button>
+        </div>
+      )}
+
+      {locked && (
+        <div style={{ ...T.body, color:'#00C46A' }}>
+          Stats saved! Your character stats have been set.
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function CharacterDetail({ char: initChar, onBack }) {
+  const [c, setC] = useState(initChar);
+  const isDriver  = c.type === 'driver';
+
+  function onStatsSaved(payload) {
+    setC(prev => ({ ...prev, ...payload, stat_roll_pending: false }));
+  }
+
   const driverStats = isDriver ? [
     ['Pace',          c.pace,        '#E8002D'],
     ['Consistency',   c.consistency, '#3B8EFF'],
@@ -3773,7 +3935,7 @@ function CharacterDetail({ char: c, onBack }) {
   const stats = isDriver ? driverStats : staffStats;
 
   return (
-    <div style={{ maxWidth:720 }}>
+    <div style={{ maxWidth:760 }}>
       {/* Back */}
       <button onClick={onBack}
         style={{ background:'none', border:'none', color:'#8888A0',
@@ -3782,27 +3944,58 @@ function CharacterDetail({ char: c, onBack }) {
         &lt; Back to My Characters
       </button>
 
+      {/* Stat roll prompt */}
+      {c.stat_roll_pending && (
+        <div style={{ marginBottom:20 }}>
+          <StatRollerSection char={c} onSaved={onStatsSaved} />
+        </div>
+      )}
+
       {/* Header */}
       <div style={{ display:'flex', alignItems:'flex-start', gap:20, marginBottom:28 }}>
-        <div style={{ width:72, height:72, borderRadius:'50%', background:'#252530',
-          display:'flex', alignItems:'center', justifyContent:'center',
-          fontSize:28, fontWeight:900, color:'#E8002D', fontFamily:FONT_HEAD, flexShrink:0 }}>
-          {c.number || (c.name||'?')[0].toUpperCase()}
-        </div>
+        {c.photo_url ? (
+          <img src={c.photo_url} alt={c.name}
+            style={{ width:88, height:88, borderRadius:'50%', objectFit:'cover', flexShrink:0,
+              border:'2px solid #E8002D' }} />
+        ) : (
+          <div style={{ width:88, height:88, borderRadius:'50%', background:'#252530',
+            display:'flex', alignItems:'center', justifyContent:'center',
+            fontSize:32, fontWeight:900, color:'#E8002D', fontFamily:FONT_HEAD, flexShrink:0 }}>
+            {c.number || (c.name||'?')[0].toUpperCase()}
+          </div>
+        )}
         <div style={{ flex:1 }}>
           <div style={{ ...T.cap, color:'#E8002D', marginBottom:4 }}>
             {c.type}{c.number ? ` -- #${c.number}` : ''}{c.abbr ? ` -- ${c.abbr}` : ''}
           </div>
-          <div style={{ ...T.h1, marginBottom:6 }}>{c.name}</div>
-          <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+          <div style={{ ...T.h1, marginBottom:8 }}>{c.name}</div>
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:8 }}>
             {c.nationality && <Badge color="#3B8EFF">{c.nationality}</Badge>}
             <Badge color={c.is_active ? '#00C46A' : '#55556A'}>
               {c.is_active ? 'Active' : 'Inactive'}
             </Badge>
-            {c.style && <Badge color="#FF9500">{c.style}</Badge>}
+            {(c.style || c.driving_style) && <Badge color="#FF9500">{c.driving_style || c.style}</Badge>}
+            {c.stat_roll_tier && !c.stat_roll_pending && (
+              <Badge color="#FFD700">{c.stat_roll_tier} tier</Badge>
+            )}
+          </div>
+          {/* Quick bio facts */}
+          <div style={{ display:'flex', gap:16, flexWrap:'wrap' }}>
+            {c.age    && <span style={{ ...T.cap }}>Age: {c.age}</span>}
+            {c.height && <span style={{ ...T.cap }}>Height: {c.height}</span>}
           </div>
         </div>
       </div>
+
+      {/* Iconic quote */}
+      {c.iconic_quote && (
+        <Card style={{ marginBottom:20, borderLeft:'3px solid #E8002D' }}>
+          <div style={{ ...T.sub, fontStyle:'italic', fontSize:16, lineHeight:1.7,
+            color:'#F0F0F5' }}>
+            "{c.iconic_quote}"
+          </div>
+        </Card>
+      )}
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
 
@@ -3824,32 +4017,100 @@ function CharacterDetail({ char: c, onBack }) {
           </Card>
         )}
 
-        {/* Profile */}
+        {/* Identity & Profile */}
         <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-          {c.bio && (
+          {(c.bio || c.driving_style || c.strengths) && (
             <Card>
-              <div style={{ ...T.cap, color:'#E8002D', marginBottom:8 }}>Bio</div>
-              <div style={{ ...T.sub, fontStyle:'italic', fontSize:13 }}>"{c.bio}"</div>
-            </Card>
-          )}
-          {c.backstory && (
-            <Card>
-              <div style={{ ...T.cap, color:'#E8002D', marginBottom:8 }}>Backstory</div>
-              <div style={{ ...T.sub, fontSize:13, lineHeight:1.7 }}>{c.backstory}</div>
-            </Card>
-          )}
-          {!c.bio && !c.backstory && (
-            <Card>
-              <div style={{ ...T.sub }}>No biography added yet.</div>
+              <div style={{ ...T.cap, color:'#E8002D', marginBottom:8 }}>Profile</div>
+              {c.bio && (
+                <div style={{ ...T.sub, fontStyle:'italic', fontSize:13, marginBottom:8 }}>"{c.bio}"</div>
+              )}
+              {c.driving_style && (
+                <div style={{ marginBottom:6 }}>
+                  <span style={{ ...T.cap, color:'#55556A' }}>Style: </span>
+                  <span style={{ ...T.body, fontSize:13 }}>{c.driving_style}</span>
+                </div>
+              )}
+              {c.strengths && (
+                <div style={{ marginBottom:6 }}>
+                  <div style={{ ...T.cap, color:'#00C46A', marginBottom:3 }}>Strengths</div>
+                  <div style={{ ...T.sub, fontSize:12 }}>{c.strengths}</div>
+                </div>
+              )}
+              {c.weaknesses && (
+                <div>
+                  <div style={{ ...T.cap, color:'#E8002D', marginBottom:3 }}>Weaknesses</div>
+                  <div style={{ ...T.sub, fontSize:12 }}>{c.weaknesses}</div>
+                </div>
+              )}
             </Card>
           )}
         </div>
       </div>
+
+      {/* Backstory sections */}
+      {(c.backstory || c.backstory_origin || c.backstory_journey || c.backstory_motivation) && (
+        <div style={{ marginTop:16, display:'flex', flexDirection:'column', gap:14 }}>
+          <div style={{ ...T.cap, color:'#E8002D' }}>Backstory</div>
+          {c.backstory && (
+            <Card>
+              <div style={{ ...T.sub, fontSize:13, lineHeight:1.8 }}>{c.backstory}</div>
+            </Card>
+          )}
+          {(c.backstory_origin || c.backstory_journey || c.backstory_motivation) && (
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
+              {[
+                ['Origin',     c.backstory_origin,     '#3B8EFF'],
+                ['Journey',    c.backstory_journey,    '#FF9500'],
+                ['Motivation', c.backstory_motivation, '#E8002D'],
+              ].filter(([,v]) => v).map(([label, val, color]) => (
+                <Card key={label}>
+                  <div style={{ ...T.cap, color, marginBottom:6 }}>{label}</div>
+                  <div style={{ ...T.sub, fontSize:12, lineHeight:1.7 }}>{val}</div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Public image / paddock */}
+      {(c.paddock_reputation || c.media_persona || c.paddock_relations) && (
+        <div style={{ marginTop:16, display:'flex', flexDirection:'column', gap:14 }}>
+          <div style={{ ...T.cap, color:'#55556A' }}>Public Image</div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+            {c.media_persona && (
+              <Card>
+                <div style={{ ...T.cap, color:'#55556A', marginBottom:4 }}>Media Persona</div>
+                <div style={{ ...T.sub, fontSize:12 }}>{c.media_persona}</div>
+              </Card>
+            )}
+            {c.paddock_reputation && (
+              <Card>
+                <div style={{ ...T.cap, color:'#55556A', marginBottom:4 }}>Paddock Reputation</div>
+                <div style={{ ...T.sub, fontSize:12 }}>{c.paddock_reputation}</div>
+              </Card>
+            )}
+            {c.paddock_relations && (
+              <Card style={{ gridColumn:'1/-1' }}>
+                <div style={{ ...T.cap, color:'#55556A', marginBottom:4 }}>Paddock Relations</div>
+                <div style={{ ...T.sub, fontSize:12, lineHeight:1.7 }}>{c.paddock_relations}</div>
+              </Card>
+            )}
+          </div>
+        </div>
+      )}
+
+      {!c.bio && !c.backstory && !c.backstory_origin && !c.paddock_reputation && !c.iconic_quote && !c.stat_roll_pending && (
+        <Card style={{ marginTop:16 }}>
+          <div style={{ ...T.sub }}>No biography added yet. Apply to the league to build out your character's full profile.</div>
+        </Card>
+      )}
     </div>
   );
 }
 
-// -- Characters Page ----------------------------------------------------------
+// -- Characters Page ---------------------------------------------------------- ----------------------------------------------------------
 
 function CharactersPage({ sbUser }) {
   const [chars, setChars] = useState(null);
@@ -3892,15 +4153,21 @@ function CharactersPage({ sbUser }) {
           {chars.map(c => (
             <Card key={c.id} onClick={() => setSelected(c)}>
               <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:12 }}>
-                <div style={{ width:44, height:44, borderRadius:'50%', background:'#252530',
-                  display:'flex', alignItems:'center', justifyContent:'center',
-                  fontSize:16, fontWeight:800, color:'#E8002D' }}>
-                  {c.number || (c.name||'?')[0].toUpperCase()}
-                </div>
+                {c.photo_url ? (
+                  <img src={c.photo_url} alt={c.name}
+                    style={{ width:44, height:44, borderRadius:'50%', objectFit:'cover', flexShrink:0 }} />
+                ) : (
+                  <div style={{ width:44, height:44, borderRadius:'50%', background:'#252530',
+                    display:'flex', alignItems:'center', justifyContent:'center',
+                    fontSize:16, fontWeight:800, color:'#E8002D' }}>
+                    {c.number || (c.name||'?')[0].toUpperCase()}
+                  </div>
+                )}
                 <div style={{ flex:1 }}>
                   <div style={{ ...T.h3 }}>{c.name}</div>
                   <div style={{ ...T.sub }}>{c.type}{c.number ? ` - #${c.number}` : ''}</div>
                 </div>
+                {c.stat_roll_pending && <Badge color="#FFD700">Roll Stats</Badge>}
                 <Badge color={c.is_active ? '#00C46A' : '#55556A'}>
                   {c.is_active ? 'Active' : 'Inactive'}
                 </Badge>
@@ -3926,7 +4193,7 @@ function CreateCharacterForm({ sbUser, onDone, onCancel }) {
   const [step, setStep] = useState(0);
   const [type, setType] = useState('driver');
   const [form, setForm] = useState({
-    name:'', nationality:'', number:'', abbr:'', bio:'', backstory:'',
+    name:'', nationality:'', number:'', abbr:'', bio:'', backstory:'', photo_url:'',
     pace:70, consistency:70, wet:70, overtaking:70, defense:70, experience:50, mental:7,
     style:'balanced',
     technical:70, strategy_skill:70, leadership:70, morale:70,
@@ -3943,6 +4210,7 @@ function CreateCharacterForm({ sbUser, onDone, onCancel }) {
       owner_id: sbUser.id, type,
       name: form.name, nationality: form.nationality,
       bio: form.bio, backstory: form.backstory,
+      photo_url: form.photo_url || null,
       ...(type === 'driver' ? {
         number: parseInt(form.number) || null, abbr: form.abbr,
         pace: form.pace, consistency: form.consistency, wet: form.wet,
@@ -3990,6 +4258,7 @@ function CreateCharacterForm({ sbUser, onDone, onCancel }) {
             options={[{ value:'driver', label:'Driver' }, { value:'mechanic', label:'Mechanic' },
               { value:'engineer', label:'Engineer' }, { value:'team_principal', label:'Team Principal' }]} />
           <Input label="Full Name" value={form.name} onChange={v => set('name',v)} placeholder="e.g. Alex Hendry" />
+          <Input label="Photo URL (optional)" value={form.photo_url} onChange={v => set('photo_url',v)} placeholder="https://i.imgur.com/yourphoto.jpg" />
           <Input label="Nationality" value={form.nationality} onChange={v => set('nationality',v)} placeholder="e.g. British" />
           {type === 'driver' && <>
             <Input label="Race Number" value={form.number} onChange={v => set('number',v)} placeholder="1-99" />
@@ -4165,7 +4434,22 @@ function ApplicationForm({ sbUser, onDone, onCancel }) {
       Promise.all([
         sbFetch(`characters?owner_id=eq.${sbUser.id}&select=id,name,type`),
         sbFetch('league_teams?select=id,name'),
-      ]).then(([c,t]) => { setChars(c.data||[]); setTeams(t.data||[]); });
+        sbFetch('league_drivers?select=team_id,characters!character_id(type)&limit=500'),
+      ]).then(([c,t,ld]) => {
+        setChars(c.data||[]);
+        // Build slot map: teamId -> driver count
+        const slotMap = {};
+        (ld.data||[]).forEach(d => {
+          const tid = d.team_id;
+          if (!slotMap[tid]) slotMap[tid] = 0;
+          if ((d.characters?.type || 'driver') === 'driver') slotMap[tid]++;
+        });
+        const teamsWithSlots = (t.data||[]).map(team => ({
+          ...team,
+          driversFull: (slotMap[team.id] || 0) >= 2,
+        }));
+        setTeams(teamsWithSlots);
+      });
     }
   }
 
@@ -4250,7 +4534,16 @@ function ApplicationForm({ sbUser, onDone, onCancel }) {
               ...chars.map(c => ({ value:c.id, label:`${c.name} (${c.type})` }))]} />
           <Select label="Desired Team (optional)" value={fd.team_id} onChange={v => set('team_id',v)}
             options={[{ value:'', label:'No preference' },
-              ...teams.map(t => ({ value:t.id, label:t.name }))]} />
+              ...teams.map(t => ({
+                value: t.id,
+                label: t.driversFull ? `${t.name} (Full)` : t.name,
+                disabled: t.driversFull,
+              }))]} />
+          {fd.team_id && teams.find(t => t.id === fd.team_id)?.driversFull && (
+            <div style={{ fontSize:12, color:'#FF9500', marginTop:-8, marginBottom:8 }}>
+              This team's driver slots are currently full.
+            </div>
+          )}
           <div style={{ ...T.sub, fontSize:12 }}>
             Select the character you are applying with. If you have no team preference, leave the team blank.
           </div>
@@ -4596,10 +4889,19 @@ function TeamsPage() {
           <Card key={t.id} onClick={() => t.id && typeof t.id === 'string' && t.id.includes('-') ? setSelected(t.id) : null}>
             <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
               <div style={{ width:4, height:40, background: t.color || '#E8002D', borderRadius:2 }} />
-              <div>
+              <div style={{ flex:1 }}>
                 <div style={{ ...T.h3 }}>{t.name}</div>
                 <div style={{ ...T.sub }}>{t.tier} tier</div>
               </div>
+              {(() => {
+                const dCount = (t.league_drivers||[]).filter(d => !d.type || d.type !== 'staff').length;
+                const full   = dCount >= 2;
+                return (
+                  <Badge color={full?'#00C46A':'#55556A'}>
+                    {full ? 'Full' : `${dCount}/2`}
+                  </Badge>
+                );
+              })()}
             </div>
             <StatBar label="Car Pace"    value={t.car_pace || t.carPace || 75} color={t.color || '#E8002D'} />
             <StatBar label="Reliability" value={t.reliability || 75}            color={t.color || '#E8002D'} />
@@ -6005,35 +6307,48 @@ function GMApplications() {
   if (!loaded) { setLoaded(true); if (sbClient) load(); else setLoading(false); }
   if (loading) return <Spinner />;
 
-  async function decide(app, status, teamId) {
+  async function decide(app, status, teamId, tier) {
     await sbFetch(`applications?id=eq.${app.id}`, {
       method:'PATCH',
       body: JSON.stringify({ status, decided_at: new Date().toISOString() })
     });
-    if (status === 'approved' && teamId && app.characters?.id) {
-      await sbFetch('league_drivers', {
-        method:'POST',
-        headers:{ Prefer:'resolution=merge-duplicates' },
-        body: JSON.stringify({ character_id: app.characters.id, team_id: teamId,
-          name: app.characters.name, number: null })
-      });
+    if (status === 'approved' && app.characters?.id) {
+      // Copy bio fields from form_data back to character record
+      const fd = app.form_data || {};
+      const charPatch = {};
+      ['nationality','age','height','driving_style','strengths','weaknesses',
+       'backstory_origin','backstory_journey','backstory_motivation',
+       'media_persona','paddock_reputation','paddock_relations','iconic_quote'
+      ].forEach(k => { if (fd[k]) charPatch[k] = fd[k]; });
+      if (tier) {
+        charPatch.stat_roll_tier    = tier;
+        charPatch.stat_roll_pending = true;
+      }
+      if (Object.keys(charPatch).length > 0) {
+        await sbFetch(`characters?id=eq.${app.characters.id}`, {
+          method:'PATCH', body: JSON.stringify(charPatch)
+        });
+      }
+      if (teamId) {
+        await sbFetch('league_drivers', {
+          method:'POST',
+          headers:{ Prefer:'resolution=merge-duplicates' },
+          body: JSON.stringify({ character_id: app.characters.id, team_id: teamId,
+            name: app.characters.name, number: null })
+        });
+      }
     }
     // Send notification to applicant
     if (app.applicant_id) {
       const charName = app.characters?.name || 'your character';
-      const teamName = status === 'approved'
-        ? (app.approving_team || teamId ? `You have been placed with a team.` : '')
-        : '';
-      await sendNotification(app.applicant_id,
-        status === 'approved' ? 'application_decided' : 'application_decided',
-        {
-          message: status === 'approved'
-            ? `Your application for ${charName} has been APPROVED. Welcome to the league!`
-            : `Your application for ${charName} has been declined.`,
-          character_name: charName,
-          decision: status,
-        }
-      );
+      await sendNotification(app.applicant_id, 'application_decided', {
+        message: status === 'approved'
+          ? `Your application for ${charName} has been APPROVED. Welcome to the league!`
+          : `Your application for ${charName} has been declined.`,
+        character_name: charName,
+        decision: status,
+        stat_roll_tier: tier || null,
+      });
     }
     setApproving(null);
     setExpanded(null);
@@ -6155,7 +6470,7 @@ function GMApplications() {
               {['submitted','under_review'].includes(app.status) && !isApp && (
                 <div style={{ display:'flex', gap:8, marginTop:12 }}>
                   <Button size="sm" variant="success" onClick={() =>
-                    setApproving({ appId: app.id, charId: app.characters?.id, teamId: app.form_data?.team_id || '' })}>
+                    setApproving({ appId: app.id, charId: app.characters?.id, teamId: app.form_data?.team_id || '', tier: 'regular' })}>
                     Approve
                   </Button>
                   <Button size="sm" variant="secondary" onClick={() => decide(app,'under_review')}>
@@ -6179,9 +6494,19 @@ function GMApplications() {
                     onChange={v => setApproving(a => ({...a, teamId:v}))}
                     options={[{value:'',label:'No team assignment yet'},
                       ...teams.map(t => ({value:t.id,label:t.name}))]} />
+                  <Select label="Stat Roll Tier"
+                    value={approving.tier||'regular'}
+                    onChange={v => setApproving(a => ({...a, tier:v}))}
+                    options={[
+                      {value:'rookie',  label:'Rookie  (55-70)'},
+                      {value:'regular', label:'Regular (65-80)'},
+                      {value:'veteran', label:'Veteran (72-85)'},
+                      {value:'elite',   label:'Elite   (80-90)'},
+                      {value:'legend',  label:'Legend  (87-96)'},
+                    ]} />
                   <div style={{ display:'flex', gap:8, marginTop:10 }}>
                     <Button size="sm" variant="success"
-                      onClick={() => decide(app,'approved', approving.teamId)}>
+                      onClick={() => decide(app,'approved', approving.teamId, approving.tier||'regular')}>
                       Confirm Approve
                     </Button>
                     <Button size="sm" variant="secondary" onClick={() => setApproving(null)}>
