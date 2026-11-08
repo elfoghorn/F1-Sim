@@ -3939,9 +3939,11 @@ function StatRollerSection({ char: c, onSaved }) {
   );
 }
 
-function CharacterDetail({ char: initChar, onBack }) {
+function CharacterDetail({ char: initChar, onBack, sbUser }) {
   const [c, setC] = useState(initChar);
+  const [editing, setEditing] = useState(false);
   const isDriver  = c.type === 'driver';
+  const canEdit = !!(sbUser && c.owner_id && sbUser.id === c.owner_id);
 
   function onStatsSaved(payload) {
     setC(prev => ({ ...prev, ...payload, stat_roll_pending: false }));
@@ -3963,15 +3965,27 @@ function CharacterDetail({ char: initChar, onBack }) {
   ] : [];
   const stats = isDriver ? driverStats : staffStats;
 
+  if (editing) return (
+    <CharacterEditForm char={c} onDone={updated => {
+      if (updated) setC(updated);
+      setEditing(false);
+    }} />
+  );
+
   return (
     <div style={{ maxWidth:760 }}>
       {/* Back */}
-      <button onClick={onBack}
-        style={{ background:'none', border:'none', color:'#8888A0',
-          cursor:'pointer', fontSize:14, fontFamily:FONT_BODY,
-          display:'flex', alignItems:'center', gap:6, marginBottom:20, padding:0 }}>
-        &lt; Back to My Characters
-      </button>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+        <button onClick={onBack}
+          style={{ background:'none', border:'none', color:'#8888A0',
+            cursor:'pointer', fontSize:14, fontFamily:FONT_BODY,
+            display:'flex', alignItems:'center', gap:6, padding:0 }}>
+          &lt; Back to My Characters
+        </button>
+        {canEdit && (
+          <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>Edit Profile</Button>
+        )}
+      </div>
 
       {/* Stat roll prompt */}
       {c.stat_roll_pending && (
@@ -4139,6 +4153,149 @@ function CharacterDetail({ char: initChar, onBack }) {
   );
 }
 
+// -- Character Edit Form ------------------------------------------------------
+
+function CharacterEditForm({ char, onDone }) {
+  const init = {
+    photo_url: char.photo_url || '',
+    nationality: char.nationality || '',
+    dob: char.dob || '',
+    height: char.height || '',
+    weight: char.weight || '',
+    driving_style: char.driving_style || '',
+    strengths: char.strengths || '',
+    weaknesses: char.weaknesses || '',
+    good_tracks: char.good_tracks || '',
+    bad_tracks: char.bad_tracks || '',
+    preferred_conditions: char.preferred_conditions || '',
+    personality: char.personality || '',
+    media_persona: char.media_persona || '',
+    paddock_reputation: char.paddock_reputation || '',
+    paddock_relations: char.paddock_relations || '',
+    backstory: char.backstory || '',
+    backstory_origin: char.backstory_origin || '',
+    backstory_journey: char.backstory_journey || '',
+    iconic_quote: char.iconic_quote || '',
+    ooc_notes: char.ooc_notes || '',
+  };
+  const [fd, setFd] = useState(init);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  function set(k) { return e => setFd(p => ({ ...p, [k]: e.target.value })); }
+
+  const iStyle = {
+    width:'100%', background:'#111114', border:'1px solid #252530', borderRadius:6,
+    color:'#F0F0F5', padding:'8px 10px', fontFamily:FONT_BODY, fontSize:13, boxSizing:'border-box',
+  };
+
+  function TF({ label, fkey, placeholder='' }) {
+    return (
+      <div style={{ marginBottom:14 }}>
+        <label style={{ ...T.cap, color:'#8888A0', display:'block', marginBottom:4 }}>{label}</label>
+        <input type="text" value={fd[fkey]} onChange={set(fkey)} placeholder={placeholder} style={iStyle} />
+      </div>
+    );
+  }
+
+  function TA({ label, fkey, rows=3, placeholder='' }) {
+    return (
+      <div style={{ marginBottom:14 }}>
+        <label style={{ ...T.cap, color:'#8888A0', display:'block', marginBottom:4 }}>{label}</label>
+        <textarea value={fd[fkey]} onChange={set(fkey)} rows={rows} placeholder={placeholder}
+          style={{ ...iStyle, resize:'vertical' }} />
+      </div>
+    );
+  }
+
+  async function save() {
+    setSaving(true); setErr('');
+    const patch = {};
+    Object.entries(fd).forEach(([k,v]) => { patch[k] = v || null; });
+    const { error } = await sbFetch(`characters?id=eq.${char.id}`, { method:'PATCH', body:JSON.stringify(patch) });
+    setSaving(false);
+    if (error) { setErr(String(error)); return; }
+    onDone({ ...char, ...patch });
+  }
+
+  return (
+    <div style={{ maxWidth:760 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+        <button onClick={() => onDone(null)}
+          style={{ background:'none', border:'none', color:'#8888A0', cursor:'pointer',
+            fontSize:14, fontFamily:FONT_BODY, display:'flex', alignItems:'center', gap:6, padding:0 }}>
+          &lt; Cancel
+        </button>
+        <div style={{ ...T.cap, color:'#55556A' }}>Editing: {char.name}</div>
+      </div>
+
+      <Card style={{ marginBottom:16 }}>
+        <div style={{ ...T.cap, color:'#E8002D', marginBottom:12 }}>Photo / Face Claim</div>
+        <TF label="Photo URL" fkey="photo_url" placeholder="https://i.imgur.com/..." />
+        {fd.photo_url && (
+          <img src={fd.photo_url} alt="preview"
+            style={{ width:72, height:72, borderRadius:'50%', objectFit:'cover',
+              border:'2px solid #E8002D', marginTop:4 }}
+            onError={e => { e.target.style.display='none'; }} />
+        )}
+      </Card>
+
+      <Card style={{ marginBottom:16 }}>
+        <div style={{ ...T.cap, color:'#E8002D', marginBottom:12 }}>Personal Information</div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 20px' }}>
+          <TF label="Nationality" fkey="nationality" />
+          <TF label="Date of Birth" fkey="dob" placeholder="e.g. 1998-03-15" />
+          <TF label="Height" fkey="height" placeholder="e.g. 180cm / 5'11&quot;" />
+          <TF label="Weight" fkey="weight" placeholder="e.g. 68kg" />
+        </div>
+      </Card>
+
+      <Card style={{ marginBottom:16 }}>
+        <div style={{ ...T.cap, color:'#E8002D', marginBottom:12 }}>Driver Profile</div>
+        <TF label="Driving Style" fkey="driving_style" placeholder="e.g. Aggressive, late-braking specialist" />
+        <TA label="Strengths" fkey="strengths" placeholder="e.g. Tyre management, wet conditions, overtaking" />
+        <TA label="Weaknesses" fkey="weaknesses" placeholder="e.g. Single-lap qualifying pace, high-speed corners" />
+        <TF label="Good Tracks (3, comma-separated)" fkey="good_tracks" placeholder="Monaco, Suzuka, Singapore" />
+        <TF label="Bad Tracks (3, comma-separated)" fkey="bad_tracks" placeholder="Monza, Baku, COTA" />
+        <TF label="Preferred Conditions" fkey="preferred_conditions" placeholder="e.g. Intermediate, overcast" />
+        <TA label="Personality" fkey="personality" placeholder="Describe your character's on and off-track personality" />
+        <TA label="Media Reputation" fkey="media_persona" placeholder="How the media portrays them publicly" />
+        <TA label="Relationship With Teammates" fkey="paddock_reputation" placeholder="How they interact with teammates and rivals" />
+      </Card>
+
+      <Card style={{ marginBottom:16 }}>
+        <div style={{ ...T.cap, color:'#E8002D', marginBottom:12 }}>Career History</div>
+        <TA label="Karting Career" fkey="backstory_origin" rows={4} placeholder="Early karting background, championships, notable performances..." />
+        <TA label="Junior Formulas (Road to F1)" fkey="backstory_journey" rows={4} placeholder="F3, F2, GP2 career, standout seasons..." />
+      </Card>
+
+      <Card style={{ marginBottom:16 }}>
+        <div style={{ ...T.cap, color:'#E8002D', marginBottom:12 }}>Personal Backstory</div>
+        <TA label="Personal Backstory (minimum 2 paragraphs)" fkey="backstory" rows={10}
+          placeholder="Write at least two full paragraphs about your character's personal story and what drives them..." />
+      </Card>
+
+      <Card style={{ marginBottom:16 }}>
+        <div style={{ ...T.cap, color:'#E8002D', marginBottom:12 }}>Public Image</div>
+        <TA label="Public Image" fkey="paddock_relations" rows={4}
+          placeholder="How the public and paddock see your character..." />
+      </Card>
+
+      <Card style={{ marginBottom:20 }}>
+        <div style={{ ...T.cap, color:'#E8002D', marginBottom:12 }}>Quote & OOC</div>
+        <TF label="Iconic Quote" fkey="iconic_quote" placeholder="A memorable quote from your character" />
+        <TA label="OOC Notes (timezone, activity level, notes for admins)" fkey="ooc_notes" rows={3} />
+      </Card>
+
+      {err && <div style={{ color:'#E8002D', marginBottom:12, fontSize:13 }}>{err}</div>}
+      <div style={{ display:'flex', gap:12, paddingBottom:32 }}>
+        <Button onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save Profile'}</Button>
+        <Button variant="secondary" onClick={() => onDone(null)}>Cancel</Button>
+      </div>
+    </div>
+  );
+}
+
 // -- Characters Page ---------------------------------------------------------- ----------------------------------------------------------
 
 function CharactersPage({ sbUser }) {
@@ -4157,7 +4314,7 @@ function CharactersPage({ sbUser }) {
 
   if (!loaded) { setLoaded(true); loadChars(); }
   if (loading) return <Spinner />;
-  if (selected) return <CharacterDetail char={selected} onBack={() => setSelected(null)} />;
+  if (selected) return <CharacterDetail char={selected} onBack={() => setSelected(null)} sbUser={sbUser} />;
 
   if (creating) return (
     <CreateCharacterForm sbUser={sbUser}
@@ -4963,47 +5120,178 @@ function TeamsPage() {
 }
 
 function TeamDetail({ team, onBack }) {
-  const drivers = team.league_drivers || [];
+  const [staff,    setStaff]    = useState(null);
+  const [teamWins, setTeamWins] = useState(null);
+  const [loaded,   setLoaded]   = useState(false);
+
+  if (!loaded) {
+    setLoaded(true);
+    if (sbClient && team.id && String(team.id).includes('-')) {
+      Promise.all([
+        sbFetch(`characters?team_id=eq.${team.id}&is_active=eq.true&select=*&order=type`),
+        sbFetch(`session_runs?status=eq.final&session=eq.race&select=result`),
+      ]).then(([cr, sr]) => {
+        const chars = cr.data || [];
+        setStaff(chars);
+        const myNames = new Set(chars.map(c => c.name));
+        let wins = 0, podiums = 0;
+        (sr.data || []).forEach(s => {
+          (s.result?.placements || []).slice(0, 3).forEach((p, pos) => {
+            const n = p.driver || p.name || '';
+            if (myNames.has(n)) { if (pos === 0) wins++; podiums++; }
+          });
+        });
+        setTeamWins({ wins, podiums });
+      });
+    } else {
+      setStaff(team.league_drivers || []);
+      setTeamWins({ wins: 0, podiums: 0 });
+    }
+  }
+
+  const drivers   = (staff || []).filter(c => c.type === 'driver');
+  const principal = (staff || []).find(c => c.type === 'team_principal');
+  const engineers = (staff || []).filter(c => c.type === 'race_engineer');
+  const others    = (staff || []).filter(c => !['driver','team_principal','race_engineer'].includes(c.type));
+  const tc        = team.color || '#E8002D';
+
+  function StaffAvatar({ person, size=48 }) {
+    return person.photo_url ? (
+      <img src={person.photo_url} alt={person.name}
+        style={{ width:size, height:size, borderRadius:'50%', objectFit:'cover',
+          border:`2px solid ${tc}`, flexShrink:0 }} />
+    ) : (
+      <div style={{ width:size, height:size, borderRadius:'50%', background:tc+'33', flexShrink:0,
+        display:'flex', alignItems:'center', justifyContent:'center',
+        fontSize:size*0.4, fontWeight:700, color:tc, fontFamily:FONT_HEAD }}>
+        {person.number || (person.name||'?')[0].toUpperCase()}
+      </div>
+    );
+  }
+
   return (
     <div>
       <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:24 }}>
         <button onClick={onBack} style={{ background:'none', border:'none', color:'#8888A0', cursor:'pointer', fontSize:20 }}>{'<'}</button>
-        <div style={{ width:6, height:48, background: team.color || '#E8002D', borderRadius:3 }} />
+        <div style={{ width:6, height:48, background:tc, borderRadius:3 }} />
         <div>
           <div style={{ ...T.h1 }}>{team.name}</div>
           <div style={{ ...T.sub }}>{team.tier} tier</div>
         </div>
       </div>
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:24 }}>
+
+      {/* Car stats */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:16 }}>
         {[['Car Pace',team.car_pace],['Reliability',team.reliability],
           ['Pit Speed',team.pit_speed],['Tyre Life',team.tyre_life]].map(([l,v]) => (
           <Card key={l} style={{ textAlign:'center', padding:14 }}>
-            <div style={{ fontSize:28, fontWeight:900, color: team.color || '#E8002D', fontFamily:FONT_HEAD }}>{v}</div>
+            <div style={{ fontSize:28, fontWeight:900, color:tc, fontFamily:FONT_HEAD }}>{v}</div>
             <div style={{ ...T.cap }}>{l}</div>
           </Card>
         ))}
       </div>
-      <div style={{ ...T.h2, marginBottom:14 }}>Drivers</div>
-      {drivers.length === 0 ? (
-        <EmptyState title="No drivers assigned" sub="Check back after the GM assigns seats" />
-      ) : (
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:12 }}>
-          {drivers.map(d => (
-            <Card key={d.id}>
-              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
-                <div style={{ width:36, height:36, borderRadius:'50%',
-                  background:(team.color||'#E8002D')+'33',
-                  display:'flex', alignItems:'center', justifyContent:'center',
-                  fontSize:16, fontWeight:700, color: team.color || '#E8002D' }}>
-                  {d.number}
-                </div>
-                <div style={{ ...T.h3 }}>{d.name}</div>
-              </div>
-              <StatBar label="Pace"        value={d.pace}        color={team.color || '#E8002D'} />
-              <StatBar label="Consistency" value={d.consistency} color={team.color || '#E8002D'} />
+
+      {/* Win stats */}
+      {teamWins && (
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:12, marginBottom:24 }}>
+          {[['Race Wins', teamWins.wins, '#FFD700'], ['Podiums', teamWins.podiums, '#C0C0C0']].map(([l,v,clr]) => (
+            <Card key={l} style={{ textAlign:'center', padding:14 }}>
+              <div style={{ fontSize:36, fontWeight:900, color:clr, fontFamily:FONT_HEAD }}>{v}</div>
+              <div style={{ ...T.cap }}>{l}</div>
             </Card>
           ))}
         </div>
+      )}
+
+      {/* Drivers */}
+      <div style={{ ...T.h2, marginBottom:14 }}>Drivers</div>
+      {staff === null ? <Spinner /> : drivers.length === 0 ? (
+        <div style={{ marginBottom:24 }}>
+          <EmptyState title="No drivers assigned" sub="Check back after the GM assigns seats" />
+        </div>
+      ) : (
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:12, marginBottom:24 }}>
+          {drivers.map(d => (
+            <Card key={d.id}>
+              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+                <StaffAvatar person={d} size={40} />
+                <div>
+                  <div style={{ ...T.h3 }}>{d.name}</div>
+                  {d.number && <div style={{ ...T.cap, color:'#55556A' }}>#{d.number}</div>}
+                </div>
+              </div>
+              {d.nationality && <div style={{ ...T.cap, color:'#8888A0', marginBottom:6, fontSize:11 }}>{d.nationality}</div>}
+              <StatBar label="Pace"        value={d.pace}        color={tc} />
+              <StatBar label="Consistency" value={d.consistency} color={tc} />
+              {d.driving_style && <div style={{ ...T.sub, fontSize:11, marginTop:6, color:'#8888A0' }}>{d.driving_style}</div>}
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Team Principal */}
+      {principal && (
+        <div style={{ marginBottom:20 }}>
+          <div style={{ ...T.h2, marginBottom:12 }}>Team Principal</div>
+          <Card>
+            <div style={{ display:'flex', alignItems:'center', gap:14 }}>
+              <StaffAvatar person={principal} size={52} />
+              <div>
+                <div style={{ ...T.h3 }}>{principal.name}</div>
+                <div style={{ ...T.cap, color:'#55556A' }}>Team Principal</div>
+                {principal.nationality && <div style={{ ...T.cap, color:'#8888A0', fontSize:11, marginTop:3 }}>{principal.nationality}</div>}
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Race Engineers */}
+      {engineers.length > 0 && (
+        <div style={{ marginBottom:20 }}>
+          <div style={{ ...T.h2, marginBottom:12 }}>Race Engineers</div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))', gap:12 }}>
+            {engineers.map(e => (
+              <Card key={e.id}>
+                <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
+                  <StaffAvatar person={e} size={36} />
+                  <div>
+                    <div style={{ ...T.h3 }}>{e.name}</div>
+                    <div style={{ ...T.cap, color:'#55556A' }}>Race Engineer</div>
+                  </div>
+                </div>
+                {e.nationality && <div style={{ ...T.cap, color:'#8888A0', fontSize:11, marginBottom:6 }}>{e.nationality}</div>}
+                {e.technical !== undefined && <StatBar label="Technical" value={e.technical} color="#3B8EFF" />}
+                {e.strategy_skill !== undefined && <StatBar label="Strategy"  value={e.strategy_skill} color="#FF9500" />}
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Other staff */}
+      {others.length > 0 && (
+        <div style={{ marginBottom:20 }}>
+          <div style={{ ...T.h2, marginBottom:12 }}>Other Staff</div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))', gap:12 }}>
+            {others.map(s => (
+              <Card key={s.id}>
+                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <StaffAvatar person={s} size={36} />
+                  <div>
+                    <div style={{ ...T.h3 }}>{s.name}</div>
+                    <div style={{ ...T.cap, color:'#55556A' }}>{(s.type||'').replace(/_/g,' ')}</div>
+                    {s.nationality && <div style={{ ...T.cap, color:'#8888A0', fontSize:11 }}>{s.nationality}</div>}
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {staff !== null && staff.length === 0 && (
+        <EmptyState title="No staff assigned" sub="Drivers and staff will appear here once assigned by the GM" />
       )}
     </div>
   );
@@ -5176,13 +5464,129 @@ function ChampionshipPage({ profile }) {
   );
 }
 
+// -- Round Detail -------------------------------------------------------------
+
+function RoundDetail({ round, onBack }) {
+  const [sessions, setSessions] = useState(null);
+  const [loading,  setLoading]  = useState(true);
+  const [loaded,   setLoaded]   = useState(false);
+
+  if (!loaded) {
+    setLoaded(true);
+    if (sbClient) {
+      sbFetch(`session_runs?round_id=eq.${round.id}&select=*&order=session`).then(({ data }) => {
+        setSessions(data || []);
+        setLoading(false);
+      });
+    } else { setLoading(false); setSessions([]); }
+  }
+
+  if (loading) return <Spinner />;
+
+  const qual        = (sessions||[]).find(s => s.session === 'qualifying' && s.status === 'final');
+  const race        = (sessions||[]).find(s => s.session === 'race'      && s.status === 'final');
+  const qualGrid    = qual?.result?.placements || qual?.result?.grid || [];
+  const racePlaces  = race?.result?.placements || [];
+  const fastest     = race?.result?.fastestLap;
+  const F1_PTS      = [25,18,15,12,10,8,6,4,2,1];
+  const medalColor  = i => i === 0 ? '#FFD700' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : '#55556A';
+
+  return (
+    <div>
+      <button onClick={onBack}
+        style={{ background:'none', border:'none', color:'#8888A0', cursor:'pointer',
+          fontSize:14, fontFamily:FONT_BODY, display:'flex', alignItems:'center', gap:6,
+          marginBottom:20, padding:0 }}>
+        &lt; Back to Calendar
+      </button>
+
+      <div style={{ ...T.cap, color:'#E8002D', marginBottom:4 }}>Round {round.number}</div>
+      <div style={{ ...T.h1, marginBottom:4 }}>{round.circuit_name || round.circuit_id}</div>
+      <div style={{ ...T.sub, marginBottom:24, display:'flex', alignItems:'center', gap:8 }}>
+        {round.scheduled_for ? new Date(round.scheduled_for).toDateString() : 'Date unknown'}
+        {round.is_sprint && <Badge color="#FF9500">Sprint</Badge>}
+        <Badge color="#00C46A">Complete</Badge>
+      </div>
+
+      {/* Race Results */}
+      {racePlaces.length > 0 ? (
+        <div style={{ marginBottom:28 }}>
+          <div style={{ ...T.h2, marginBottom:14 }}>Race Results</div>
+          {fastest && (
+            <div style={{ marginBottom:12, display:'flex', alignItems:'center', gap:8 }}>
+              <Badge color="#E8002D">Fastest Lap</Badge>
+              <span style={{ ...T.body, fontSize:13 }}>{fastest.driver || fastest.name}</span>
+              {fastest.time && <span style={{ ...T.cap, color:'#8888A0' }}>{fastest.time}</span>}
+            </div>
+          )}
+          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            {racePlaces.map((p, i) => {
+              const name = p.driver || p.name || `Driver ${i+1}`;
+              const pts  = i < 10 ? F1_PTS[i] : 0;
+              return (
+                <Card key={i} style={{ display:'flex', alignItems:'center', gap:14,
+                  borderLeft:`3px solid ${medalColor(i)}` }}>
+                  <div style={{ minWidth:32, fontWeight:900, fontSize:18,
+                    color:medalColor(i), fontFamily:FONT_HEAD }}>
+                    {i + 1}
+                  </div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ ...T.h3 }}>{name}</div>
+                    {(p.team || p.teamName) && (
+                      <div style={{ ...T.cap, color:'#55556A' }}>{p.team || p.teamName}</div>
+                    )}
+                  </div>
+                  {pts > 0 && (
+                    <div style={{ ...T.cap, color:'#E8002D', fontSize:13, fontWeight:700 }}>+{pts} pts</div>
+                  )}
+                  {p.gap && <div style={{ ...T.cap, color:'#55556A' }}>{p.gap}</div>}
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <EmptyState title="No race results" sub="Results will appear once the race has been run" />
+      )}
+
+      {/* Qualifying Grid */}
+      {qualGrid.length > 0 && (
+        <div style={{ marginBottom:24 }}>
+          <div style={{ ...T.h2, marginBottom:14 }}>Qualifying Grid</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            {qualGrid.map((p, i) => {
+              const name = p.driver || p.name || `Driver ${i+1}`;
+              return (
+                <Card key={i} style={{ display:'flex', alignItems:'center', gap:14 }}>
+                  <div style={{ minWidth:36, fontWeight:900, fontSize:16,
+                    color: i === 0 ? '#E8002D' : '#55556A', fontFamily:FONT_HEAD }}>
+                    P{i + 1}
+                  </div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ ...T.h3 }}>{name}</div>
+                    {(p.team || p.teamName) && (
+                      <div style={{ ...T.cap, color:'#55556A' }}>{p.team || p.teamName}</div>
+                    )}
+                  </div>
+                  {p.time && <div style={{ ...T.cap, color:'#8888A0' }}>{p.time}</div>}
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // -- Calendar Page ------------------------------------------------------------
 
 function CalendarPage({ profile }) {
-  const [rounds,  setRounds]  = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [loaded,  setLoaded]  = useState(false);
+  const [rounds,    setRounds]    = useState(null);
+  const [loading,   setLoading]   = useState(true);
+  const [loaded,    setLoaded]    = useState(false);
   const [advancing, setAdvancing] = useState(null);
+  const [selected,  setSelected]  = useState(null);
 
   async function load() {
     const { data } = await sbFetch('rounds?order=number&select=*');
@@ -5191,6 +5595,7 @@ function CalendarPage({ profile }) {
   }
 
   if (!loaded) { setLoaded(true); if (sbClient) load(); else { setLoading(false); setRounds([]); } }
+  if (selected) return <RoundDetail round={selected} onBack={() => setSelected(null)} />;
   if (loading) return <Spinner />;
 
   const isGM = profile?.role === 'gm' || profile?.role === 'admin';
@@ -5321,8 +5726,11 @@ function CalendarPage({ profile }) {
           const sc = STATE_COLOR[r.state] || '#55556A';
           const done = r.state === 'complete';
           return (
-            <Card key={r.id} style={{ opacity: done ? 0.65 : 1,
-              borderLeft:`3px solid ${done ? '#00C46A' : sc}` }}>
+            <Card key={r.id}
+              onClick={done ? () => setSelected(r) : undefined}
+              style={{ cursor: done ? 'pointer' : 'default',
+                borderLeft:`3px solid ${done ? '#00C46A' : sc}`,
+                transition:'opacity .15s' }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                 <div style={{ display:'flex', gap:14, alignItems:'center' }}>
                   <div style={{ fontWeight:900, fontSize:18, color:done?'#00C46A':'#55556A',
