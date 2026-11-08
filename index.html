@@ -25267,10 +25267,39 @@ function GMRaceControl({ sbUser }) {
 
   if (!loaded) { setLoaded(true); if (sbClient) loadRounds(); }
 
+  // Map a free-form driving style string to one of the engine's style IDs
+  function mapDrivingStyle(ds) {
+    if (!ds) return 'technical';
+    const lower = ds.toLowerCase();
+    const ENGINE_STYLES = ['charger','technical','smooth','aggressive','qualifier','defender','strategist','ironman'];
+    return ENGINE_STYLES.find(s => lower.includes(s)) || 'technical';
+  }
+
+  // Parse a comma-separated track name string into engine track IDs
+  function parseTrackIds(str) {
+    if (!str) return [];
+    return str.split(',').map(s => {
+      const q = s.trim().toLowerCase().replace(/[^a-z]/g,'');
+      const hit = TRACKS.find(t =>
+        t.id === q ||
+        t.name.toLowerCase().replace(/[^a-z]/g,'').includes(q) ||
+        q.includes(t.id)
+      );
+      return hit ? hit.id : null;
+    }).filter(Boolean);
+  }
+
+  // Build a 3-letter abbreviation from last name (Smith → SMI)
+  function makeAbbr(name) {
+    const parts = (name||'').trim().split(/\s+/);
+    const last  = parts[parts.length - 1] || parts[0] || '???';
+    return last.substring(0, 3).toUpperCase();
+  }
+
   async function loadLeagueData() {
     setLoadingLeague(true);
     const [dr, tr] = await Promise.all([
-      sbFetch('league_drivers?select=*,characters(name,pace,consistency,wet,overtaking,defense,experience,mental,style),league_teams(id,name,color,car_pace,reliability,pit_speed,tyre_life)'),
+      sbFetch('league_drivers?select=*,characters(name,number,pace,consistency,wet,overtaking,defense,experience,mental,driving_style,good_tracks,bad_tracks),league_teams(id,name,color,car_pace,reliability,pit_speed,tyre_life,strategy)'),
       sbFetch('league_teams?select=*'),
     ]);
     const rawDrivers = (dr.data||[]).filter(d => d.characters);
@@ -25278,7 +25307,8 @@ function GMRaceControl({ sbUser }) {
 
     // Map to engine format
     const engTeams = rawTeams.map(t => ({
-      id: t.id, tier: t.tier||'mid', strategy:'reactive',
+      id: t.id, tier: t.tier||'mid',
+      strategy: t.strategy || 'reactive',
       name: t.name, abbr:(t.name||'UNK').substring(0,3).toUpperCase(),
       color: t.color||'#888888', tc:'#fff',
       basePitSpeed: t.pit_speed||80, carPace:t.car_pace||70,
@@ -25290,18 +25320,22 @@ function GMRaceControl({ sbUser }) {
       const c   = d.characters;
       const tid = _optionalChain([d, 'access', _259 => _259.league_teams, 'optionalAccess', _260 => _260.id]) || d.team_id;
       return {
-        id: d.id.slice(0,8), name: c.name,
-        abbr: (c.name||'???').substring(0,3).toUpperCase(),
-        num: d.number||99, teamId: tid,
-        pace:        c.pace||70,
-        consistency: c.consistency||70,
-        wet:         c.wet||70,
-        overtaking:  c.overtaking||70,
-        defense:     c.defense||70,
-        experience:  c.experience||50,
-        mental:      c.mental||7,
-        style:       c.style||'balanced',
-        goodTracks:[], badTracks:[], rivals:[],
+        id:          d.id.slice(0, 8),
+        name:        c.name,
+        abbr:        makeAbbr(c.name),
+        num:         d.number || c.number || 99,
+        teamId:      tid,
+        pace:        c.pace        || 70,
+        consistency: c.consistency || 70,
+        wet:         c.wet         || 70,
+        overtaking:  c.overtaking  || 70,
+        defense:     c.defense     || 70,
+        experience:  c.experience  || 50,
+        mental:      c.mental      || 7,
+        style:       mapDrivingStyle(c.driving_style),
+        goodTracks:  parseTrackIds(c.good_tracks),
+        badTracks:   parseTrackIds(c.bad_tracks),
+        rivals:      [],
       };
     });
 
