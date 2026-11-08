@@ -5003,8 +5003,9 @@ function CalendarPage({ profile }) {
 
 // -- Statistics Page ----------------------------------------------------------
 
-function StatsPage() {
+function StatsPage({ sbUser }) {
   const [sessions, setSessions] = useState(null);
+  const [myChars,  setMyChars]  = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [loaded,   setLoaded]   = useState(false);
   const [tab,      setTab]      = useState('results');
@@ -5012,27 +5013,61 @@ function StatsPage() {
   if (!loaded) {
     setLoaded(true);
     if (sbClient) {
-      sbFetch('session_runs?order=created_at.desc&limit=100&select=*')
-        .then(({ data }) => { setSessions(data||[]); setLoading(false); });
+      Promise.all([
+        sbFetch('session_runs?order=created_at.desc&limit=100&select=*'),
+        sbUser ? sbFetch(`characters?owner_id=eq.${sbUser.id}&select=*`) : Promise.resolve({ data:[] }),
+      ]).then(([sr, cr]) => {
+        setSessions(sr.data||[]);
+        setMyChars(cr.data||[]);
+        setLoading(false);
+      });
     } else setLoading(false);
   }
 
   if (loading) return <Spinner />;
 
-  // Tally wins and podiums from session_runs where status=final
-  const finalSessions = (sessions||[]).filter(s => s.status === 'final' && s.session === 'race');
-  const winsMap = {};
-  finalSessions.forEach(s => {
-    const placements = s.result?.placements || [];
-    placements.slice(0,3).forEach((p, pos) => {
+  // Tally wins and podiums from final race session_runs
+  const finalRace = (sessions||[]).filter(s => s.status === 'final' && s.session === 'race');
+  const winsMap   = {};
+  finalRace.forEach(s => {
+    (s.result?.placements || []).slice(0,3).forEach((p, pos) => {
       const name = p.driver || p.name || '';
       if (!name) return;
-      if (!winsMap[name]) winsMap[name] = { name, wins:0, podiums:0 };
+      if (!winsMap[name]) winsMap[name] = { name, wins:0, podiums:0, races:0, bestFinish:99 };
       if (pos === 0) winsMap[name].wins++;
       winsMap[name].podiums++;
     });
   });
+  // Count appearances
+  finalRace.forEach(s => {
+    (s.result?.placements || []).forEach((p, pos) => {
+      const name = p.driver || p.name || '';
+      if (!name) return;
+      if (!winsMap[name]) winsMap[name] = { name, wins:0, podiums:0, races:0, bestFinish:99 };
+      winsMap[name].races++;
+      if (pos + 1 < winsMap[name].bestFinish) winsMap[name].bestFinish = pos + 1;
+    });
+  });
   const winRows = Object.values(winsMap).sort((a,b) => b.wins - a.wins || b.podiums - a.podiums);
+
+  // Build per-character career stats for my characters
+  function charCareer(char) {
+    const name = char.name;
+    let appearances = 0, wins = 0, podiums = 0, bestFinish = 99, totalPoints = 0;
+    const F1_PTS = [25,18,15,12,10,8,6,4,2,1];
+    finalRace.forEach(s => {
+      (s.result?.placements||[]).forEach((p, pos) => {
+        const pname = p.driver || p.name || '';
+        if (pname !== name) return;
+        appearances++;
+        if (pos === 0) wins++;
+        if (pos < 3) podiums++;
+        if (pos + 1 < bestFinish) bestFinish = pos + 1;
+        totalPoints += F1_PTS[pos] || 0;
+      });
+    });
+    return { appearances, wins, podiums, bestFinish: bestFinish === 99 ? '-' : `P${bestFinish}`, points: totalPoints };
+  }
 
   return (
     <div>
@@ -5040,7 +5075,7 @@ function StatsPage() {
       <div style={{ ...T.h1, marginBottom:24 }}>Statistics</div>
 
       <div style={{ display:'flex', gap:4, marginBottom:20 }}>
-        {[['results','Race Results'],['wins','Wins Table']].map(([id,label]) => (
+        {[['results','Race Results'],['wins','Wins Table'],['my','My Career']].map(([id,label]) => (
           <button key={id} onClick={() => setTab(id)}
             style={{ padding:'8px 18px', border:'none', borderRadius:6, fontSize:13, fontWeight:600,
               cursor:'pointer', background: tab === id ? '#E8002D' : '#111114',
@@ -5062,12 +5097,12 @@ function StatsPage() {
                 <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
                   <div>
                     <div style={{ ...T.h3 }}>
-                      {s.session === 'qualifying' ? 'Qualifying' : 'Race'} &mdash; Round {
-                        s.round_id ? s.round_id.slice(0,8) : 'unknown'}
+                      {s.session === 'qualifying' ? 'Qualifying' : 'Race'}
                     </div>
                     <div style={{ ...T.sub, fontSize:12 }}>
                       {new Date(s.created_at||Date.now()).toLocaleString()}
                       <span style={{ marginLeft:8 }}>{s.run_count}x simulations</span>
+                      {s.league_mode && <span style={{ marginLeft:8, color:'#3B8EFF' }}>League</span>}
                     </div>
                   </div>
                   <Badge color={s.status==='final'?'#00C46A':s.status==='provisional'?'#FF9500':'#55556A'}>
@@ -5078,16 +5113,14 @@ function StatsPage() {
                   <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
                     {s.result.placements.slice(0,5).map((p,pi) => (
                       <div key={pi} style={{ display:'flex', gap:10, fontSize:12, alignItems:'center' }}>
-                        <span style={{ fontWeight:800, color:pi<3?['#FFD700','#C0C0C0','#CD7F32'][pi]:'#55556A',
+                        <span style={{ fontWeight:900, color:pi<3?['#FFD700','#C0C0C0','#CD7F32'][pi]:'#55556A',
                           width:28, fontFamily:FONT_HEAD }}>P{pi+1}</span>
                         <span style={{ ...T.body }}>{p.driver||p.name||''}</span>
                         <span style={{ ...T.sub }}>{p.time||p.lapTime||p.teamId||''}</span>
                       </div>
                     ))}
                     {s.result.placements.length > 5 && (
-                      <div style={{ ...T.cap, color:'#55556A' }}>
-                        + {s.result.placements.length - 5} more
-                      </div>
+                      <div style={{ ...T.cap, color:'#55556A' }}>+ {s.result.placements.length - 5} more</div>
                     )}
                   </div>
                 )}
@@ -5104,22 +5137,106 @@ function StatsPage() {
               sub="Wins and podiums are tallied from confirmed race results" />
           ) : (
             <Card style={{ padding:0, overflow:'hidden' }}>
-              <div style={{ display:'grid', gridTemplateColumns:'48px 1fr 80px 80px',
+              <div style={{ display:'grid', gridTemplateColumns:'48px 1fr 70px 80px 80px 80px',
                 padding:'10px 16px', background:'#111114', borderBottom:'1px solid #252530' }}>
-                {['Pos','Driver','Wins','Podiums'].map(h => <span key={h} style={{ ...T.cap }}>{h}</span>)}
+                {['Pos','Driver','Races','Wins','Podiums','Best'].map(h =>
+                  <span key={h} style={{ ...T.cap }}>{h}</span>)}
               </div>
               {winRows.map((r, i) => (
-                <div key={r.name} style={{ display:'grid', gridTemplateColumns:'48px 1fr 80px 80px',
-                  padding:'12px 16px', borderBottom: i < winRows.length-1 ? '1px solid #252530' : 'none',
+                <div key={r.name} style={{
+                  display:'grid', gridTemplateColumns:'48px 1fr 70px 80px 80px 80px',
+                  padding:'12px 16px',
+                  borderBottom: i < winRows.length-1 ? '1px solid #252530' : 'none',
                   alignItems:'center' }}>
-                  <div style={{ fontWeight:900, fontSize:16, color:i<3?['#FFD700','#C0C0C0','#CD7F32'][i]:'#55556A',
-                    fontFamily:FONT_HEAD }}>{i+1}</div>
+                  <div style={{ fontWeight:900, fontSize:14, fontFamily:FONT_HEAD,
+                    color: i<3?['#FFD700','#C0C0C0','#CD7F32'][i]:'#55556A' }}>{i+1}</div>
                   <div style={{ ...T.body, fontWeight:600 }}>{r.name}</div>
+                  <div style={{ ...T.sub }}>{r.races}</div>
                   <div style={{ fontWeight:900, fontSize:16, color:'#FFD700', fontFamily:FONT_HEAD }}>{r.wins}</div>
-                  <div style={{ fontWeight:700, fontSize:14, color:'#F0F0F5' }}>{r.podiums}</div>
+                  <div style={{ fontWeight:700, fontSize:14 }}>{r.podiums}</div>
+                  <div style={{ ...T.sub }}>P{r.bestFinish}</div>
                 </div>
               ))}
             </Card>
+          )}
+        </div>
+      )}
+
+      {tab === 'my' && (
+        <div>
+          {(!myChars || myChars.length === 0) ? (
+            <EmptyState title="No characters yet"
+              sub="Create a character to track your career statistics" />
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+              {myChars.map(c => {
+                const career = charCareer(c);
+                const isDriver = c.type === 'driver';
+                return (
+                  <Card key={c.id}>
+                    {/* Character header */}
+                    <div style={{ display:'flex', alignItems:'center', gap:14, marginBottom:16 }}>
+                      <div style={{ width:50, height:50, borderRadius:'50%', background:'#252530',
+                        display:'flex', alignItems:'center', justifyContent:'center',
+                        fontSize:18, fontWeight:900, color:'#E8002D', fontFamily:FONT_HEAD }}>
+                        {c.number || (c.name||'?')[0].toUpperCase()}
+                      </div>
+                      <div style={{ flex:1 }}>
+                        <div style={{ ...T.h2, marginBottom:2 }}>{c.name}</div>
+                        <div style={{ display:'flex', gap:6 }}>
+                          <Badge color="#3B8EFF">{c.type}</Badge>
+                          {c.nationality && <Badge color="#55556A">{c.nationality}</Badge>}
+                          <Badge color={c.is_active ? '#00C46A' : '#55556A'}>
+                            {c.is_active ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Career stat tiles */}
+                    <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:16 }}>
+                      {[
+                        ['Races', career.appearances, '#F0F0F5'],
+                        ['Wins',  career.wins,         '#FFD700'],
+                        ['Podiums',career.podiums,     '#E8002D'],
+                        ['Best',  career.bestFinish,   '#3B8EFF'],
+                      ].map(([l,v,c]) => (
+                        <div key={l} style={{ background:'#111114', borderRadius:8, padding:'10px 12px',
+                          textAlign:'center' }}>
+                          <div style={{ fontSize:22, fontWeight:900, color:c,
+                            fontFamily:FONT_HEAD, lineHeight:1 }}>{v}</div>
+                          <div style={{ ...T.cap, marginTop:4 }}>{l}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Driver stat bars */}
+                    {isDriver && (c.pace || c.consistency) && (
+                      <div>
+                        <div style={{ ...T.cap, color:'#E8002D', marginBottom:8 }}>Driver Stats</div>
+                        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 20px' }}>
+                          {[['Pace',c.pace,'#E8002D'],['Consistency',c.consistency,'#3B8EFF'],
+                            ['Wet',c.wet,'#3B8EFF'],['Overtaking',c.overtaking,'#FF9500'],
+                            ['Defense',c.defense,'#FF9500'],['Experience',c.experience,'#55556A']
+                          ].map(([label,val,color]) => val ? (
+                            <div key={label} style={{ marginBottom:8 }}>
+                              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
+                                <span style={{ ...T.cap }}>{label}</span>
+                                <span style={{ fontSize:12, fontWeight:700, color }}>{val}</span>
+                              </div>
+                              <div style={{ height:3, background:'#252530', borderRadius:2 }}>
+                                <div style={{ height:'100%', background:color, borderRadius:2,
+                                  width:`${val}%` }} />
+                              </div>
+                            </div>
+                          ) : null)}
+                        </div>
+                      </div>
+                    )}
+                  </Card>
+                );
+              })}
+            </div>
           )}
         </div>
       )}
@@ -5130,17 +5247,26 @@ function StatsPage() {
 // -- Notifications Page -------------------------------------------------------
 
 function NotificationsPage({ sbUser, onRead }) {
-  const [notifs, setNotifs] = useState(null);
+  const [notifs,  setNotifs]  = useState(null);
+  const [news,    setNews]    = useState(null);
   const [loading, setLoading] = useState(true);
-  const [loaded, setLoaded] = useState(false);
+  const [loaded,  setLoaded]  = useState(false);
+  const [tab,     setTab]     = useState('notifications');
 
-  if (!loaded) {
-    setLoaded(true);
-    if (sbClient && sbUser) {
-      sbFetch(`notifications?recipient_id=eq.${sbUser.id}&order=created_at.desc&limit=50`)
-        .then(({ data }) => { setNotifs(data || []); setLoading(false); onRead && onRead(); });
-    } else { setLoading(false); setNotifs([]); }
+  async function load() {
+    const promises = [
+      sbUser ? sbFetch(`notifications?recipient_id=eq.${sbUser.id}&order=created_at.desc&limit=50`) : Promise.resolve({ data:[] }),
+      sbFetch('news_posts?order=created_at.desc&limit=50&select=*,profiles!author_id(username,display_name)'),
+    ];
+    const [nr, news_r] = await Promise.all(promises);
+    setNotifs(nr.data || []);
+    setNews(news_r.data || []);
+    setLoading(false);
+    onRead && onRead();
   }
+
+  if (!loaded) { setLoaded(true); if (sbClient) load(); else { setLoading(false); setNotifs([]); setNews([]); } }
+  if (loading) return <Spinner />;
 
   async function markRead(id) {
     await sbFetch(`notifications?id=eq.${id}`, {
@@ -5149,28 +5275,158 @@ function NotificationsPage({ sbUser, onRead }) {
     setNotifs(n => n.map(x => x.id === id ? { ...x, read_at: new Date().toISOString() } : x));
   }
 
-  if (loading) return <Spinner />;
-  if (!notifs || notifs.length === 0) {
-    return <EmptyState title="No notifications" sub="You are all caught up!" />;
+  async function markAllRead() {
+    const unread = (notifs||[]).filter(n => !n.read_at);
+    await Promise.all(unread.map(n =>
+      sbFetch(`notifications?id=eq.${n.id}`, {
+        method:'PATCH', body: JSON.stringify({ read_at: new Date().toISOString() })
+      })
+    ));
+    setNotifs(ns => ns.map(n => ({ ...n, read_at: n.read_at || new Date().toISOString() })));
   }
+
+  const unreadCount = (notifs||[]).filter(n => !n.read_at).length;
+
+  const NOTIF_ICON = {
+    application_submitted: '[APP]',
+    application_decided:   '[DEC]',
+    result_published:      '[RES]',
+    round_state_changed:   '[RND]',
+    announcement:          '[ANN]',
+  };
+  const NOTIF_COLOR = {
+    application_submitted: '#3B8EFF',
+    application_decided:   '#00C46A',
+    result_published:      '#FFD700',
+    round_state_changed:   '#FF9500',
+    announcement:          '#E8002D',
+  };
+
+  const categoryLabel = k => ({
+    drivers_championship: 'Drivers',
+    constructors_championship: 'Constructors',
+    race_result: 'Race',
+    qualifying_result: 'Qualifying',
+    transfer: 'Transfer',
+    announcement: 'Announcement',
+    general: 'General',
+  })[k] || 'News';
+  const categoryColor = k => ({
+    race_result: '#E8002D',
+    qualifying_result: '#3B8EFF',
+    transfer: '#FF9500',
+    announcement: '#E8002D',
+  })[k] || '#55556A';
 
   return (
     <div>
-      <div style={{ ...T.h1, marginBottom:24 }}>Notifications</div>
-      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-        {notifs.map(n => (
-          <Card key={n.id} style={{ opacity: n.read_at ? .6 : 1 }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
-              <div>
-                <div style={{ ...T.body, fontWeight: n.read_at ? 400 : 600 }}>{n.kind}</div>
-                {n.payload?.message && <div style={{ ...T.sub, marginTop:4 }}>{n.payload.message}</div>}
-                <div style={{ ...T.cap, marginTop:6 }}>{new Date(n.created_at).toLocaleString()}</div>
-              </div>
-              {!n.read_at && <Button variant="ghost" size="sm" onClick={() => markRead(n.id)}>Mark Read</Button>}
-            </div>
-          </Card>
+      <div style={{ ...T.cap, color:'#E8002D', marginBottom:4 }}>Inbox</div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+        <div style={{ ...T.h1 }}>Notifications</div>
+        {unreadCount > 0 && tab === 'notifications' && (
+          <Button size="sm" variant="secondary" onClick={markAllRead}>
+            Mark all read
+          </Button>
+        )}
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display:'flex', gap:4, marginBottom:20 }}>
+        {[['notifications', `Notifications${unreadCount > 0 ? ` (${unreadCount})` : ''}`],
+          ['news', 'League News']].map(([id,label]) => (
+          <button key={id} onClick={() => setTab(id)}
+            style={{ padding:'8px 18px', border:'none', borderRadius:6, fontSize:13, fontWeight:600,
+              cursor:'pointer', background: tab === id ? '#E8002D' : '#111114',
+              color: tab === id ? '#fff' : '#8888A0', fontFamily:FONT_BODY }}>
+            {label}
+          </button>
         ))}
       </div>
+
+      {/* Personal notifications */}
+      {tab === 'notifications' && (
+        <div>
+          {(!notifs || notifs.length === 0) && (
+            <EmptyState title="All caught up" sub="No notifications yet" />
+          )}
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {(notifs||[]).map(n => {
+              const color = NOTIF_COLOR[n.kind] || '#55556A';
+              return (
+                <Card key={n.id}
+                  style={{ opacity: n.read_at ? .6 : 1, borderLeft:`3px solid ${n.read_at?'#252530':color}` }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
+                    <div style={{ flex:1 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+                        {!n.read_at && (
+                          <div style={{ width:7, height:7, borderRadius:'50%', background:color, flexShrink:0 }} />
+                        )}
+                        <div style={{ ...T.cap, color }}>
+                          {NOTIF_ICON[n.kind] || '[!]'} {n.kind?.replace(/_/g,' ')}
+                        </div>
+                      </div>
+                      {n.payload?.message && (
+                        <div style={{ ...T.body, marginBottom:4 }}>{n.payload.message}</div>
+                      )}
+                      {n.payload?.character_name && (
+                        <div style={{ ...T.sub, fontSize:12 }}>Character: {n.payload.character_name}</div>
+                      )}
+                      <div style={{ ...T.cap, marginTop:6 }}>
+                        {new Date(n.created_at).toLocaleString()}
+                      </div>
+                    </div>
+                    {!n.read_at && (
+                      <button onClick={() => markRead(n.id)}
+                        style={{ background:'none', border:'none', color:'#55556A',
+                          cursor:'pointer', fontSize:11, fontFamily:FONT_MONO, padding:'2px 6px' }}>
+                        Dismiss
+                      </button>
+                    )}
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* League news */}
+      {tab === 'news' && (
+        <div>
+          {(!news || news.length === 0) && (
+            <EmptyState title="No announcements yet"
+              sub="League news and announcements will appear here" />
+          )}
+          <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+            {(news||[]).map(post => {
+              const color = categoryColor(post.category);
+              return (
+                <Card key={post.id} style={{ borderLeft:`3px solid ${color}` }}>
+                  {post.pinned && (
+                    <div style={{ ...T.cap, color:'#FFD700', marginBottom:6 }}>PINNED</div>
+                  )}
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start',
+                    marginBottom:8 }}>
+                    <div>
+                      <Badge color={color} style={{ marginBottom:8 }}>
+                        {categoryLabel(post.category)}
+                      </Badge>
+                      <div style={{ ...T.h2 }}>{post.title}</div>
+                    </div>
+                  </div>
+                  <div style={{ ...T.body, lineHeight:1.8, marginBottom:12 }}>
+                    {post.body}
+                  </div>
+                  <div style={{ ...T.cap, color:'#55556A' }}>
+                    Posted by {post.profiles?.display_name || post.profiles?.username || 'GM'}
+                    {' '}&mdash; {new Date(post.created_at).toLocaleString()}
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -5379,6 +5635,8 @@ function GMControlPage({ sbUser, setPage: _setPage }) {
     { id:'characters',    label:'Characters' },
     { id:'teams',         label:'Teams' },
     { id:'stats',         label:'Edit Stats' },
+    { id:'contracts',     label:'Contracts' },
+    { id:'news',          label:'News' },
     { id:'race',          label:'Race Control' },
     { id:'audit',         label:'Audit Log' },
   ];
@@ -5410,6 +5668,8 @@ function GMControlPage({ sbUser, setPage: _setPage }) {
       {tab === 'characters'    && <GMCharacters />}
       {tab === 'teams'         && <GMTeams />}
       {tab === 'stats'        && <GMStats />}
+      {tab === 'contracts'    && <GMContracts />}
+      {tab === 'news'         && <GMNews sbUser={sbUser} />}
       {tab === 'race'         && <GMRaceControl sbUser={sbUser} />}
       {tab === 'audit'        && <GMAuditLog />}
     </div>
@@ -6154,6 +6414,305 @@ function GMTeams() {
   );
 }
 
+function GMNews({ sbUser }) {
+  const [posts,   setPosts]   = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loaded,  setLoaded]  = useState(false);
+  const [creating,setCreating]= useState(false);
+  const [saving,  setSaving]  = useState(false);
+  const [form,    setForm]    = useState({ title:'', body:'', category:'announcement', pinned:false });
+  const set = (k,v) => setForm(f => ({...f,[k]:v}));
+
+  async function load() {
+    const { data } = await sbFetch('news_posts?order=created_at.desc&limit=100&select=*,profiles!author_id(username)');
+    setPosts(data||[]); setLoading(false);
+  }
+
+  if (!loaded) { setLoaded(true); if (sbClient) load(); else setLoading(false); }
+  if (loading) return <Spinner />;
+
+  async function createPost() {
+    if (!form.title.trim()) return;
+    setSaving(true);
+    await sbFetch('news_posts', {
+      method:'POST',
+      body: JSON.stringify({ ...form, author_id: sbUser?.id })
+    });
+    setSaving(false);
+    setCreating(false);
+    setForm({ title:'', body:'', category:'announcement', pinned:false });
+    setLoaded(false); setLoading(true); load();
+  }
+
+  async function deletePost(id) {
+    await sbFetch(`news_posts?id=eq.${id}`, { method:'DELETE' });
+    setPosts(p => p.filter(x => x.id !== id));
+  }
+
+  async function togglePin(post) {
+    await sbFetch(`news_posts?id=eq.${post.id}`, {
+      method:'PATCH', body: JSON.stringify({ pinned: !post.pinned })
+    });
+    setPosts(p => p.map(x => x.id === post.id ? {...x, pinned:!x.pinned} : x));
+  }
+
+  const CATEGORIES = ['announcement','race_result','qualifying_result','transfer','drivers_championship',
+    'constructors_championship','general'];
+  const catColor = k => ({ race_result:'#E8002D', qualifying_result:'#3B8EFF', transfer:'#FF9500',
+    announcement:'#E8002D', drivers_championship:'#FFD700' })[k] || '#55556A';
+
+  return (
+    <div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+        <div style={{ ...T.h3 }}>League News</div>
+        <Button onClick={() => setCreating(!creating)}>+ New Post</Button>
+      </div>
+
+      {creating && (
+        <Card style={{ marginBottom:20 }}>
+          <div style={{ ...T.cap, color:'#E8002D', marginBottom:10 }}>Create Post</div>
+          <Input label="Headline" value={form.title} onChange={v => set('title',v)}
+            placeholder="e.g. Round 3 Results: Verstappen Dominates Monaco" />
+          <Textarea label="Body" value={form.body} onChange={v => set('body',v)}
+            placeholder="Full announcement text..." rows={6} />
+          <Select label="Category" value={form.category} onChange={v => set('category',v)}
+            options={CATEGORIES.map(c => ({ value:c, label:c.replace(/_/g,' ') }))} />
+          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
+            <label style={{ ...T.cap }}>Pin to top</label>
+            <input type="checkbox" checked={form.pinned}
+              onChange={e => set('pinned', e.target.checked)}
+              style={{ width:16, height:16, accentColor:'#FFD700' }} />
+          </div>
+          <div style={{ display:'flex', gap:10 }}>
+            <Button onClick={createPost} disabled={saving}>{saving?'Posting...':'Post'}</Button>
+            <Button variant="secondary" onClick={() => setCreating(false)}>Cancel</Button>
+          </div>
+        </Card>
+      )}
+
+      {(!posts || posts.length === 0) && !creating && (
+        <EmptyState title="No posts yet" sub="Post the first league announcement above" />
+      )}
+
+      <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+        {(posts||[]).map(post => (
+          <Card key={post.id} style={{ borderLeft:`3px solid ${catColor(post.category)}` }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
+              <div style={{ flex:1, marginRight:12 }}>
+                {post.pinned && (
+                  <div style={{ ...T.cap, color:'#FFD700', marginBottom:4 }}>PINNED</div>
+                )}
+                <Badge color={catColor(post.category)} style={{ marginBottom:6 }}>
+                  {post.category?.replace(/_/g,' ')}
+                </Badge>
+                <div style={{ ...T.h3, marginBottom:6 }}>{post.title}</div>
+                {post.body && (
+                  <div style={{ ...T.sub, fontSize:13, lineHeight:1.7, marginBottom:8 }}>
+                    {post.body.length > 200 ? post.body.slice(0,200) + '...' : post.body}
+                  </div>
+                )}
+                <div style={{ ...T.cap, color:'#55556A' }}>
+                  {post.profiles?.username || 'GM'} &middot; {new Date(post.created_at).toLocaleString()}
+                </div>
+              </div>
+              <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                <Button size="sm" variant="secondary" onClick={() => togglePin(post)}>
+                  {post.pinned ? 'Unpin' : 'Pin'}
+                </Button>
+                <Button size="sm" variant="danger" onClick={() => deletePost(post.id)}>Delete</Button>
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function GMContracts() {
+  const [drivers,  setDrivers]  = useState(null);
+  const [teams,    setTeams]    = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [loaded,   setLoaded]   = useState(false);
+  const [transferring, setTransferring] = useState(null); // { driverId, teamId: '' }
+  const [saving,   setSaving]   = useState(false);
+
+  async function load() {
+    const [dr, tr] = await Promise.all([
+      sbFetch('league_drivers?select=*,characters(name,type,is_active,nationality),league_teams(id,name,color)&order=created_at.asc'),
+      sbFetch('league_teams?order=name&select=id,name,color'),
+    ]);
+    setDrivers(dr.data||[]);
+    setTeams(tr.data||[]);
+    setLoading(false);
+  }
+
+  if (!loaded) { setLoaded(true); if (sbClient) load(); else setLoading(false); }
+  if (loading) return <Spinner />;
+
+  // Count slots per team
+  const teamSlots = {};
+  (drivers||[]).forEach(d => {
+    const tid = d.team_id;
+    if (!teamSlots[tid]) teamSlots[tid] = { drivers:0, staff:0 };
+    if (d.characters?.type === 'driver') teamSlots[tid].drivers++;
+    else teamSlots[tid].staff++;
+  });
+
+  async function transfer(driverId, newTeamId) {
+    setSaving(true);
+    await sbFetch(`league_drivers?id=eq.${driverId}`, {
+      method:'PATCH', body: JSON.stringify({ team_id: newTeamId })
+    });
+    setSaving(false);
+    setTransferring(null);
+    setLoaded(false); setLoading(true); load();
+  }
+
+  async function release(driverId) {
+    await sbFetch(`league_drivers?id=eq.${driverId}`, { method:'DELETE' });
+    setDrivers(d => d.filter(x => x.id !== driverId));
+  }
+
+  // Group by team
+  const teamMap = {};
+  (drivers||[]).forEach(d => {
+    const tid = d.team_id;
+    if (!teamMap[tid]) {
+      const team = d.league_teams || teams.find(t => t.id === tid) || { id:tid, name:'Unknown', color:'#55556A' };
+      teamMap[tid] = { team, members: [] };
+    }
+    teamMap[tid].members.push(d);
+  });
+  const teamGroups = Object.values(teamMap).sort((a,b) => a.team.name.localeCompare(b.team.name));
+  const freeAgents = (drivers||[]).filter(d => !d.team_id);
+
+  return (
+    <div>
+      {/* Slot summary */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:10, marginBottom:24 }}>
+        {teams.map(t => {
+          const slots = teamSlots[t.id] || { drivers:0, staff:0 };
+          const full = slots.drivers >= 2;
+          return (
+            <Card key={t.id} style={{ padding:'12px 14px' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
+                <div style={{ width:4, height:28, borderRadius:2, background:t.color||'#55556A' }} />
+                <div style={{ ...T.body, fontWeight:600, fontSize:13 }}>{t.name}</div>
+              </div>
+              <div style={{ display:'flex', gap:10 }}>
+                <div>
+                  <div style={{ fontSize:18, fontWeight:900, fontFamily:FONT_HEAD,
+                    color: full ? '#00C46A' : '#F0F0F5' }}>{slots.drivers}/2</div>
+                  <div style={{ ...T.cap, fontSize:9 }}>Drivers</div>
+                </div>
+                <div>
+                  <div style={{ fontSize:18, fontWeight:900, fontFamily:FONT_HEAD,
+                    color:'#F0F0F5' }}>{slots.staff}</div>
+                  <div style={{ ...T.cap, fontSize:9 }}>Staff</div>
+                </div>
+                {full && <Badge color="#00C46A" style={{ alignSelf:'center', marginLeft:'auto' }}>Full</Badge>}
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* Team rosters */}
+      {teamGroups.map(({ team, members }) => (
+        <div key={team.id} style={{ marginBottom:20 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+            <div style={{ width:4, height:20, borderRadius:2, background:team.color||'#55556A' }} />
+            <div style={{ ...T.h3 }}>{team.name}</div>
+            <div style={{ ...T.cap }}>{members.length} member{members.length!==1?'s':''}</div>
+          </div>
+          <Card style={{ padding:0, overflow:'hidden' }}>
+            {members.map((d, i) => {
+              const isTrans = transferring?.driverId === d.id;
+              return (
+                <div key={d.id}>
+                  <div style={{ display:'flex', alignItems:'center', gap:12, padding:'11px 16px',
+                    borderBottom: (i < members.length-1 || isTrans) ? '1px solid #252530' : 'none' }}>
+                    <div style={{ width:34, height:34, borderRadius:'50%',
+                      background:(team.color||'#55556A')+'22',
+                      display:'flex', alignItems:'center', justifyContent:'center',
+                      fontSize:13, fontWeight:800, color:team.color||'#55556A', fontFamily:FONT_HEAD }}>
+                      {d.number || (d.characters?.name||'?')[0].toUpperCase()}
+                    </div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                        <span style={{ ...T.body, fontWeight:600 }}>
+                          {d.characters?.name || d.name || 'Unknown'}
+                        </span>
+                        <Badge color={d.characters?.type==='driver'?'#3B8EFF':'#FF9500'}>
+                          {d.characters?.type || 'unknown'}
+                        </Badge>
+                      </div>
+                      {d.characters?.nationality && (
+                        <div style={{ ...T.cap }}>{d.characters.nationality}</div>
+                      )}
+                    </div>
+                    <div style={{ display:'flex', gap:8 }}>
+                      <Button size="sm" variant="secondary"
+                        onClick={() => setTransferring({ driverId:d.id, teamId:'' })}>
+                        Transfer
+                      </Button>
+                      <Button size="sm" variant="danger" onClick={() => release(d.id)}>
+                        Release
+                      </Button>
+                    </div>
+                  </div>
+                  {isTrans && (
+                    <div style={{ padding:'10px 16px', background:'#111114',
+                      borderBottom: i < members.length-1 ? '1px solid #252530' : 'none' }}>
+                      <Select label="Transfer to Team" value={transferring.teamId}
+                        onChange={v => setTransferring(t => ({...t, teamId:v}))}
+                        options={[{value:'',label:'Select team...'},
+                          ...teams.filter(t => t.id !== team.id).map(t => ({value:t.id,label:t.name}))]} />
+                      <div style={{ display:'flex', gap:8, marginTop:8 }}>
+                        <Button size="sm" variant="success"
+                          disabled={!transferring.teamId || saving}
+                          onClick={() => transfer(d.id, transferring.teamId)}>
+                          {saving ? 'Moving...' : 'Confirm Transfer'}
+                        </Button>
+                        <Button size="sm" variant="secondary" onClick={() => setTransferring(null)}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </Card>
+        </div>
+      ))}
+
+      {freeAgents.length > 0 && (
+        <div>
+          <div style={{ ...T.h3, marginBottom:10 }}>Free Agents ({freeAgents.length})</div>
+          <Card style={{ padding:0, overflow:'hidden' }}>
+            {freeAgents.map((d, i) => (
+              <div key={d.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'11px 16px',
+                borderBottom: i < freeAgents.length-1 ? '1px solid #252530' : 'none' }}>
+                <div style={{ flex:1 }}>
+                  <span style={{ ...T.body }}>{d.characters?.name || 'Unknown'}</span>
+                  <Badge color="#55556A" style={{ marginLeft:8 }}>{d.characters?.type}</Badge>
+                </div>
+              </div>
+            ))}
+          </Card>
+        </div>
+      )}
+
+      {(!drivers || drivers.length === 0) && (
+        <EmptyState title="No assigned characters"
+          sub="Characters appear here once assigned to a team via the Applications tab" />
+      )}
+    </div>
+  );
+}
+
 function GMAuditLog() {
   const [log, setLog] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -6656,7 +7215,7 @@ export default function F1Sim() {
       case 'teams':         return <TeamsPage />;
       case 'championship':  return <ChampionshipPage {...pageProps} />;
       case 'calendar':      return <CalendarPage {...pageProps} />;
-      case 'stats':         return <StatsPage />;
+      case 'stats':         return <StatsPage {...pageProps} />;
       case 'notifications': return <NotificationsPage {...pageProps} onRead={() => setUnreadCount(0)} />;
       case 'settings':      return <SettingsPage {...pageProps} />;
       case 'gm':            return <GMControlPage {...pageProps} />;
