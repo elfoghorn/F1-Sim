@@ -3,6 +3,6 @@
    Never put the secret key (sb_secret_...) or your database password here.
    Use a NEW Supabase project for F1 SIM, not the one another site already uses. */
 window.F1SIM_CONFIG = {
-  supabaseUrl: 'https://YOUR-PROJECT-REF.supabase.co',
-  publishableKey: 'sb_publishable_YOUR-KEY'
+  supabaseUrl: 'https://erwhfnoxmueagqgvexrh.supabase.co',
+  publishableKey: 'sb_publishable_bb8cTEZk4fmDOVRoC01jvg_A2VTI9VJ'
 };
