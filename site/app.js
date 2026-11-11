@@ -1,4 +1,4 @@
-/* F1 SIM f1sim0006: a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM f1sim0007: a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -36,6 +36,11 @@
      planned, plan, ai.wetCall/dryCall    a team's own plan: stops on set laps, and when to
                                           go to wet tyres (early | normal | late) and back
      ai.useSC                             pit under a safety car if a planned stop is near
+     plans: [{ name, stops, wetCall, dryCall, useSC }]   the car's plans, for triggers to switch
+     triggers: [{ when, n, from, to, action, plan, mode, chance }]
+         when: sc | rain | dry | lost | gained | wear      action: plan | mode | box
+         Checked at the end of every lap; acted on with the given % chance, once each.
+     approach: balanced | attacker | defender | tyres   drives the car's mode lap by lap
      startMode                            driving mode at the start
    ===================================================================== */
 (function (root) {
@@ -133,6 +138,45 @@
     }
     for (var lap = 1; lap <= laps; lap++) { if (changes[lap] != null && changes[lap] >= 0) cur = changes[lap]; plan.push(cur); }
     return plan;
+  }
+
+  /* ------------------------------------------------------------ plans, triggers and race approaches */
+  function switchPlan(car, p, s, log, why) {
+    car.plan = (p.stops || []).filter(function (x) { return x.lap > s.lap; }).sort(function (a, b) { return a.lap - b.lap; });
+    car.planned = true; car.planName = p.name || car.planName;
+    car.ai = merge(car.ai || {}, { wetCall: p.wetCall || 'normal', dryCall: p.dryCall || 'normal', useSC: p.useSC !== false });
+    log.push({ kind: 'trigger', ids: [car.id], text: car.driver.code + ': ' + why + ', so the team switches to ' + (p.name || 'another plan') });
+  }
+  var TRIGGER_WHY = { sc: 'safety car', rain: 'rain', dry: 'the track is drying', lost: 'places lost', gained: 'places gained', wear: 'tyres going off' };
+  function checkTriggers(s, r, log, track, scNow) {
+    var prev = s.lap > 1 ? s.track[s.lap - 2] : track, ord = order(s);
+    running(s).forEach(function (car) {
+      (car.triggers || []).forEach(function (t) {
+        if (t.fired || (t.from && s.lap < t.from) || (t.to && s.lap > t.to)) return;
+        var pos = ord.indexOf(car) + 1, life = tyreLife(car.tyre.compound, car, s.circuit), hit = false;
+        if (t.when === 'sc') hit = scNow; else if (t.when === 'rain') hit = track > 0 && prev === 0; else if (t.when === 'dry') hit = track === 0 && prev > 0;
+        else if (t.when === 'lost') hit = pos - car.grid >= (t.n || 3); else if (t.when === 'gained') hit = car.grid - pos >= (t.n || 3);
+        else if (t.when === 'wear') hit = car.tyre.wear / life * 100 >= (t.n || 90);
+        if (!hit) return;
+        t.fired = true;
+        if (r() * 100 >= (t.chance == null ? 100 : t.chance)) { log.push({ kind: 'trigger', ids: [car.id], text: car.driver.code + ': ' + TRIGGER_WHY[t.when] + ', but the team sticks with the plan' }); return; }
+        if (t.action === 'plan' && car.plans[t.plan]) switchPlan(car, car.plans[t.plan], s, log, TRIGGER_WHY[t.when]);
+        else if (t.action === 'mode' && MODES[t.mode]) { car.mode = t.mode; car.modeHold = 6; log.push({ kind: 'trigger', ids: [car.id], text: car.driver.code + ': ' + TRIGGER_WHY[t.when] + ', so the call is ' + MODES[t.mode].label.toLowerCase() }); }
+        else if (t.action === 'box') { car.pendingBox = 'auto'; log.push({ kind: 'trigger', ids: [car.id], text: car.driver.code + ': ' + TRIGGER_WHY[t.when] + ', so the team calls them in' }); }
+      });
+    });
+  }
+  /* The race approach picks the driving mode each lap, unless the pit wall has just made a call. */
+  function applyApproach(s, field) {
+    field.forEach(function (car, i) {
+      if (!car.approach || car.approach === 'balanced') return;
+      if (car.modeHold > 0) { car.modeHold -= 1; return; }
+      var ahead = field[i - 1], behind = field[i + 1], ga = ahead ? car.cum - ahead.cum : 99, gb = behind ? behind.cum - car.cum : 99;
+      var worn = car.tyre.wear > tyreLife(car.tyre.compound, car, s.circuit) * 0.8;
+      if (car.approach === 'attacker') car.mode = ga < 1.2 && !worn ? 'push' : 'standard';
+      else if (car.approach === 'defender') car.mode = gb < 1.0 && !worn ? 'push' : 'standard';
+      else if (car.approach === 'tyres') car.mode = ga > 1.5 && gb > 1.5 ? 'manage' : 'standard';
+    });
   }
 
   /* ------------------------------------------------------------ driver moments
@@ -244,6 +288,7 @@
         grid: i + 1, status: 'running', dnf: null, cum: i * 0.25, lastLap: null, bestLap: null,
         tyre: { compound: comp, wear: 0, age: 0 }, stints: [{ compound: comp, from: 1, to: null }],
         paceAdj: e.paceAdj || 0, form: weekendForm(opts.seed, id, rules), ai: e.ai || {},
+        plans: (e.plans || []).slice(), triggers: (e.triggers || []).map(function (t) { return merge(t, { fired: false }); }), approach: e.approach || null, modeHold: 0,
         used: [comp], stops: 0, mode: MODES[e.startMode] ? e.startMode : 'standard', energy: 60, plan: (e.plan || []).slice().sort(function (a, b) { return a.lap - b.lap; }), planned: !!e.planned, manual: !!e.manual,
         pendingBox: null, refuse: false, positions: [], lapTimes: []
       };
@@ -262,9 +307,10 @@
       var car = s.cars.filter(function (x) { return x.id === c.entry; })[0];
       if (!car || car.status !== 'running') return;
       if (c.type === 'box') car.pendingBox = c.compound || 'auto';
-      else if (c.type === 'mode' && MODES[c.value]) car.mode = c.value;
+      else if (c.type === 'mode' && MODES[c.value]) { car.mode = c.value; car.modeHold = 3; }
       else if (c.type === 'plan') { car.plan = (c.stops || []).filter(function (p) { return p.lap > s.lap; }).sort(function (a, b) { return a.lap - b.lap; }); car.planned = true; }
       else if (c.type === 'strategy') {
+        if (c.plan != null && car.plans[c.plan]) { switchPlan(car, car.plans[c.plan], s, log, 'a call from the pit wall'); return; }
         car.plan = (c.stops || []).filter(function (p) { return p.lap > s.lap; }).sort(function (a, b) { return a.lap - b.lap; });
         car.planned = true; car.planName = c.name || null;
         car.ai = merge(car.ai || {}, { wetCall: c.wetCall || 'normal', dryCall: c.dryCall || 'normal', useSC: c.useSC !== false });
@@ -339,6 +385,7 @@
     var field = order(s), leader0 = field[0] ? field[0].cum : 0;
     var newSc = null;
 
+    if (!s.sc.type) applyApproach(s, field);
     /* raw lap times */
     var raw = {};
     field.forEach(function (car, i) {
@@ -464,6 +511,7 @@
     }
 
     order(s).forEach(function (car, i) { car.positions.push(i + 1); car.lapTimes.push(car.lastLap); car.refuse = car.refuse && !!s.orders[car.team]; });
+    if (!s.finished || s.lap < s.laps) checkTriggers(s, r, log, track, log.some(function (l) { return (l.kind === 'sc' || l.kind === 'vsc') && /deployed/.test(l.text); }));
     s.cars.forEach(function (car) { if (car.status !== 'running' && car.positions.length < s.lap) car.positions.push(null); });
 
     if (s.lap >= s.laps) {
@@ -681,6 +729,7 @@ const ICONS = {
   users: 'M16 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 20v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8',
   news: 'M4 4h13v16H6a2 2 0 0 1-2-2zM17 8h3v10a2 2 0 0 1-2 2M8 8h5M8 12h5M8 16h3', shield: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',
   server: 'M4 4h16v7H4zM4 13h16v7H4zM8 7.5h.01M8 16.5h.01', logout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9',
+  flask: 'M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3M7.5 15h9',
   bell: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0',
   wrench: 'M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z',
   user: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z'
@@ -752,7 +801,7 @@ function closeDrawer() { S.ui.drawer = null; renderOverlay(); }
 function go(r) { if (!ROUTES[r]) r = 'home'; S.route = r; S.navOpen = false; S.ui.drawer = null; if (location.hash.slice(1) !== r) history.replaceState(null, '', '#' + r); render(); window.scrollTo(0, 0); }
 
 const NAV = [
-  ['home', 'home', 'Home'], ['notices', 'bell', 'Notifications'], ['grid', 'flag', 'The Grid'], ['team', 'wrench', 'Team HQ'], ['weekend', 'radio', 'Race Weekend'], ['standings', 'star', 'Championship'],
+  ['home', 'home', 'Home'], ['notices', 'bell', 'Notifications'], ['grid', 'flag', 'The Grid'], ['team', 'wrench', 'Team HQ'], ['weekend', 'radio', 'Race Weekend'], ['test', 'flask', 'Test Track'], ['standings', 'star', 'Championship'],
   ['paddock', 'news', 'Paddock'], ['characters', 'user', 'Your characters']
 ];
 const NAV_RC = [['control', 'shield', 'Race Control'], ['admin', 'server', 'Accounts and backups']];
@@ -1179,7 +1228,15 @@ function f1Weather(w, track) {
   if (w.weatherMode === 'dry') return { start: 'dry' };
   if (w.weatherMode === 'mid') return { start: 'dry', changes: [{ lap: at(.35), to: 'damp' }, { lap: at(.41), to: 'wet' }, { lap: at(.55), to: 'damp' }, { lap: at(.63), to: 'dry' }] };
   if (w.weatherMode === 'wet') return { start: 'wet', qualifying: 'wet', changes: [{ lap: at(.18), to: 'damp' }, { lap: at(.34), to: 'dry' }] };
+  const pct = raceSettings(w).rainPct;
+  if (pct !== 'track' && pct != null) return { mode: 'variable', rainChance: Number(pct) / 100 };
   return FormulaRacingAdapter.weatherFor(track, 'variable');
+}
+/* The circuit and rules for this weekend, with Race Control's chances for safety cars and failures. */
+function f1RaceSetup(w, track) {
+  const st = raceSettings(w), circuit = FormulaRacingAdapter.toCircuit(track);
+  circuit.scChance = circuit.scChance * st.scRate;
+  return { circuit, rules: Object.assign({}, F1_RULES, { crashRate: RaceEngine.DEFAULTS.crashRate * st.scRate, failureRate: RaceEngine.DEFAULTS.failureRate * st.failRate }) };
 }
 function f1NextTrack() {
   const done = new Set(F1.weekends().filter(w => w.status === 'finished' && w.session === 'gp').map(w => w.trackId));
@@ -1189,6 +1246,7 @@ function f1NextTrack() {
 /* ---------------------------------------------------------------- pit-wall calls and who may make them */
 function f1CallAllowed(c, w) {
   const ent = (w.entrants || f1Entrants()).find(e => e.id === c.carId), team = c.teamId || (ent && ent.teamId);
+  if (raceLocked(w) && RACE_CALLS.indexOf(c.type) !== -1) return false;
   const seats = F1.seats(team).filter(s => s.holderCharId && s.holderCharId === c.charId);
   if (!seats.length) return false;
   const tp = seats.some(s => s.role === 'principal');
@@ -1218,6 +1276,7 @@ function f1CallText(c, w) {
 function f1SendCall(call) {
   const w = F1.live(); if (!w || !S.charId) return;
   const doc = Object.assign({ weekendId: w.id, userId: asOwner(), charId: S.charId, at: nowIso(), lap: (w.state && w.state.lap) || 0 }, call);
+  if (raceLocked(w) && RACE_CALLS.indexOf(doc.type) !== -1) { toast('This is an official race: nothing can be changed once it starts. Your plans, triggers and race approach are running the car.', true); return; }
   if (!f1CallAllowed(doc, w)) { toast('Your seat doesn’t allow that call.', true); return; }
   /* A newer call of the same kind for the same car replaces the older one. */
   const old = f1Calls(w).filter(c => c.charId === S.charId && c.type === doc.type && c.carId === doc.carId && c.teamId === doc.teamId);
@@ -1236,7 +1295,8 @@ ACTIONS['f1-open'] = () => {
   const session = f.session === 'sprint' && track.hasSprint ? 'sprint' : 'gp', id = newId('f1w');
   const seed = Math.max(1, parseInt(f.seed, 10) || (1 + Math.floor(Math.random() * 999999)));
   run(async () => {
-    await Data.put('f1_weekends', id, { trackId: track.id, round: track.round, session, seed, weatherMode: f.weatherMode || 'track', status: 'practice', createdAt: nowIso() });
+    await Data.put('f1_weekends', id, { trackId: track.id, round: track.round, session, seed, weatherMode: f.weatherMode || 'track', status: 'practice', createdAt: nowIso(),
+      settings: { lock: f.lock !== false, scRate: Number(f.scRate) || 1, failRate: Number(f.failRate) || 1, rainPct: f.rainPct || 'track' } });
     await f1LockProjects();
     await Data.audit('f1.weekend-open', `${track.name}${session === 'sprint' ? ' sprint' : ''} opened`);
     S.ui.form.f1w = null; S.ui.f1view = null;
@@ -1257,13 +1317,13 @@ ACTIONS['f1-quali'] = () => {
   f1Calls(w).forEach(c => { const ent = entrants.find(e => e.id === c.carId);
     if (c.type === 'setup' && ent && c.value && typeof c.value === 'object' && f1CallAllowed(c, w)) { setup[c.carId] = Math.min(95, f1SetupQuality(w, ent.teamId, c.value) + rapportSetup(f1Rapport(ent.teamId, ent.car))); setupBy[c.carId] = c.charId; } });
   entrants.forEach(e => { if (setup[e.id] == null) setup[e.id] = f1AiSetup(F1.team(e.teamId)); });
-  const circuit = FormulaRacingAdapter.toCircuit(track), weather = f1Weather(w, track);
+  const rs = f1RaceSetup(w, track), circuit = rs.circuit, weather = f1Weather(w, track);
   const teams = F1.teams().map(t => f1EffectiveTeam(t));
   const entries = FormulaRacingAdapter.toEntries(entrants.map(e => e.v3), teams, track, { setup });
   const penalties = f1PuEffects(w, entrants, entries);
-  const quali = RaceEngine.qualify({ circuit, entries, weather, seed: w.seed, rules: F1_RULES });
+  const quali = RaceEngine.qualify({ circuit, entries, weather, seed: w.seed, rules: rs.rules });
   const puLog = [], startGrid = f1PuGrid(quali.grid, penalties, puLog); quali.log = quali.log.concat(puLog);
-  const state = RaceEngine.createRace({ circuit, entries, grid: startGrid, weather, seed: w.seed, sprint: w.session === 'sprint', rules: F1_RULES });
+  const state = RaceEngine.createRace({ circuit, entries, grid: startGrid, weather, seed: w.seed, sprint: w.session === 'sprint', rules: rs.rules });
   const ents = entrants.map(e => { const o = Object.assign({}, e); delete o.v3; return o; });
   const doc = Object.assign(clone(S.store.f1_weekends[w.id]), { status: 'quali', qualiStage: 1, entrants: ents, setup, setupBy, penalties, weather, quali: { grid: quali.grid, results: quali.results, log: quali.log }, state });
   run(async () => {
@@ -1410,7 +1470,7 @@ function f1PitWallHtml(w) {
         ${can('refuseOrder') && st.orders[tid] ? `<div class="f1-row"><span class="lbl">Order</span><span class="small">The team says: ${st.orders[tid].value === 'hold' ? 'hold position' : 'swap the cars'}.</span><button class="btn small" data-act="f1-call" data-type="refuseOrder" data-car="${esc(e.id)}" aria-pressed="${!!pend('refuseOrder')}">Refuse the order</button></div>` : ''}
       </div>`;
     });
-    if (tp && st && w.status === 'running') {
+    if (tp && st && w.status === 'running' && !raceLocked(w)) {
       const cur = st.orders[tid] ? st.orders[tid].value : 'none', po = mine.find(c => c.type === 'order' && c.teamId === tid), v = po ? po.value : cur;
       h += `<div class="f1-row" style="border-top:1px solid var(--line);padding-top:10px"><span class="lbl">Orders</span>${[['none', 'Free to race'], ['hold', 'Hold positions'], ['swap', 'Swap the cars']].map(([k, l]) => `<button class="btn small" data-act="f1-call" data-type="order" data-team="${esc(tid)}" data-value="${k}" aria-pressed="${v === k}">${l}</button>`).join('')}</div>`;
     }
@@ -1419,12 +1479,12 @@ function f1PitWallHtml(w) {
   const pendingList = mine.filter(c => c.type !== 'setup' || w.status === 'practice');
   return `<section class="card" style="margin-bottom:16px"><h2>Your pit wall <span class="sub">${seats.map(s => `${F1_ROLE[s.role]}, ${F1.team(s.teamId).name}`).join('; ')}</span></h2>${h}
     ${pendingList.length ? `<p class="small" style="margin-top:10px"><b>Waiting for Race Control:</b> ${pendingList.map(c => `${esc(f1CallText(c, w))} <button class="btn small" data-act="f1-call-withdraw" data-id="${esc(c.id)}">Withdraw</button>`).join(' ')}</p>` : ''}
-    <p class="muted small">Calls apply when Race Control runs the next lap. Anything you don’t call, the team’s AI strategist decides.</p></section>`;
+    <p class="muted small">${raceLocked(w) ? 'Official race: no changes from the pit wall. Your plans, triggers and race approach are running the car.' : 'Calls apply when Race Control runs the next lap. Anything you don’t call, the team’s plan decides.'}</p></section>`;
 }
 
 function f1OpenFormHtml() {
   const tracks = F1.tracks(); if (!tracks.length) return '';
-  const f = S.ui.form.f1w = S.ui.form.f1w || { trackId: (f1NextTrack() || {}).id, session: 'gp', weatherMode: 'track', seed: '' };
+  const f = S.ui.form.f1w = S.ui.form.f1w || { trackId: (f1NextTrack() || {}).id, session: 'gp', weatherMode: 'track', seed: '', rainPct: 'track', scRate: '1', failRate: '1', lock: true };
   const t = F1.track(f.trackId) || tracks[0];
   return `<section class="card"><h2>Open the next weekend</h2>
     <div class="metrics" style="align-items:end">
@@ -1433,6 +1493,8 @@ function f1OpenFormHtml() {
       <label class="field">Weather${sel('f1w-weather', 'ui/form/f1w/weatherMode', f.weatherMode, F1_WEATHER)}</label>
       <label class="field">Seed (optional)<input id="f1w-seed" type="number" min="1" data-bind="ui/form/f1w/seed" value="${esc(f.seed || '')}" placeholder="Random"></label>
     </div>
+    ${randomnessHtml('f1w', f, t)}
+    <label class="small"><input type="checkbox" data-bind="ui/form/f1w/lock" ${f.lock !== false ? 'checked' : ''}> Official race: no pit-wall changes once it starts. The teams’ plans, triggers and race approaches run the cars.</label>
     <p class="muted small">${esc(t.circuit)}: ${t.laps} laps, ${esc(String(t.type).replace('-', ' '))}, ${t.wr}% rain risk. The seed makes the weekend repeatable: the same seed and the same calls give the same race.</p>
     <div class="btn-row"><button class="btn primary" data-act="f1-open">Open the weekend</button></div></section>`;
 }
@@ -1871,7 +1933,7 @@ async function liveTick() {
   if (!S.f1live || !w || !w.state || w.state.finished) { liveStop(); return; }
   if (S.busy) { S.f1live = setTimeout(liveTick, 300); return; }
   /* A driver moment is waiting: give the driver up to 45 seconds unless everyone has answered. */
-  if (pendingMoments(w).length && !momentsAnswered(w) && momentWaitLeft(w) > 0) { S.f1live = setTimeout(liveTick, 1000); render(); return; }
+  if (!raceLocked(w) && pendingMoments(w).length && !momentsAnswered(w) && momentWaitLeft(w) > 0) { S.f1live = setTimeout(liveTick, 1000); render(); return; }
   const log = await f1Advance(1);
   if (!S.f1live) return;
   if (!log) { liveStop('The race is paused: the lap couldn’t be saved.'); return; }
@@ -2266,11 +2328,12 @@ function planNotes(p, N, L) {
   return { stints, notes };
 }
 function forecastText(w) {
-  const t = F1.track(w.trackId) || {};
-  if (w.weatherMode === 'dry') return 'Dry all race.';
-  if (w.weatherMode === 'mid') return 'Rain is expected during the race.';
-  if (w.weatherMode === 'wet') return 'A wet start, drying out.';
-  return `${Math.round((t.wr || 0) * 0.6)}% chance of rain during the race.`;
+  const t = F1.track(w.trackId) || {}, st = raceSettings(w), rate = r => r >= 3 ? 'far more likely than usual' : r >= 2 ? 'more likely than usual' : r <= 0.5 ? 'less likely than usual' : '';
+  const extra = [st.scRate !== 1 ? `Safety cars ${rate(st.scRate)}.` : '', st.failRate !== 1 ? `Mechanical failures ${rate(st.failRate)}.` : ''].filter(Boolean).join(' ');
+  let wx = `${Math.round((t.wr || 0) * 0.6)}% chance of rain during the race.`;
+  if (w.weatherMode === 'dry') wx = 'Dry all race.'; else if (w.weatherMode === 'mid') wx = 'Rain is expected during the race.'; else if (w.weatherMode === 'wet') wx = 'A wet start, drying out.';
+  else if (st.rainPct !== 'track' && st.rainPct != null) wx = `${st.rainPct}% chance of rain during the race.`;
+  return (wx + ' ' + extra).trim();
 }
 
 /* ---------------------------------------------------------------- editing */
@@ -2278,22 +2341,24 @@ function stratForm(w, ent) {
   const f = S.ui.form.strat = S.ui.form.strat || {};
   if (!f[ent.id] || f[ent.id].weekendId !== w.id) {
     const doc = f1Plan(w, ent);
-    f[ent.id] = { weekendId: w.id, plans: doc ? clone(doc.plans) : suggestPlans(w, ent), active: doc ? String(doc.active || 0) : '0', tab: 0 };
+    const def = doc ? null : presetFor('team', w, ent);
+    f[ent.id] = { weekendId: w.id, plans: doc ? clone(doc.plans) : def.plans, active: doc ? String(doc.active || 0) : '0', tab: 0,
+      triggers: doc ? clone(doc.triggers || []) : def.triggers, approach: doc ? (doc.approach || defaultApproach(ent)) : defaultApproach(ent), preset: doc ? doc.preset : 'team' };
   }
   return f[ent.id];
 }
 ACTIONS['strat-tab'] = d => { S.ui.form.strat[d.car].tab = Number(d.i); render(); };
 ACTIONS['strat-add'] = d => { const p = S.ui.form.strat[d.car].plans[d.i]; if (p.stops.length >= 3) return;
-  const last = p.stops.length ? p.stops[p.stops.length - 1].lap : 0; p.stops.push({ lap: Math.min(raceLaps(F1.live()) - 2, last + 15), compound: 'medium' }); render(); };
+  const last = p.stops.length ? p.stops[p.stops.length - 1].lap : 0; p.stops.push({ lap: Math.min(raceLaps(S.ui.stratW || F1.live()) - 2, last + 15), compound: 'medium' }); render(); };
 ACTIONS['strat-del'] = d => { S.ui.form.strat[d.car].plans[d.i].stops.splice(Number(d.j), 1); render(); };
-ACTIONS['strat-suggest'] = d => { const w = F1.live(), ent = weekendEnt(w, d.car); S.ui.form.strat[d.car].plans = suggestPlans(w, ent); toast('Plans filled in from what the team knows about the tyres. Adjust, then save.'); render(); };
+ACTIONS['strat-suggest'] = d => { const w = S.ui.stratW || F1.live(), ent = weekendEnt(w, d.car); S.ui.form.strat[d.car].plans = suggestPlans(w, ent); toast('Plans filled in from what the team knows about the tyres. Adjust, then save.'); render(); };
 ACTIONS['strat-save'] = d => {
   const w = F1.live(), c = currentChar(), ent = w && weekendEnt(w, d.car); if (!w || !c || !ent) return;
   if (!canPlan(w, ent, c.id)) { toast('Only the team principal, this car’s engineer or its driver plan its race.', true); return; }
   if (w.state && w.state.lap > 0) { toast('The race has started: switch plans from the pit wall instead.', true); return; }
   const f = S.ui.form.strat[d.car], N = raceLaps(w);
   run(async () => { await Data.put('f1_plans', `${w.id}-${d.car}-${c.id}`, { userId: asOwner(), charId: c.id, weekendId: w.id, carId: d.car,
-    plans: f.plans.map(p => cleanPlan(p, N)), active: Math.max(0, Math.min(2, Number(f.active) || 0)), at: nowIso() }); },
+    plans: f.plans.map(p => cleanPlan(p, N)), active: Math.max(0, Math.min(2, Number(f.active) || 0)), triggers: (f.triggers || []).slice(0, 6), approach: f.approach || defaultApproach(ent), preset: f.preset || null, at: nowIso() }); },
     `Plans saved. ${PLAN_NAMES[Number(f.active) || 0]} is set for the start.`);
 };
 ACTIONS['strat-switch'] = d => f1SendCall({ type: 'strategy', carId: d.car, value: Number(d.i) });
@@ -2302,19 +2367,17 @@ ACTIONS['strat-switch'] = d => f1SendCall({ type: 'strategy', carId: d.car, valu
 function f1ApplyPlans(w, state) {
   const st = clone(state);
   st.cars.forEach(car => {
-    const ent = (w.entrants || []).find(e => e.id === car.id), doc = ent && f1Plan(w, ent); if (!doc) return;
-    const i = Number(doc.active) || 0, p = cleanPlan(doc.plans[i], st.laps), wet = st.track[0];
-    const start = wet === 2 ? 'wet' : wet === 1 ? 'inter' : p.start;
-    car.tyre = { compound: start, wear: 0, age: 0 }; car.stints = [{ compound: start, from: 1, to: null }]; car.used = [start];
-    car.plan = p.stops.map(s => ({ lap: s.lap, compound: s.compound })); car.planned = true; car.planName = PLAN_NAMES[i];
-    car.ai = Object.assign({}, car.ai, { wetCall: p.wetCall, dryCall: p.dryCall, useSC: p.useSC });
+    const ent = (w.entrants || []).find(e => e.id === car.id); if (!ent) return;
+    /* Saved plans, or for a team with players and nothing saved, the team's own preset and the driver's natural approach. */
+    const doc = f1Plan(w, ent) || (teamHasPlayers(ent.teamId) ? defaultPlanDoc(w, ent) : null); if (!doc) return;
+    applyPlanDoc(car, doc, st);
   });
   return st;
 }
 function f1StrategyCall(w, c) {
   const ent = weekendEnt(w, c.carId), doc = ent && f1Plan(w, ent); if (!doc) return null;
   const i = Number(c.value) || 0, p = cleanPlan(doc.plans[i], w.state.laps);
-  return { entry: c.carId, type: 'strategy', name: PLAN_NAMES[i], stops: p.stops, wetCall: p.wetCall, dryCall: p.dryCall, useSC: p.useSC };
+  return { entry: c.carId, type: 'strategy', plan: i, name: PLAN_NAMES[i], stops: p.stops, wetCall: p.wetCall, dryCall: p.dryCall, useSC: p.useSC };
 }
 
 /* ---------------------------------------------------------------- the strategy card */
@@ -2338,13 +2401,15 @@ function f1StrategyCardHtml(w) {
   if (!w || w.status === 'finished') return '';
   const c = currentChar(); if (!c) return '';
   const cars = (w.entrants || f1Entrants()).filter(e => canPlan(w, e, c.id)); if (!cars.length) return '';
-  const N = raceLaps(w), started = !!(w.state && w.state.lap > 0);
+  S.ui.stratW = w;
+  const N = raceLaps(w), started = !!(w.state && w.state.lap > 0), locked = raceLocked(w);
   const body = cars.map(ent => {
     const t = F1.team(ent.teamId), doc = f1Plan(w, ent), by = doc ? get('characters', doc.charId) : null;
     if (started) {
       const car = w.state.cars.find(x => x.id === ent.id); if (!car || car.status !== 'running') return '';
       const pend = f1Calls(w).find(x => x.type === 'strategy' && x.carId === ent.id), plans = doc ? doc.plans : [];
       const next = (car.plan || [])[0];
+      if (locked) return `<div class="f1-car" style="--team:${esc(t.color)}"><h3>${esc(ent.name)}</h3>${lockedStatusHtml(w, ent, car)}</div>`;
       return `<div class="f1-car" style="--team:${esc(t.color)}"><h3>${esc(ent.name)}</h3>
         <p>${car.planned ? `On <b>${esc(car.planName || 'the team’s plan')}</b>. ${next ? `Next stop: lap ${next.lap}, ${esc(RaceEngine.COMPOUNDS[next.compound].label.toLowerCase())}s.` : 'No more stops planned.'}` : 'No plan saved: the AI strategist is running this car.'}</p>
         ${plans.length ? `<div class="btn-row">${plans.map((p, i) => `<button class="btn small" data-act="strat-switch" data-car="${esc(ent.id)}" data-i="${i}" aria-pressed="${!!(pend && Number(pend.value) === i)}" ${car.planName === PLAN_NAMES[i] && !pend ? 'disabled' : ''}>Switch to ${PLAN_NAMES[i]}</button>`).join('')}</div>
@@ -2353,16 +2418,19 @@ function f1StrategyCardHtml(w) {
     const f = stratForm(w, ent), L = tyreKnowledge(w, ent), tab = f.tab || 0;
     return `<div class="f1-car" style="--team:${esc(t.color)}"><h3>${esc(ent.name)}</h3>
       <p class="muted small">Tyre life here: ${['soft', 'medium', 'hard'].map(k => `${f1TyreChip(k)} about ${L[k].laps} laps${L[k].measured ? '' : ' (rough guide)'}`).join(' &nbsp; ')}. ${Object.values(L).some(x => !x.measured) ? 'Long runs in practice measure them properly.' : 'Measured in practice.'}</p>
-      ${doc ? `<p class="small">Saved by ${esc(by ? by.name : 'the team')} ${esc(fmtWhen(doc.at))}. ${esc(PLAN_NAMES[doc.active || 0])} is set for the start.</p>` : '<p class="small">Not saved yet: without saved plans, the AI strategist runs this car.</p>'}
+      ${doc ? `<p class="small">Saved by ${esc(by ? by.name : 'the team')} ${esc(fmtWhen(doc.at))}. ${esc(PLAN_NAMES[doc.active || 0])} is set for the start.</p>` : '<p class="small">Not saved yet: the car will use the team’s own preset and the driver’s natural approach, shown below.</p>'}
       <div class="tabs" role="tablist">${PLAN_NAMES.map((n, i) => `<button role="tab" class="tab" data-act="strat-tab" data-car="${esc(ent.id)}" data-i="${i}" aria-selected="${tab === i}">${n}</button>`).join('')}</div>
+      ${presetBarHtml(ent, f)}
       ${planEditorHtml(w, ent, f, tab, N, L)}
+      ${approachHtml(ent, f)}
+      ${triggersEditorHtml(ent, f, N)}
       <div class="btn-row"><label class="field" style="margin:0">Start the race on${sel(`sp-${ent.id}-active`, `ui/form/strat/${ent.id}/active`, f.active, PLAN_NAMES.map((n, i) => [String(i), n]))}</label>
         <button class="btn primary" data-act="strat-save" data-car="${esc(ent.id)}">Save all three plans</button>
         <button class="btn" data-act="strat-suggest" data-car="${esc(ent.id)}">Suggest plans</button></div></div>`;
   }).join('');
   if (!body.trim()) return '';
   return `<section class="card strategy"><h2>Race strategy <span class="sub">${esc(raceLaps(w))} laps. ${esc(forecastText(w))}</span></h2>
-    ${!started ? '<p class="muted small">The team principal, the car’s engineer and its driver can all plan; the last plans saved are the ones the car uses. Plans can be changed until the race starts, then switched between from here.</p>' : ''}${body}</section>`;
+    ${!started ? `<p class="muted small">The team principal, the car’s engineer and its driver can all plan; the last plans saved are the ones the car uses. ${raceSettings(w).lock !== false ? 'This is an official race: once it starts, nothing can be changed. The plans, triggers and race approach run the car.' : 'Plans can be switched from here during the race.'}</p>` : ''}${body}</section>`;
 }
 
 /* =====================================================================
@@ -2391,6 +2459,10 @@ const pendingMoments = w => (w && w.moments || []).filter(m => !m.resolved && w.
 const momentCall = (w, m) => f1Calls(w).filter(c => c.type === 'moment' && c.momentId === m.id && f1CallAllowed(c, w)).pop() || null;
 /* The driver's instinct, when nobody answers. */
 function defaultChoice(m, car) {
+  const ap = car && car.approach;
+  if (ap === 'attacker') return { attack: 'outside', defend: 'cover', restart: 'jump' }[m.kind];
+  if (ap === 'defender') return { attack: 'inside', defend: 'cover', restart: 'safe' }[m.kind];
+  if (ap === 'tyres') return { attack: 'wait', defend: 'concede', restart: 'safe' }[m.kind];
   const ag = (car && car.driver && car.driver.aggression) || 50;
   if (m.kind === 'attack') return ag >= 65 ? 'outside' : ag >= 50 ? 'inside' : 'wait';
   if (m.kind === 'defend') return ag >= 60 ? 'cover' : 'hold';
@@ -2436,7 +2508,7 @@ ACTIONS['moment-choose'] = d => {
 
 /* The choice card on the driver's pit wall. */
 function f1MomentCardHtml(w) {
-  if (!w || w.status !== 'running' || !S.charId) return '';
+  if (!w || w.status !== 'running' || !S.charId || raceLocked(w)) return '';
   const mine = pendingMoments(w).filter(m => f1CallAllowed({ type: 'moment', carId: m.carId, charId: S.charId }, w)); if (!mine.length) return '';
   return mine.map(m => {
     const st = w.state, car = st.cars.find(c => c.id === m.carId), opp = m.opponent ? st.cars.find(c => c.id === m.opponent) : null;
@@ -2932,6 +3004,275 @@ ROUTES.team.view = function () {
   const my = S.charId ? F1.seats().find(s => s.holderCharId === S.charId) : null, tid = S.ui.teamId || (my && my.teamId) || teams[0].id;
   return html + teamDepthHtml(tid);
 };
+
+/* =====================================================================
+   F1 SIM — race presets, race approaches, triggers and the official lock.
+   Presets fill a car's three plans and its triggers in one go: each
+   team's own default (from how that team likes to race), or one of four
+   general ones. The race approach drives the car lap by lap. Triggers
+   swap plans, change the mode or call a stop when something happens,
+   each with a chance of the team acting on it. In an official race,
+   nothing can be changed once it starts: the plans, triggers and race
+   approach run the car, and driver moments follow the approach.
+   ===================================================================== */
+'use strict';
+
+const APPROACHES = [['balanced', 'Balanced', 'Races to the plan without fuss.'], ['attacker', 'Attacker', 'Pushes whenever there’s a car to catch, and goes around the outside.'],
+  ['defender', 'Defender', 'Pushes when someone’s close behind, and covers the inside.'], ['tyres', 'Tyre saver', 'Manages the tyres in clean air, and picks the battles worth having.']];
+const STYLE_APPROACH = { charger: 'attacker', aggressive: 'attacker', defender: 'defender', smooth: 'tyres', strategist: 'tyres', ironman: 'balanced', technical: 'balanced', qualifier: 'balanced' };
+const TRIGGER_WHEN = [['sc', 'A safety car comes out'], ['rain', 'It starts to rain'], ['dry', 'The track dries out'], ['lost', 'We’ve lost places from the grid'], ['gained', 'We’ve gained places from the grid'], ['wear', 'Tyre wear reaches']];
+const TRIGGER_DO = [['plan0', 'Switch to Plan A'], ['plan1', 'Switch to Plan B'], ['plan2', 'Switch to Plan C'], ['push', 'Push'], ['manage', 'Manage the tyres'], ['box', 'Box this lap']];
+const CHANCES = [['100', 'Always'], ['75', '75% of the time'], ['50', 'Half the time'], ['25', 'Now and then (25%)']];
+const PRESETS = [['team', 'The team’s own approach'], ['onestop', 'Safe one-stop'], ['twostop', 'Attacking two-stop'], ['wet', 'Wet-weather gamble'], ['sc', 'Safety-car opportunist']];
+const ARCH_PRESET = { aggressive_two: 'twostop', undercut_king: 'twostop', one_stop: 'onestop', fuel_save: 'onestop', tyre_banker: 'onestop', overcut: 'onestop', safety_car: 'sc', reactive: 'onestop' };
+
+function defaultApproach(ent) { const v3 = ent.v3 || (f1Entrants().find(x => x.id === ent.id) || {}).v3 || {}; return STYLE_APPROACH[v3.style] || 'balanced'; }
+const approachLabel = k => (APPROACHES.find(a => a[0] === k) || APPROACHES[0])[1];
+const wetVersion = p => Object.assign({}, clone(p), { wetCall: 'early', dryCall: 'early' });
+/* A preset's plans and triggers for this car at this circuit, built on what the team knows about the tyres. */
+function presetFor(key, w, ent) {
+  const N = raceLaps(w), base = suggestPlans(w, ent), team = F1.team(ent.teamId);
+  if (key === 'team') key = ARCH_PRESET[team.strategy] || 'onestop';
+  const later = p => Object.assign({}, clone(p), { stops: p.stops.map(s => ({ lap: Math.min(N - 2, s.lap + 6), compound: s.compound })), useSC: true });
+  if (key === 'twostop') return { plans: [base[1], base[0], wetVersion(base[1])], triggers: [
+    { when: 'sc', from: 8, to: Math.max(9, N - 12), action: 'plan1', chance: '75' }, { when: 'rain', action: 'plan2', chance: '100' }, { when: 'lost', n: 3, action: 'push', chance: '100' }] };
+  if (key === 'wet') return { plans: [Object.assign({}, clone(base[0]), { wetCall: 'late', dryCall: 'early' }), wetVersion(base[0]), base[2]], triggers: [
+    { when: 'rain', action: 'plan1', chance: '50' }, { when: 'dry', action: 'push', chance: '100' }] };
+  if (key === 'sc') return { plans: [later(base[0]), base[1], wetVersion(base[0])], triggers: [
+    { when: 'sc', from: 5, to: Math.max(6, N - 8), action: 'plan1', chance: '100' }, { when: 'rain', action: 'plan2', chance: '100' }] };
+  return { plans: [base[0], base[1], wetVersion(base[0])], triggers: [{ when: 'rain', action: 'plan2', chance: '100' }, { when: 'wear', n: 100, action: 'box', chance: '100' }] };
+}
+function cleanTriggers(ts, N) {
+  return (ts || []).slice(0, 6).filter(t => TRIGGER_WHEN.some(x => x[0] === t.when) && TRIGGER_DO.some(x => x[0] === t.action)).map(t => {
+    const a = t.action, out = { when: t.when, chance: Math.max(0, Math.min(100, Number(t.chance) || 100)) };
+    if (t.when === 'lost' || t.when === 'gained') out.n = Math.max(1, Math.min(15, Number(t.n) || 3));
+    if (t.when === 'wear') out.n = Math.max(50, Math.min(130, Number(t.n) || 90));
+    if (Number(t.from)) out.from = Math.max(1, Math.min(N, Number(t.from))); if (Number(t.to)) out.to = Math.max(1, Math.min(N, Number(t.to)));
+    if (/^plan\d$/.test(a)) { out.action = 'plan'; out.plan = Number(a.slice(4)); } else if (a === 'box') out.action = 'box'; else { out.action = 'mode'; out.mode = a; }
+    return out;
+  });
+}
+/* Put a team's saved plans (or the defaults) onto a car in the race state. */
+function applyPlanDoc(car, doc, st) {
+  const i = Number(doc.active) || 0, plans = (doc.plans || []).map((p, k) => Object.assign(cleanPlan(p, st.laps), { name: PLAN_NAMES[k] })), p = plans[i] || plans[0];
+  if (!p) return;
+  const wet = st.track[0], start = wet === 2 ? 'wet' : wet === 1 ? 'inter' : p.start;
+  car.tyre = { compound: start, wear: 0, age: 0 }; car.stints = [{ compound: start, from: 1, to: null }]; car.used = [start];
+  car.plan = p.stops.map(s => ({ lap: s.lap, compound: s.compound })); car.planned = true; car.planName = PLAN_NAMES[i];
+  car.plans = plans; car.triggers = cleanTriggers(doc.triggers, st.laps).map(t => Object.assign(t, { fired: false })); car.approach = doc.approach || 'balanced'; car.modeHold = 0;
+  car.ai = Object.assign({}, car.ai, { wetCall: p.wetCall, dryCall: p.dryCall, useSC: p.useSC });
+}
+/* Cars in a team with players but no saved plans start on the team's own preset and the driver's natural approach. */
+function defaultPlanDoc(w, ent) { const pr = presetFor('team', w, ent); return { plans: pr.plans, active: 0, triggers: pr.triggers, approach: defaultApproach(ent), isDefault: true }; }
+const teamHasPlayers = teamId => F1.seats(teamId).some(s => s.holderCharId);
+
+/* ---------------------------------------------------------------- official races */
+const raceSettings = w => Object.assign({ lock: true, scRate: 1, failRate: 1, rainPct: 'track' }, (w && w.settings) || {});
+const raceLocked = w => !!(w && w.state && w.state.lap > 0 && !w.state.finished && !w.test && raceSettings(w).lock !== false);
+const RACE_CALLS = ['box', 'mode', 'order', 'refuseOrder', 'strategy', 'moment'];
+
+/* ---------------------------------------------------------------- the editor pieces */
+ACTIONS['strat-preset'] = d => {
+  const w = S.ui.stratW || F1.live(), ent = weekendEnt(w, d.car), key = ((S.ui.form.presetPick || {})[d.car]) || 'team'; if (!ent) return;
+  const pr = presetFor(key, w, ent), f = S.ui.form.strat[d.car];
+  f.plans = pr.plans; f.triggers = pr.triggers.map(t => Object.assign({}, t, { action: t.action })); f.preset = key; f.tab = 0;
+  toast(`${(PRESETS.find(p => p[0] === key) || PRESETS[0])[1]} loaded: three plans and their triggers. Adjust, then save.`); render();
+};
+ACTIONS['trig-add'] = d => { const f = S.ui.form.strat[d.car]; f.triggers = f.triggers || []; if (f.triggers.length >= 6) return; f.triggers.push({ when: 'sc', action: 'plan1', chance: '100' }); render(); };
+ACTIONS['trig-del'] = d => { S.ui.form.strat[d.car].triggers.splice(Number(d.i), 1); render(); };
+function triggersEditorHtml(ent, f, N) {
+  const base = `ui/form/strat/${ent.id}/triggers`, ts = f.triggers || [];
+  return `<h4>Triggers</h4><p class="muted small">What the team does if something happens. Each trigger fires once, and the team acts on it with the chance you set.</p>
+    ${ts.length ? `<div class="triggers">${ts.map((t, i) => `<div class="trigger">
+      <label class="field">When${sel(`tg-${ent.id}-${i}-w`, `${base}/${i}/when`, t.when, TRIGGER_WHEN)}</label>
+      ${['lost', 'gained', 'wear'].indexOf(t.when) !== -1 ? `<label class="field">${t.when === 'wear' ? 'Wear (%)' : 'Places'}<input id="tg-${ent.id}-${i}-n" type="number" min="1" max="130" value="${esc(t.n || (t.when === 'wear' ? 90 : 3))}" data-bind="${base}/${i}/n" data-type="number"></label>` : ''}
+      ${['sc', 'rain', 'dry'].indexOf(t.when) !== -1 ? `<label class="field">From lap<input id="tg-${ent.id}-${i}-f" type="number" min="1" max="${N}" value="${esc(t.from || '')}" placeholder="Any" data-bind="${base}/${i}/from" data-type="number"></label>
+        <label class="field">To lap<input id="tg-${ent.id}-${i}-t" type="number" min="1" max="${N}" value="${esc(t.to || '')}" placeholder="Any" data-bind="${base}/${i}/to" data-type="number"></label>` : ''}
+      <label class="field">Then${sel(`tg-${ent.id}-${i}-a`, `${base}/${i}/action`, t.action, TRIGGER_DO)}</label>
+      <label class="field">Chance${sel(`tg-${ent.id}-${i}-c`, `${base}/${i}/chance`, String(t.chance || '100'), CHANCES)}</label>
+      <button class="btn small" data-act="trig-del" data-car="${esc(ent.id)}" data-i="${i}">Remove</button></div>`).join('')}</div>` : '<p class="muted small">No triggers: the car sticks to its starting plan whatever happens.</p>'}
+    ${ts.length < 6 ? `<button class="btn small" data-act="trig-add" data-car="${esc(ent.id)}">Add a trigger</button>` : ''}`;
+}
+function presetBarHtml(ent, f) {
+  const pick = (S.ui.form.presetPick = S.ui.form.presetPick || {})[ent.id] || f.preset || 'team', team = F1.team(ent.teamId);
+  const arch = FormulaRacingAdapter.ARCHETYPES[team.strategy] || FormulaRacingAdapter.ARCHETYPES.reactive;
+  return `<div class="btn-row preset-bar"><label class="field" style="margin:0">Preset${sel(`pp-${ent.id}`, `ui/form/presetPick/${ent.id}`, pick, PRESETS.map(([k, l]) => [k, k === 'team' ? `${team.name}’s own: ${arch.label.toLowerCase()}` : l]))}</label>
+    <button class="btn" data-act="strat-preset" data-car="${esc(ent.id)}">Load the preset</button></div>`;
+}
+function approachHtml(ent, f) {
+  return `<label class="field" style="max-width:440px">Race approach${sel(`ap-${ent.id}`, `ui/form/strat/${ent.id}/approach`, f.approach || defaultApproach(ent), APPROACHES.map(([k, l, d]) => [k, `${l}: ${d}`]))}</label>`;
+}
+/* In a locked race: what the car is doing, and which triggers have fired. */
+function lockedStatusHtml(w, ent, car) {
+  const fired = w.state.events.filter(e => e.kind === 'trigger' && (e.ids || [])[0] === ent.id);
+  return `<p>On <b>${esc(car.planName || 'the AI strategist’s plan')}</b>, ${esc(approachLabel(car.approach).toLowerCase())} approach. ${(car.plan || [])[0] ? `Next stop: lap ${car.plan[0].lap}, ${esc(RaceEngine.COMPOUNDS[car.plan[0].compound].label.toLowerCase())}s.` : 'No more stops planned.'}</p>
+    ${(car.triggers || []).length ? `<ul class="trig-status">${car.triggers.map(t => `<li class="${t.fired ? 'fired' : ''}">${esc((TRIGGER_WHEN.find(x => x[0] === t.when) || ['', t.when])[1])}${t.n ? ` (${t.n}${t.when === 'wear' ? '%' : ''})` : ''}: ${t.action === 'plan' ? 'switch to ' + PLAN_NAMES[t.plan] : t.action === 'box' ? 'box' : t.mode} ${t.chance < 100 ? `(${t.chance}%)` : ''}${t.fired ? ' <span class="tag">Fired</span>' : ''}</li>`).join('')}</ul>` : ''}
+    ${fired.length ? `<p class="small">${fired.map(e => `Lap ${e.lap}: ${esc(e.text)}`).join('<br>')}</p>` : ''}`;
+}
+
+/* ---------------------------------------------------------------- randomness (Race Control, and the Test Track) */
+const RATES = [['0.5', 'Fewer than usual'], ['1', 'As usual'], ['2', 'More than usual'], ['3', 'Chaos']];
+const RAIN_PCTS = [['track', 'The circuit’s usual'], ['0', 'No chance'], ['20', '20%'], ['40', '40%'], ['60', '60%'], ['90', '90%']];
+function randomnessHtml(prefix, f, t) {
+  return `<div class="metrics" style="align-items:end">
+    <label class="field">Chance of rain (changeable weather)${sel(prefix + '-rain', `ui/form/${prefix}/rainPct`, f.rainPct || 'track', RAIN_PCTS.map(([k, l]) => [k, k === 'track' ? `${l} (${Math.round((t.wr || 0) * 0.6)}%)` : l]))}</label>
+    <label class="field">Safety cars and crashes${sel(prefix + '-sc', `ui/form/${prefix}/scRate`, String(f.scRate || '1'), RATES)}</label>
+    <label class="field">Mechanical failures${sel(prefix + '-fail', `ui/form/${prefix}/failRate`, String(f.failRate || '1'), RATES)}</label></div>`;
+}
+
+/* =====================================================================
+   F1 SIM — the Test Track.
+   The same simulator as the official races, on the league's own grid,
+   cars, upgrades and ratings, but run entirely in the browser: nothing
+   is saved and nothing counts. Anyone can pick any car, try presets,
+   plans, triggers and race approaches, change the chances of rain,
+   safety cars and failures, and step in at any moment with the pit
+   wall and driver moments.
+   ===================================================================== */
+'use strict';
+
+S.tt = { cfg: null, w: null, calls: [], choice: {}, timer: null };
+function ttCfg() {
+  if (!S.tt.cfg) {
+    const mine = S.charId ? F1.seats().find(s => s.holderCharId === S.charId && s.role !== 'engineer') : null;
+    const ents = F1.teams().length ? f1Entrants() : [], myCar = mine ? (ents.find(e => e.teamId === mine.teamId && (mine.car ? e.car === mine.car : true)) || {}).id : null;
+    S.tt.cfg = { trackId: (f1NextTrack() || {}).id, session: 'gp', weatherMode: 'track', rainPct: 'track', scRate: '1', failRate: '1', seed: '', car: myCar || (ents[0] || {}).id, setup: 75, speed: '1000' };
+  }
+  return S.ui.form.tt = S.tt.cfg;
+}
+/* A weekend-shaped object, so the race view, the plan editor and the moments all work as they do in the league. */
+function ttW() {
+  const f = ttCfg(), w = S.tt.w;
+  return w || { id: 'test-' + f.trackId + '-' + f.session, test: true, trackId: f.trackId, session: f.session, seed: Number(f.seed) || 1, weatherMode: f.weatherMode,
+    settings: { lock: false, scRate: Number(f.scRate), failRate: Number(f.failRate), rainPct: f.rainPct }, status: 'practice', entrants: null, state: null };
+}
+function ttStop() { clearTimeout(S.tt.timer); S.tt.timer = null; }
+ACTIONS['tt-reset'] = () => { ttStop(); S.tt.w = null; S.tt.calls = []; S.tt.choice = {}; render(); };
+ACTIONS['tt-quali'] = () => {
+  ttStop();
+  const f = ttCfg(), w = ttW(), track = F1.track(f.trackId); if (!track) return;
+  const seed = Number(f.seed) || (1 + Math.floor(Math.random() * 999999)); w.seed = seed;
+  const entrants = f1Entrants(), mine = entrants.find(e => e.id === f.car) || entrants[0];
+  const setup = {}; entrants.forEach(e => { setup[e.id] = e.id === mine.id ? Math.max(20, Math.min(95, Number(f.setup) || 75)) : f1AiSetup(F1.team(e.teamId)); });
+  const rs = f1RaceSetup(w, track), weather = f1Weather(w, track), teams = F1.teams().map(t => f1EffectiveTeam(t));
+  const entries = FormulaRacingAdapter.toEntries(entrants.map(e => e.v3), teams, track, { setup });
+  const quali = RaceEngine.qualify({ circuit: rs.circuit, entries, weather, seed, rules: rs.rules });
+  let state = RaceEngine.createRace({ circuit: rs.circuit, entries, grid: quali.grid, weather, seed, sprint: f.session === 'sprint', rules: rs.rules });
+  /* Your car runs your plans; other cars in teams with players run their team defaults. */
+  const form = stratForm(w, mine);
+  state = clone(state);
+  state.cars.forEach(car => { const ent = entrants.find(e => e.id === car.id);
+    if (car.id === mine.id) applyPlanDoc(car, { plans: form.plans, active: form.active, triggers: form.triggers, approach: form.approach }, state);
+    else if (ent && teamHasPlayers(ent.teamId)) applyPlanDoc(car, defaultPlanDoc(w, ent), state); });
+  S.tt.w = Object.assign({}, w, { status: 'grid', seed, weather, quali: { grid: quali.grid, results: quali.results, log: quali.log }, state, moments: [],
+    entrants: entrants.map(e => { const o = Object.assign({}, e, { charId: e.id === mine.id ? 'tt-you' : null }); delete o.v3; return o; }) });
+  S.tt.calls = []; S.tt.choice = {}; S.ui.f1pick = mine.id; S.ui.f1tab = 'driver';
+  render();
+};
+function ttStep(laps) {
+  const w = S.tt.w; if (!w || !w.state || w.state.finished) return null;
+  const calls = S.tt.calls.splice(0), resolved = [];
+  (w.moments || []).filter(m => !m.resolved && m.lap === w.state.lap + 1).forEach(m => {
+    const car = w.state.cars.find(c => c.id === m.carId), choice = S.tt.choice[m.id] || defaultChoice(m, car);
+    calls.push({ entry: m.carId, type: 'moment', kind: m.kind, choice }); resolved.push(Object.assign({}, m, { resolved: true, choice, auto: !S.tt.choice[m.id] }));
+  });
+  let st = w.state, log = [], last = [];
+  for (let i = 0; i < laps && !st.finished; i++) {
+    const out = RaceEngine.stepLap(st, i === 0 ? calls : []); st = out.state; log = log.concat(out.log); last = out.log;
+    if (S.ui.form.ttStopSc !== false && i < laps - 1 && out.log.some(l => (l.kind === 'sc' || l.kind === 'vsc') && /deployed/.test(l.text))) break;
+  }
+  const done = new Map(resolved.map(m => [m.id, m]));
+  w.moments = (w.moments || []).map(m => done.get(m.id) ? Object.assign(done.get(m.id), { outcome: (log.find(l => l.kind === 'moment' && (l.ids || [])[0] === m.carId) || {}).text || 'Nothing came of it.' }) : m);
+  w.state = st; w.status = st.finished ? 'finished' : 'running';
+  if (laps === 1 && !st.finished) w.moments = w.moments.concat(f1NewMoments(w, st, last));
+  if (st.finished) { const byId = new Map(w.entrants.map(e => [e.id, e])); w.results = RaceEngine.classify(st).map(r => Object.assign({}, r, byId.get(r.id) || {})); w.finishedAt = nowIso(); ttStop(); }
+  return log;
+}
+function ttTick() {
+  const w = S.tt.w; if (!S.tt.timer || !w || !w.state || w.state.finished) { ttStop(); render(); return; }
+  const pend = (w.moments || []).filter(m => !m.resolved && m.lap === w.state.lap + 1 && !S.tt.choice[m.id]);
+  if (pend.length && Date.now() - Date.parse(pend[0].createdAt) < MOMENT_WAIT) { S.tt.timer = setTimeout(ttTick, 500); render(); return; }
+  const log = ttStep(1);
+  if (log && S.ui.form.ttStopSc !== false && log.some(l => (l.kind === 'sc' || l.kind === 'vsc') && /deployed/.test(l.text))) { ttStop(); toast('Safety car: paused. Make your calls, then carry on.'); render(); return; }
+  if (S.tt.timer) S.tt.timer = setTimeout(ttTick, Number(ttCfg().speed) || 1000);
+  render();
+};
+ACTIONS['tt-play'] = () => { if (S.tt.timer) { ttStop(); render(); return; } S.tt.timer = setTimeout(ttTick, 50); render(); };
+ACTIONS['tt-step'] = d => { ttStop(); ttStep(Number(d.laps) || 1); render(); };
+ACTIONS['tt-call'] = d => {
+  const w = S.tt.w, car = ttCfg().car; if (!w || !w.state) return;
+  S.tt.calls = S.tt.calls.filter(c => c.type !== d.type);
+  if (d.type === 'box') S.tt.calls.push({ entry: car, type: 'box', compound: d.value });
+  else if (d.type === 'mode') S.tt.calls.push({ entry: car, type: 'mode', value: d.value });
+  else if (d.type === 'plan') S.tt.calls.push({ entry: car, type: 'strategy', plan: Number(d.value) });
+  toast('Call made: it applies on the next lap.'); render();
+};
+ACTIONS['tt-moment'] = d => { S.tt.choice[d.id] = d.choice; render(); };
+ACTIONS['tt-stopsc'] = (d, el) => { S.ui.form.ttStopSc = !!el.checked; };
+
+function ttMomentHtml(w) {
+  const mine = ttCfg().car, m = (w.moments || []).find(x => !x.resolved && x.carId === mine && x.lap === w.state.lap + 1); if (!m) return '';
+  const st = w.state, car = st.cars.find(c => c.id === m.carId), opp = m.opponent ? st.cars.find(c => c.id === m.opponent) : null, pick = S.tt.choice[m.id];
+  return `<section class="card moment"><p class="eyebrow">Driver moment, lap ${m.lap}</p><h2>${esc(MOMENT_TITLE[m.kind](opp ? f1Ent(w, opp.id).name : ''))}</h2>
+    <div class="choices">${MOMENT_CHOICES[m.kind].map(([k, l, dsc]) => { const o = RaceEngine.momentOdds(m.kind, k, car, opp, st.circuit);
+      return `<button class="choice" data-act="tt-moment" data-id="${esc(m.id)}" data-choice="${k}" aria-pressed="${pick === k}"><b>${esc(l)}</b><span>${esc(dsc)}</span><span class="odds">${['wait', 'concede', 'safe'].indexOf(k) !== -1 ? 'No risk' : `${Math.round(o.success * 100)}%${o.contact ? `, ${Math.round(o.contact * 100)}% contact risk` : ''}`}</span></button>`; }).join('')}</div></section>`;
+}
+function ttCarHtml(w) {
+  const id = ttCfg().car, car = w.state.cars.find(c => c.id === id), e = f1Ent(w, id), t = F1.team(e.teamId); if (!car) return '';
+  if (car.status !== 'running') return `<section class="card"><h2>Your car</h2><p>${esc(e.name)} is out: ${esc(car.dnf)}.</p></section>`;
+  const life = RaceEngine.tyreLife(car.tyre.compound, car, w.state.circuit), wear = Math.min(100, Math.round(car.tyre.wear / life * 100)), pos = f1Order(w.state).indexOf(car) + 1;
+  const pend = type => S.tt.calls.find(c => c.type === type);
+  return `<section class="card" style="--team:${esc(t.color)}"><h2>Your car: ${esc(e.name)} <span class="sub">P${pos}, ${esc(car.planName || 'no plan')}, ${esc(approachLabel(car.approach).toLowerCase())}</span></h2>
+    <div class="f1-gauges"><div class="f1-gauge">${esc(RaceEngine.COMPOUNDS[car.tyre.compound].label)}s, ${car.tyre.age} laps: wear ${wear}%<div class="track"><div class="fill ${wear >= 90 ? 'hot' : ''}" style="width:${wear}%"></div></div></div>
+      <div class="f1-gauge">Battery ${Math.round(car.energy)}%, ${esc(RaceEngine.MODES[car.mode].label.toLowerCase())}<div class="track"><div class="fill" style="width:${car.energy}%"></div></div></div></div>
+    <div class="f1-row"><span class="lbl">Mode</span>${['push', 'standard', 'manage'].map(m => `<button class="btn small" data-act="tt-call" data-type="mode" data-value="${m}" aria-pressed="${(pend('mode') ? pend('mode').value : car.mode) === m}">${RaceEngine.MODES[m].label}</button>`).join('')}</div>
+    <div class="f1-row"><span class="lbl">Box</span>${['soft', 'medium', 'hard', 'inter', 'wet'].map(k => `<button class="btn small" data-act="tt-call" data-type="box" data-value="${k}" aria-pressed="${!!(pend('box') && pend('box').compound === k)}">${f1TyreChip(k)} ${k === 'inter' ? 'Inter' : RaceEngine.COMPOUNDS[k].label}</button>`).join('')}</div>
+    ${(car.plans || []).length ? `<div class="f1-row"><span class="lbl">Plan</span>${car.plans.map((p, i) => `<button class="btn small" data-act="tt-call" data-type="plan" data-value="${i}" aria-pressed="${!!(pend('strategy') && pend('strategy').plan === i)}" ${car.planName === PLAN_NAMES[i] ? 'disabled' : ''}>Switch to ${PLAN_NAMES[i]}</button>`).join('')}</div>` : ''}
+    ${lockedStatusHtml(w, e, car)}</section>`;
+}
+
+route('test', 'Test Track', function () {
+  if (!F1.teams().length) return '<div class="page-head"><div><h1>Test Track</h1><p>The grid isn’t set up yet.</p></div></div>';
+  const f = ttCfg(), w = S.tt.w, tracks = F1.tracks(), t = F1.track(f.trackId) || tracks[0], ents = f1Entrants(), live = !!S.tt.timer;
+  let h = `<div class="page-head"><div><h1>Test Track</h1><p>The same simulator as the official races, with the league’s grid, cars and ratings. It runs in your browser: nothing here is saved or counts towards anything, so try whatever you like.</p></div>
+    ${w && w.state ? `<div class="f1-lap ${live ? 'live' : ''}"><small>${w.state.finished ? 'Chequered flag' : w.state.lap ? 'Test, lap' : 'Grid set'}</small>${w.state.lap}<span class="of">/${w.state.laps}</span></div>` : ''}</div>`;
+  if (!w) {
+    const fakeW = ttW(), mine = ents.find(e => e.id === f.car) || ents[0], sf = stratForm(fakeW, mine), N = raceLaps(fakeW), L = tyreKnowledge(fakeW, mine);
+    S.ui.stratW = fakeW;
+    h += `<section class="card"><h2>The session</h2><div class="metrics" style="align-items:end">
+        <label class="field">Circuit${sel('tt-track', 'ui/form/tt/trackId', f.trackId, tracks.map(x => [x.id, x.name]))}</label>
+        <label class="field">Session${sel('tt-session', 'ui/form/tt/session', f.session, [['gp', 'Grand Prix']].concat(t.hasSprint ? [['sprint', 'Sprint']] : []))}</label>
+        <label class="field">Weather${sel('tt-weather', 'ui/form/tt/weatherMode', f.weatherMode, F1_WEATHER)}</label>
+        <label class="field">Seed (optional)<input id="tt-seed" type="number" min="1" data-bind="ui/form/tt/seed" value="${esc(f.seed || '')}" placeholder="Random"></label></div>
+      ${randomnessHtml('tt', f, t)}</section>
+      <section class="card" style="--team:${esc(F1.team(mine.teamId).color)}"><h2>Your car</h2>
+        <div class="metrics" style="align-items:end"><label class="field">Car${sel('tt-car', 'ui/form/tt/car', f.car, ents.map(e => [e.id, `${e.name}, ${F1.team(e.teamId).name}`]))}</label>
+          <label class="field">Set-up quality (20 to 95)<input id="tt-setup" type="number" min="20" max="95" data-bind="ui/form/tt/setup" data-type="number" value="${esc(f.setup)}"></label></div>
+        <p class="muted small">Tyre life here: ${['soft', 'medium', 'hard'].map(k => `${f1TyreChip(k)} about ${L[k].laps} laps`).join(' &nbsp; ')}. ${esc(forecastText(fakeW))}</p>
+        ${presetBarHtml(mine, sf)}
+        <div class="tabs" role="tablist">${PLAN_NAMES.map((n, i) => `<button role="tab" class="tab" data-act="strat-tab" data-car="${esc(mine.id)}" data-i="${i}" aria-selected="${(sf.tab || 0) === i}">${n}</button>`).join('')}</div>
+        ${planEditorHtml(fakeW, mine, sf, sf.tab || 0, N, L)}
+        <label class="field" style="max-width:240px">Start on${sel(`sp-${mine.id}-active`, `ui/form/strat/${mine.id}/active`, sf.active, PLAN_NAMES.map((n, i) => [String(i), n]))}</label>
+        ${approachHtml(mine, sf)}${triggersEditorHtml(mine, sf, N)}
+        <div class="btn-row"><button class="btn primary" data-act="tt-quali">Run qualifying</button></div></section>`;
+    return h;
+  }
+  h += `<section class="card rc ${live ? 'is-live' : ''}"><h2>Controls ${live ? '<span class="tag live">Running</span>' : ''}</h2><div class="btn-row">
+    ${w.state.finished ? '' : `<button class="btn primary" data-act="tt-play">${live ? 'Pause' : w.state.lap ? 'Resume' : 'Start the race'}</button>
+      <label class="sr-only" for="tt-speed">Speed</label>${sel('tt-speed', 'ui/form/tt/speed', f.speed, [['2000', 'A lap every 2 seconds'], ['1000', 'A lap a second'], ['300', 'Fast']])}
+      <button class="btn" data-act="tt-step" data-laps="1" ${live ? 'disabled' : ''}>Next lap</button><button class="btn" data-act="tt-step" data-laps="999" ${live ? 'disabled' : ''}>Run to the flag</button>
+      <label class="small"><input type="checkbox" data-act="tt-stopsc" ${S.ui.form.ttStopSc !== false ? 'checked' : ''}> Pause for safety cars</label>`}
+    <button class="btn" data-act="tt-reset">Back to set-up</button><button class="btn" data-act="tt-quali">Run it again (new seed unless set)</button></div>
+    <p class="muted small">${esc(forecastText(w))}</p></section>`;
+  if (w.state.lap > 0 && !w.state.finished) h += ttMomentHtml(w) + ttCarHtml(w);
+  if (w.status === 'finished') h += `<section class="card"><h2>Classification</h2><div class="scroll-x">${f1ResultsHtml(w)}</div></section>`;
+  const racing = w.state.lap > 0, tab = S.ui.f1tab && (racing || S.ui.f1tab === 'feed') ? S.ui.f1tab : 'feed';
+  const tabs = [['feed', 'Race log'], ['lapchart', 'Lap chart'], ['tyres', 'Tyre strategy'], ['driver', S.ui.f1pick ? `Driver: ${S.ui.f1pick}` : 'Driver']].filter(x => racing || x[0] === 'feed');
+  const body = tab === 'lapchart' ? lvLapChartHtml(w) : tab === 'tyres' ? f1ChartHtml(w) : tab === 'driver' ? lvDriverHtml(w) : f1FeedHtml(w);
+  h += `<div class="f1-main"><section class="card"><h2>${racing ? 'Timing' : 'Qualifying'}</h2><div class="scroll-x">${lvTowerHtml(w)}</div></section>
+    <section class="card"><div class="tabs" role="tablist">${tabs.map(([k, l]) => `<button role="tab" class="tab" data-act="f1-tab" data-tab="${k}" aria-selected="${tab === k}">${esc(l)}</button>`).join('')}</div>${body}</section></div>`;
+  return h;
+});
 
 /* =====================================================================
    F1 SIM — Home, Paddock, Race Control desk, accounts and backups.
