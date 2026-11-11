@@ -1,19 +1,20 @@
 # F1 SIM
 
-A multiplayer Formula 1 league. Today's real grid is the starting point; players' characters take seats as drivers, team principals and race engineers, in place of the real people. Race weekends are simulated lap by lap, and anyone holding a seat can make calls from their pit wall. Media and everyone else write for the Paddock.
+A multiplayer formula racing league: Formula 1 on today's real grid, with Formula 2, Formula 3 and your own series alongside. Players' characters take seats as drivers, team principals and race engineers. Race weekends are simulated lap by lap from the teams' practice work, plans and triggers.
 
-**To set it up, follow [SETUP.md](SETUP.md).**
+**Current version: see [VERSION](VERSION). What changed in each version: [CHANGELOG.md](CHANGELOG.md). To set it up, follow [SETUP.md](SETUP.md).**
 
 ## What's in it
 
-- **The Grid**: 11 teams, five seats each (team principal, two drivers, two race engineers). Race Control puts characters into seats or opens seats for applications.
-- **Team HQ**: each team's car, budget and upgrades. Team principals order upgrades within a season budget and earn more from results; drivers spend development points earned from results.
-- **Careers**: every driver's record, race by race, with head-to-heads against team-mates.
-- **Race Weekend**: practice (engineers use limited runs to find the set-up the driver wants, and learn how long the tyres last), qualifying, then the race, run by Race Control a lap, five laps or the whole race at a time. Pit walls: driving mode, pit stops and tyres, team orders, and drivers refusing them.
-- **Championship**: drivers' and constructors' standings. Points go to whoever drove the car that weekend.
-- **Paddock**: news and interviews from the media, and paddock life from everyone else, with press notes from the latest race.
-- **Your characters**: players make as many as they like and play one at a time.
-- **Race Control**: seat applications, every character in the league, car tuning and an audit record. The Administrator also manages accounts, the invite code and backups.
+- **Series and seasons**: run F1, F2, F3 or custom series side by side, switched from the top bar. Catalogue each season into the archive and start the next.
+- **Characters**: players apply with a background, years of experience and rolled ratings; Race Control approves them. One set of ratings across every series.
+- **The Grid**: teams with a team principal, drivers and race engineers. Characters take seats in place of the real or fictional people.
+- **Team HQ**: the car, budget, upgrades, power units, sponsor deal, contracts and engineer–driver rapport.
+- **Race Weekend**: practice sessions with a set-up guide, timesheets and debriefs; qualifying with a debrief; race plans, presets, triggers and race approaches; the race, live or a lap at a time, with driver moments. Official races run on the teams' plans alone.
+- **Test Track**: the same simulator to experiment with, run in your own browser. Nothing is saved.
+- **Championship and Seasons**: standings, champions, awards and Driver of the Day.
+- **Profiles and the Paddock**: portraits, diaries, rivalries, career timelines, driver cards for Discord, news and interviews.
+- **Race Control**: applications, seats, announcements, View as any character, series and calendars, accounts and backups.
 
 ## What's in this repository
 

@@ -1,4 +1,4 @@
-/* F1 SIM f1sim0009: a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v0.10.0 (build f1sim-0.10.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -811,6 +811,8 @@ function navHtml() {
   const unread = typeof unreadCount === 'function' ? unreadCount() : 0;
   let h = `<div class="nav-group">${NAV.map(x => item(x[0] === 'notices' ? [x[0], x[1], x[2], unread] : x)).join('')}</div>`;
   if (S.isGm) h += `<div class="nav-group rc"><p class="nav-h">Race Control</p>${item(['control', 'shield', 'Race Control', pending])}${item(['series', 'flag', 'Series'])}${S.isOwner ? item(NAV_RC[1]) : ''}</div>`;
+  /* The version the site is running, to match against CHANGELOG.md and the commits. */
+  if (window.F1SIM_VERSION && window.F1SIM_VERSION.indexOf('__') !== 0) h += `<p class="nav-version">F1 SIM v${esc(window.F1SIM_VERSION)}</p>`;
   return h;
 }
 function topbarHtml() {
@@ -1298,7 +1300,7 @@ ACTIONS['f1-open'] = () => {
   const seed = Math.max(1, parseInt(f.seed, 10) || (1 + Math.floor(Math.random() * 999999)));
   run(async () => {
     await Data.put('f1_weekends', id, { seriesId: curSeriesId(), seasonId: curSeasonId(), trackId: track.id, round: track.round, session, seed, weatherMode: f.weatherMode || 'track', status: 'practice', createdAt: nowIso(),
-      settings: { lock: f.lock !== false, scRate: Number(f.scRate) || 1, failRate: Number(f.failRate) || 1, rainPct: f.rainPct || 'track' } });
+      settings: { lock: f.lock !== false, scRate: Number(f.scRate) || 1, failRate: Number(f.failRate) || 1, rainPct: f.rainPct || 'track', practice: f.practice || 'full' } });
     await f1LockProjects();
     await Data.audit('f1.weekend-open', `${track.name}${session === 'sprint' ? ' sprint' : ''} opened`);
     S.ui.form.f1w = null; S.ui.f1view = null;
@@ -1490,7 +1492,7 @@ function f1PitWallHtml(w) {
 function f1OpenFormHtml() {
   const tracks = F1.tracks(); if (!tracks.length) return '';
   if (seasonClosed()) return `<section class="card"><h2>Between seasons</h2><p>${esc(curSeason().name)} is catalogued. Start the next season on the Seasons page to open weekends again.</p><button class="btn primary" data-act="nav" data-route="seasons">Seasons</button></section>`;
-  const f = S.ui.form.f1w = S.ui.form.f1w || { trackId: (f1NextTrack() || {}).id, session: 'gp', weatherMode: 'track', seed: '', rainPct: 'track', scRate: '1', failRate: '1', lock: true };
+  const f = S.ui.form.f1w = S.ui.form.f1w || { trackId: (f1NextTrack() || {}).id, session: 'gp', weatherMode: 'track', seed: '', rainPct: 'track', scRate: '1', failRate: '1', lock: true, practice: 'full' };
   const t = F1.track(f.trackId) || tracks[0];
   return `<section class="card"><h2>Open the next weekend</h2>
     <div class="metrics" style="align-items:end">
@@ -1500,6 +1502,7 @@ function f1OpenFormHtml() {
       <label class="field">Seed (optional)<input id="f1w-seed" type="number" min="1" data-bind="ui/form/f1w/seed" value="${esc(f.seed || '')}" placeholder="Random"></label>
     </div>
     ${randomnessHtml('f1w', f, t)}
+    <label class="field" style="max-width:520px">Practice${sel('f1w-practice', 'ui/form/f1w/practice', f.practice || 'full', [['full', 'Full sessions: run like qualifying, with weather and incidents'], ['quick', 'Quick: runs report straight away, always dry']])}</label>
     <label class="small"><input type="checkbox" data-bind="ui/form/f1w/lock" ${f.lock !== false ? 'checked' : ''}> Official race: no pit-wall changes once it starts. The teams’ plans, triggers and race approaches run the cars.</label>
     <p class="muted small">${esc(t.circuit)}: ${t.laps} laps, ${esc(String(t.type).replace('-', ' '))}, ${t.wr}% rain risk. The seed makes the weekend repeatable: the same seed and the same calls give the same race.</p>
     <div class="btn-row"><button class="btn primary" data-act="f1-open">Open the weekend</button></div></section>`;
@@ -1634,19 +1637,23 @@ const NOTES = {
 };
 /* What a run tells the team. Pure: the same run always says the same thing. Experienced drivers give clearer feedback. */
 function f1RunResult(w, ent, run) {
+  /* Full practice: nothing to report until the session has run; lost runs report why; conditions change what a run tells you. */
+  const ctx = runContext(w, run); if (ctx && ctx.pending) return { pending: true }; if (ctx && ctx.lost) return { lost: ctx.lost };
+  const cond = (ctx && ctx.cond) || 'dry', wp = WET_PEN[cond];
   const track = F1.track(w.trackId), circuit = FormulaRacingAdapter.toCircuit(track), r = RaceEngine.rng(h32(w.seed, ent.id, run.id));
   const team = f1EffectiveTeam(F1.team(ent.teamId)), entry = FormulaRacingAdapter.toEntries([ent.v3], [team], track, {})[0];
   const noise = (2 + (100 - (ent.v3.experience || 50)) / 12) * rapportNoise(f1Rapport(ent.teamId, ent.car));
   if (run.kind === 'setup') {
     const i = f1IdealFor(w, ent), q = f1SetupQuality(w, ent.teamId, run.dials, ent);
-    const notes = DIALS.map(([k, label]) => { const d = (Number(run.dials[k]) || 50) - i[k] + f1Gauss(r) * noise;
+    const notes = DIALS.map(([k, label]) => { const d = (Number(run.dials[k]) || 50) - i[k] + f1Gauss(r) * noise * (cond === 'dry' ? 1 : 2.5);
       return `${label}: ${Math.abs(d) < 5 ? 'feels right.' : NOTES[k][d > 0 ? 0 : 1](d).replace(/^./, c => c.toLowerCase())}`; });
-    return { lap: f1Lap(circuit, entry, q) + 0.8 + f1Gauss(r) * 0.08, notes };
+    return { lap: f1Lap(circuit, entry, q) + 0.8 + wp + f1Gauss(r) * 0.08, cond, q, notes: cond === 'dry' ? notes : [`The track was ${cond}: the balance is hard to read, so treat this feedback with care.`].concat(notes) };
   }
   if (run.kind === 'long') {
     const c = RaceEngine.COMPOUNDS[run.compound] ? run.compound : 'medium';
+    if (cond !== 'dry' && !RaceEngine.COMPOUNDS[c].wet) return { cond, wet: true, compound: cond === 'wet' ? 'wet' : 'inter', life: null, lap: f1Lap(circuit, entry, 60) + 2.2 + wp + f1Gauss(r) * 0.2 };
     const life = RaceEngine.tyreLife(c, { driver: entry.driver, car: entry.car }, circuit) * (1 + f1Gauss(r) * 0.03 * noise / 4);
-    return { compound: c, life: Math.max(4, Math.round(life)), lap: f1Lap(circuit, entry, 60) + RaceEngine.COMPOUNDS[c].offset + 2.2 + f1Gauss(r) * 0.1 };
+    return { compound: c, life: Math.max(4, Math.round(life)), lap: f1Lap(circuit, entry, 60) + RaceEngine.COMPOUNDS[c].offset + 2.2 + wp + f1Gauss(r) * 0.1, cond };
   }
   /* Qualifying simulation: one lap against everyone else's likely pace. */
   const last = f1Runs(w, ent.id).filter(x => x.kind === 'setup' && x.at <= run.at).pop();
@@ -1656,7 +1663,8 @@ function f1RunResult(w, ent, run) {
   const mine = f1Lap(circuit, entry, mySetup);
   const faster = all.filter(e => e.id !== ent.id).filter(e => f1Lap(circuit, e, f1AiSetup(F1.team(e.team))) < mine).length;
   const pos = clampN(faster + 1 + Math.round(f1Gauss(r) * 1.2), 1, all.length);
-  return { lap: mine - RaceEngine.DEFAULTS.fuelEffect - 0.35 + f1Gauss(r) * 0.06, from: Math.max(1, pos - 1), to: Math.min(all.length, pos + 1) };
+  const spread = cond === 'dry' ? 1 : 4;
+  return { lap: mine - RaceEngine.DEFAULTS.fuelEffect - 0.35 + wp + f1Gauss(r) * 0.06, from: Math.max(1, pos - spread), to: Math.min(all.length, pos + spread), cond };
 }
 ACTIONS['f1-run'] = d => {
   const w = F1.live(), c = currentChar(); if (!w || w.status !== 'practice' || !c) return;
@@ -1668,7 +1676,7 @@ ACTIONS['f1-run'] = d => {
   DIALS.forEach(([k]) => { dials[k] = clampN(Math.round(Number(dials[k]) || 0), 0, 100); });
   const compound = ((S.ui.form.f1long || {})[ent.id]) || 'medium';
   run(async () => { await Data.put('f1_runs', newId('run'), { userId: asOwner(), charId: c.id, weekendId: w.id, carId: ent.id, session: curSession(w), kind: d.kind, dials, compound, at: nowIso() }); },
-    d.kind === 'setup' ? 'Run done. Read what the driver said.' : 'Run done.');
+    fullPractice(w) ? `Run planned for ${sessionName(w, curSession(w))}. Results come when Race Control runs the session.` : d.kind === 'setup' ? 'Run done. Read what the driver said.' : 'Run done.');
 };
 ACTIONS['f1-lock'] = d => {
   const dials = Object.assign({ wing: 50, susp: 50, diff: 50 }, (S.ui.form.f1d || {})[d.car] || {});
@@ -1684,18 +1692,23 @@ function f1PracticeHtml(w, e, t, mine) {
   const long = (S.ui.form.f1long = S.ui.form.f1long || {})[e.id] || 'medium';
   const ent = Object.assign({}, e, { v3: (f1Entrants().find(x => x.id === e.id) || {}).v3 });
   const res = runs.slice().reverse().map(r => { const x = f1RunResult(w, ent, r);
-    const sn = `<span class="muted small">${sessionName(w, r.session || 1)}</span> `;
-    if (r.kind === 'setup') return `<li>${sn}<b>Set-up run</b> (${esc(dialText(r.dials))}): ${f1Fmt(x.lap)}<ul>${x.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul></li>`;
+    const sn = `<span class="muted small">${sessionName(w, r.session || 1)}</span> `, kl = r.kind === 'setup' ? `set-up run (${esc(dialText(r.dials))})` : r.kind === 'long' ? `long run on ${esc(RaceEngine.COMPOUNDS[r.compound] ? RaceEngine.COMPOUNDS[r.compound].label.toLowerCase() : 'medium')}s` : 'qualifying simulation';
+    const wt = x.cond && x.cond !== 'dry' ? ` <span class="tag">${esc(x.cond)} track</span>` : '';
+    if (x.pending) return `<li>${sn}<b>Planned:</b> ${kl}. It runs when Race Control runs ${esc(sessionName(w, r.session || 1))}. <button class="btn small ghost" data-act="run-cancel" data-id="${esc(r.id)}">Take it off the plan</button></li>`;
+    if (x.lost) return `<li>${sn}<b>Lost:</b> ${kl}. ${esc(x.lost)}</li>`;
+    if (x.wet) return `<li>${sn}<b>Long run</b>${wt}: too wet for slicks, so it ran on ${x.compound === 'wet' ? 'full wets' : 'intermediates'}. No dry tyre data. Average lap ${f1Fmt(x.lap)}.</li>`;
+    if (r.kind === 'setup') return `<li>${sn}<b>Set-up run</b> (${esc(dialText(r.dials))})${wt}: ${f1Fmt(x.lap)}<ul>${x.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul></li>`;
     if (r.kind === 'long') return `<li>${sn}<b>Long run on ${esc(RaceEngine.COMPOUNDS[x.compound].label.toLowerCase())}s</b>: about ${x.life} laps before the time falls away. Average lap ${f1Fmt(x.lap)} on full tanks.</li>`;
-    return `<li>${sn}<b>Qualifying simulation</b>: ${f1Fmt(x.lap)}, which looks like P${x.from} to P${x.to} on one lap.</li>`; }).join('');
+    return `<li>${sn}<b>Qualifying simulation</b>${wt}: ${f1Fmt(x.lap)}, which looks like P${x.from} to P${x.to} on one lap.</li>`; }).join('');
   return `<div class="f1-car" style="--team:${esc(t.color)}"><h3>${esc(e.name)}</h3>
     <p class="muted small"><b>${over ? 'Practice is over' : esc(sessionName(w, n))}</b>${over ? '' : `: ${left ? plural(left, 'run') + ' left in this session' : 'all runs used in this session; more in the next'}`}. The driver tells you what the car is doing; find the set-up they want, then lock it in for qualifying.</p>
+    ${fullPractice(w) && !over ? `<p class="small"><b>Full sessions this weekend.</b> Plan this session’s runs; they play out when Race Control runs ${esc(sessionName(w, n))}, in whatever weather it brings. ${esc(practiceForecastText(w))}</p>` : ''}
     ${setupGuideHtml(w, ent)}
     <div class="dials">${DIALS.map(([k, l, lo, hi]) => `<label class="field">${l} <span class="muted">(0 ${lo}, 100 ${hi})</span><input id="f1d-${esc(e.id)}-${k}" type="number" min="0" max="100" step="1" value="${esc(f[k])}" data-bind="ui/form/f1d/${esc(e.id)}/${k}" data-type="number"></label>`).join('')}</div>
-    <div class="btn-row"><button class="btn primary" data-act="f1-run" data-kind="setup" data-car="${esc(e.id)}" ${left ? '' : 'disabled'}>Set-up run</button>
+    <div class="btn-row"><button class="btn primary" data-act="f1-run" data-kind="setup" data-car="${esc(e.id)}" ${left ? '' : 'disabled'}>${fullPractice(w) ? 'Plan a set-up run' : 'Set-up run'}</button>
       <label class="sr-only" for="f1long-${esc(e.id)}">Tyre for the long run</label>${sel('f1long-' + e.id, 'ui/form/f1long/' + e.id, long, [['soft', 'Softs'], ['medium', 'Mediums'], ['hard', 'Hards']])}
-      <button class="btn" data-act="f1-run" data-kind="long" data-car="${esc(e.id)}" ${left ? '' : 'disabled'}>Long run</button>
-      <button class="btn" data-act="f1-run" data-kind="quali" data-car="${esc(e.id)}" ${left ? '' : 'disabled'}>Qualifying simulation</button></div>
+      <button class="btn" data-act="f1-run" data-kind="long" data-car="${esc(e.id)}" ${left ? '' : 'disabled'}>${fullPractice(w) ? 'Plan a long run' : 'Long run'}</button>
+      <button class="btn" data-act="f1-run" data-kind="quali" data-car="${esc(e.id)}" ${left ? '' : 'disabled'}>${fullPractice(w) ? 'Plan a qualifying simulation' : 'Qualifying simulation'}</button></div>
     ${res ? `<ul class="runs">${res}</ul>` : ''}
     ${practiceDebriefsHtml(w, ent)}
     <div class="btn-row"><button class="btn ${locked ? '' : 'primary'}" data-act="f1-lock" data-car="${esc(e.id)}">${locked ? 'Lock in these dials instead' : 'Lock in this set-up'}</button>
@@ -2053,8 +2066,8 @@ function lvControlHtml(w) {
   const st = w.state, calls = f1Calls(w), setups = calls.filter(c => c.type === 'setup').length, pending = calls.length - setups;
   const runs = list('f1_runs').filter(r => r.weekendId === w.id).length;
   if (w.status === 'practice') { const done = endedSessions(w).length, n = curSession(w), all = done >= sessionsOf(w), single = seriesDoc(wSeries(w)).quali === 'single';
-    return `<section class="card rc"><h2>Race Control <span class="sub">${all ? 'Practice is over' : esc(sessionName(w, n)) + ' is running'}</span></h2><p>${plural(runs, 'practice run')} done, ${plural(setups, 'set-up')} locked in. Cars without a locked set-up run a standard one. Ending a session posts its timesheet and each player car’s debrief.</p>
-    <div class="btn-row">${all ? '' : `<button class="btn ${all ? '' : 'primary'}" data-act="fp-end">End ${esc(sessionName(w, n))}</button>`}<button class="btn ${all ? 'primary' : ''}" data-act="f1-quali">${single ? 'Run qualifying' : 'Run Q1'}${all ? '' : ' now'}</button><button class="btn" data-act="f1-cancel">Cancel the weekend</button></div></section>`; }
+    return `<section class="card rc"><h2>Race Control <span class="sub">${all ? 'Practice is over' : esc(sessionName(w, n)) + ' is running'}</span></h2><p>${plural(runs, 'practice run')} done, ${plural(setups, 'set-up')} locked in. Cars without a locked set-up run a standard one. ${fullPractice(w) ? `Full sessions: teams plan their runs, then running the session plays them out with its own weather, red flags, crashes and failures. ${esc(practiceForecastText(w))}` : 'Quick practice: runs report straight away; ending a session posts its timesheet.'} Each player car gets a debrief.</p>
+    <div class="btn-row">${all ? '' : `<button class="btn ${all ? '' : 'primary'}" data-act="fp-end">${fullPractice(w) ? 'Run' : 'End'} ${esc(sessionName(w, n))}</button>`}<button class="btn ${all ? 'primary' : ''}" data-act="f1-quali">${single ? 'Run qualifying' : 'Run Q1'}${all ? '' : ' now'}</button><button class="btn" data-act="f1-cancel">Cancel the weekend</button></div></section>`; }
   if (w.status === 'quali') return `<section class="card rc"><h2>Race Control</h2><p>Q${w.qualiStage || 1} is done.</p>
     <div class="btn-row"><button class="btn primary" data-act="f1-quali-next">Run Q${(w.qualiStage || 1) + 1}</button><button class="btn" data-act="f1-cancel">Cancel the weekend</button></div></section>`;
   if (w.status === 'finished') return '';
@@ -2352,7 +2365,7 @@ function weekendEnt(w, carId) { return (w.entrants || f1Entrants()).find(e => e.
 function tyreKnowledge(w, ent) {
   const track = F1.track(w.trackId), circuit = FormulaRacingAdapter.toCircuit(track), out = {};
   const full = Object.assign({}, ent, { v3: ent.v3 || (f1Entrants().find(x => x.id === ent.id) || {}).v3 });
-  f1Runs(w, ent.id).filter(r => r.kind === 'long').forEach(r => { const x = f1RunResult(w, full, r); out[x.compound] = { laps: x.life, measured: true }; });
+  f1Runs(w, ent.id).filter(r => r.kind === 'long').forEach(r => { const x = f1RunResult(w, full, r); if (!x.life) return; out[x.compound] = { laps: x.life, measured: true }; });
   ['soft', 'medium', 'hard'].forEach(k => { if (!out[k]) out[k] = { laps: Math.round(RaceEngine.COMPOUNDS[k].life / (circuit.tyreStress || 1)), measured: false }; });
   return out;
 }
@@ -3010,6 +3023,7 @@ function f1TeamExtras(teamId) {
   if (sp) { lines.push({ text: `${SPONSORS[sp.deal].label}: signing payment`, amt: SPONSORS[sp.deal].upfront });
     byW.forEach(w => { const rs = (w.results || []).filter(r => r.teamId === teamId), a = Math.round(SPONSORS[sp.deal].per(rs, w) * 100) / 100; if (a) lines.push({ text: `${(F1.track(w.trackId) || {}).name || ''}: ${SPONSORS[sp.deal].label.toLowerCase()} bonus`, amt: a }); }); }
   byW.forEach(w => { const t = (F1.track(w.trackId) || {}).name || '';
+    ((w.practice && w.practice.done) || []).forEach(s => (s.crashes || []).forEach(id => { const e = (w.entrants || []).find(x => x.id === id); if (e && e.teamId === teamId && teamHasPlayers(teamId)) lines.push({ text: `${t}: ${sessionName(w, s.n)} crash repairs, ${e.name}`, amt: -PRACTICE_REPAIR }); }));
     (w.results || []).filter(r => r.teamId === teamId && r.status === 'dnf' && /Accident/.test(r.gap || '')).forEach(r => lines.push({ text: `${t}: crash repairs, ${r.name}`, amt: -REPAIR_COST }));
     if (puAllow()) [1, 2, 3].forEach(car => { const st = puState(carKey(teamId, car), w); if (st.fitted && st.count > puAllow()) lines.push({ text: `${t}: extra power unit, car ${car}`, amt: -PU_EXTRA_COST }); });
     if (w.session === 'gp') F1.seats(teamId).filter(s => s.holderCharId).forEach(s => { const k = activeContract(s.holderCharId, teamId);
@@ -3600,7 +3614,7 @@ const STYLE_PREF = {
   qualifier: { wing: 6, susp: 4, diff: 0, likes: 'maximum grip over one lap: more wing and a slightly stiffer car', hates: 'running light: give up a little straight-line speed for corner speed' },
   smooth: { wing: -2, susp: -8, diff: -6, likes: 'a soft, progressive car with an open diff, kind to the tyres', hates: 'a snappy rear end on the throttle' },
   defender: { wing: -4, susp: 0, diff: 4, likes: 'straight-line speed to stay out of reach: a little less wing than most', hates: 'being a sitting duck on the straights' },
-  technical: { wing: 0, susp: 0, diff: 0, likes: 'whatever is fastest: technical drivers adapt, and their feedback is precise', hates: 'nothing in particular, as long as the car is balanced' },
+  technical: { wing: 0, susp: 0, diff: 0, likes: 'whatever is fastest: technical drivers adapt, and their feedback is precise', hates: 'a car that’s out of balance' },
   strategist: { wing: 0, susp: -4, diff: -4, likes: 'a car that looks after its tyres: slightly softer, with an open diff', hates: 'a car that chews through the rears' },
   ironman: { wing: 2, susp: 2, diff: 0, likes: 'a stable, predictable car to rely on lap after lap', hates: 'a car that’s on a knife edge' }
 };
@@ -3630,28 +3644,34 @@ const runsIn = (w, carId, n) => f1Runs(w, carId).filter(r => (r.session || 1) ==
 /* Can a player work on this car? Otherwise it runs a normal programme. */
 const playerRun = (w, ent) => F1.seats(ent.teamId).some(s => s.holderCharId && (s.role === 'principal' || (s.car === ent.car && (s.role === 'engineer' || s.role === 'driver'))));
 function bestSetupIn(w, ent, runs) {
-  return runs.filter(r => r.kind === 'setup').reduce((b, r) => { const q = f1SetupQuality(w, ent.teamId, r.dials, ent); return !b || q > b.q ? { q, r } : b; }, null);
+  /* Only runs that happened count; a set-up found on a wet track is only half trusted. */
+  return runs.filter(r => r.kind === 'setup').map(r => ({ r, ctx: runContext(w, r) })).filter(x => !x.ctx || x.ctx.cond)
+    .reduce((b, x) => { const wet = !!(x.ctx && x.ctx.cond !== 'dry'), q = f1SetupQuality(w, ent.teamId, x.r.dials, ent), score = wet ? 60 + (q - 60) / 2 : q; return !b || score > b.score ? { q, r: x.r, wet, score } : b; }, null);
 }
 /* Confidence at this circuit, 0 to 1: built session by session, more with a set-up the driver likes. */
 function confidenceAfter(w, ent, upTo) {
   if (!playerRun(w, ent)) return AI_CONF;
   const per = 3 / sessionsOf(w); let c = 0;
-  for (let n = 1; n <= upTo; n++) { const runs = runsIn(w, ent.id, n); if (!runs.length) continue;
-    const b = bestSetupIn(w, ent, runs), close = b ? clampN((b.q - 60) / 35, 0, 1) : 0; c += (0.2 + 0.15 * close) * per; }
+  for (let n = 1; n <= upTo; n++) { const runs = runsIn(w, ent.id, n).filter(r => { const x = runContext(w, r); return !x || x.cond; }), rec = endedSessions(w).find(s => s.n === n);
+    if (rec && (rec.crashes || []).indexOf(ent.id) !== -1) c -= 0.15;
+    if (!runs.length) continue;
+    const b = bestSetupIn(w, ent, runs), close = b ? clampN((b.score - 60) / 35, 0, 1) : 0; c += (0.2 + 0.15 * close) * per; }
+  c = Math.max(0, c);
   return Math.min(1, Math.round(c * 100) / 100);
 }
 const confidenceNow = (w, ent) => confidenceAfter(w, ent, w.status === 'practice' ? endedSessions(w).length : sessionsOf(w));
 
 /* The timesheet when a session ends. Players' cars use their runs; the rest run a normal programme. */
-function sessionTimes(w, n) {
+function sessionTimes(w, n, rec) {
   const track = F1.track(w.trackId), circuit = FormulaRacingAdapter.toCircuit(track), teams = F1.teams().map(t => f1EffectiveTeam(t)), ents = f1Entrants();
   const entries = FormulaRacingAdapter.toEntries(ents.map(e => e.v3), teams, track, {}), out = {};
   ents.forEach((e, i) => {
     const en = entries[i], r = RaceEngine.rng(h32(w.seed, 'fp', n, e.id));
-    if (playerRun(w, e)) { const laps = runsIn(w, e.id, n).map(x => f1RunResult(w, e, x)).filter(x => x.lap && !x.compound).map(x => x.lap);
-      const longs = runsIn(w, e.id, n).map(x => f1RunResult(w, e, x)).filter(x => x.compound).map(x => x.lap + 1.5);
+    if (playerRun(w, e)) { const rs = runsIn(w, e.id, n).map(x => f1RunResult(w, e, x)), laps = rs.filter(x => x.lap && !x.compound).map(x => x.lap);
+      const longs = rs.filter(x => x.compound && x.lap).map(x => x.lap + 1.5);
       const best = Math.min(...laps.concat(longs)); out[e.id] = isFinite(best) ? Math.round(best * 1000) / 1000 : null; return; }
     /* Long runs early in the weekend; the last session ends with low-fuel qualifying runs, like the players' qualifying simulations. */
+    if (rec) { const t = aiSessionLap(w, n, e, en, rec); out[e.id] = t == null ? null : Math.round(t * 1000) / 1000; return; }
     const prog = n === sessionsOf(w) ? -RaceEngine.DEFAULTS.fuelEffect - 0.2 : n === 2 ? 0.55 : 0.85;
     out[e.id] = Math.round((f1Lap(circuit, en, f1AiSetup(F1.team(e.teamId))) + prog + f1Gauss(r) * 0.22) * 1000) / 1000;
   });
@@ -3662,7 +3682,10 @@ ACTIONS['fp-end'] = () => {
   const n = curSession(w), done = endedSessions(w).length; if (done >= sessionsOf(w)) { toast('Practice is over: run qualifying.', true); return; }
   run(async () => {
     const doc = clone(S.store.f1_weekends[w.id]);
-    doc.practice = { session: Math.min(sessionsOf(w), n + 1), done: done ? doc.practice.done.concat([{ n, endedAt: nowIso(), times: sessionTimes(w, n) }]) : [{ n, endedAt: nowIso(), times: sessionTimes(w, n) }] };
+    let rec = { n };
+    if (fullPractice(w)) { rec = simulateSession(w, n); S._fpRec = Object.assign(rec, { wid: w.id }); }
+    rec.times = sessionTimes(w, n, fullPractice(w) ? rec : null); rec.endedAt = nowIso(); delete S._fpRec; delete rec.wid;
+    doc.practice = { session: Math.min(sessionsOf(w), n + 1), done: (done ? doc.practice.done : []).concat([rec]) };
     await Data.put('f1_weekends', w.id, doc);
     await Data.audit('f1.practice', `${sessionName(w, n)} ended`);
   }, n < sessionsOf(w) ? `${sessionName(w, n)} is over: timesheet and debriefs are out. ${sessionName(w, n + 1)} is open.` : 'Practice is over: timesheet and debriefs are out. Run qualifying when you’re ready.');
@@ -3670,7 +3693,7 @@ ACTIONS['fp-end'] = () => {
 function timesheetHtml(w, s) {
   const rows = Object.keys(s.times).map(id => ({ id, t: s.times[id] })).sort((a, b) => (a.t || 999) - (b.t || 999)), best = rows[0] && rows[0].t;
   const ents = w.entrants || f1Entrants();
-  return `<table class="data compact timing"><thead><tr><th>P</th><th>Driver</th><th class="num">Best</th><th class="num">Gap</th></tr></thead><tbody>${rows.map((x, i) => { const e = ents.find(z => z.id === x.id) || {};
+  return `${sessionReportHtml(w, s)}<table class="data compact timing"><thead><tr><th>P</th><th>Driver</th><th class="num">Best</th><th class="num">Gap</th></tr></thead><tbody>${rows.map((x, i) => { const e = ents.find(z => z.id === x.id) || {};
     return `<tr class="${e.charId ? 'me' : ''}"><td>${x.t ? i + 1 : ''}</td><td><span class="f1-bar" style="background:${esc(f1Colour(e.teamId))}"></span>${esc(e.name || x.id)}${e.charId ? ' <span class="tag player">Player</span>' : ''}</td>
       <td class="num">${x.t ? f1Fmt(x.t) : '<span class="muted">No time</span>'}</td><td class="num">${x.t && i ? '+' + (x.t - best).toFixed(3) : ''}</td></tr>`; }).join('')}</tbody></table>`;
 }
@@ -3696,10 +3719,16 @@ ACTIONS['guide-use'] = d => { const f = (S.ui.form.f1d = S.ui.form.f1d || {}); f
 function sessionDebriefHtml(w, ent, s) {
   const n = s.n, runs = runsIn(w, ent.id, n), rows = Object.keys(s.times).filter(id => s.times[id]).sort((a, b) => s.times[a] - s.times[b]);
   const pos = rows.indexOf(ent.id) + 1, gap = pos > 1 ? s.times[ent.id] - s.times[rows[0]] : 0;
-  if (!runs.length) return `<li><b>${sessionName(w, n)}:</b> the car didn’t run. No set-up work, no time, and no confidence gained.</li>`;
+  const lost = runs.filter(r => (runContext(w, r) || {}).lost), crashed = (s.crashes || []).indexOf(ent.id) !== -1, failed = (s.failures || []).indexOf(ent.id) !== -1;
+  const wxLine = s.weather ? ` ${weatherText(s.weather)}` : '';
+  if (!runs.length) return `<li><b>${sessionName(w, n)}:</b>${esc(wxLine)} The car didn’t run. No set-up work, no time, and no confidence gained.</li>`;
+  if (lost.length === runs.length) return `<li><b>${sessionName(w, n)}:</b>${esc(wxLine)} ${crashed ? 'The car crashed' : failed ? 'A mechanical problem stopped the car' : 'A red flag cost the running'}, and every planned run was lost. ${crashed ? 'Confidence took a knock.' : 'No confidence gained.'}</li>`;
   const b = bestSetupIn(w, ent, runs), ideal = f1IdealFor(w, ent), st = styleOf(ent), pref = STYLE_PREF[st] || STYLE_PREF.technical;
   const before = Math.round(confidenceAfter(w, ent, n - 1) * 100), after = Math.round(confidenceAfter(w, ent, n) * 100);
   const notes = [];
+  if (s.weather && (s.weather.start !== 'dry' || s.weather.change)) notes.push(weatherText(s.weather) + ' Wet running tells you less about the dry set-up.');
+  if (lost.length) notes.push(`${plural(lost.length, 'run')} lost: ${lost.map(r => runContext(w, r).lost.toLowerCase().replace(/\.$/, '')).join('; ')}.`);
+  if (crashed) notes.push('The crash knocked the driver’s confidence and costs £0.4m in repairs.');
   if (b) {
     const r = RaceEngine.rng(h32(w.seed, ent.id, 'debrief', n)), noise = (2 + (100 - ((ent.v3 && ent.v3.experience) || 50)) / 12) * rapportNoise(f1Rapport(ent.teamId, ent.car));
     const errs = DIALS.map(([k, label], i) => ({ k, label, d: (Number(b.r.dials[k]) || 50) - ideal[k] + f1Gauss(r) * noise, wgt: [0.5, 0.4, 0.3][i] })).sort((x, y) => Math.abs(y.d) * y.wgt - Math.abs(x.d) * x.wgt);
@@ -3733,6 +3762,108 @@ function qualiDebriefHtml(w, ent) {
     <li>Confidence: ${Math.round(conf * 100)}%, costing about ${confLoss.toFixed(2)}s a lap against full confidence.</li>
     ${setupLoss + confLoss > 0.05 && could < pos ? `<li>With both perfect, that lap was worth about P${could}.</li>` : ''}
     <li>For the race: the set-up stays as it is. ${knowsTyres ? 'Your long runs have measured the tyres: check the race plans against them.' : 'Nobody measured the tyres in practice, so the race plans work from rough tyre life: leave some margin.'}</li></ul></li></ul></div>`;
+}
+
+/* =====================================================================
+   F1 SIM — full practice sessions.
+   In a full race weekend, practice runs like qualifying: teams plan
+   their runs for the coming session, then Race Control runs it. Each
+   session has its own weather, drawn from the weekend's forecast (dry,
+   damp or wet, and rain can arrive or clear halfway through), and its
+   own chaos: red flags that cut runs short, crashes (likelier in the wet,
+   for inexperienced drivers and on qualifying simulations) and
+   mechanical failures (from the team's reliability). Race Control's
+   safety-car and failure settings scale them. Nobody sees a run's
+   result until its session has run.
+   Quick practice (results straight away, always dry) stays available
+   for any weekend, and the Test Track keeps its fixed conditions.
+   ===================================================================== */
+'use strict';
+
+const WET_PEN = { dry: 0, damp: 4.5, wet: 9 };
+const PRACTICE_REPAIR = 0.4;   // £m for a practice crash
+const fullPractice = w => !!w && !w.test && raceSettings(w).practice === 'full';
+const condName = c => c === 'wet' ? 'wet' : c === 'damp' ? 'damp' : 'dry';
+
+/* Chance of rain in a session, from the weekend's weather and Race Control's rain setting. */
+function sessionRainChance(w) {
+  const s = raceSettings(w), t = F1.track(w.trackId) || {};
+  if (w.weatherMode === 'dry') return 0; if (w.weatherMode === 'wet') return 0.75; if (w.weatherMode === 'mid') return 0.5;
+  return s.rainPct !== 'track' && s.rainPct != null ? Number(s.rainPct) / 100 : (t.wr || 0) * 0.6 / 100;
+}
+function sessionWeather(w, n) {
+  const r = RaceEngine.rng(h32(w.seed, 'fpwx', n)), p = sessionRainChance(w);
+  if (r() >= p) return { start: 'dry', change: null };
+  const heavy = r() < 0.4 ? 'wet' : 'damp';
+  if (r() < 0.5) return { start: heavy, change: r() < 0.4 ? { at: 0.5, to: 'dry' } : null };
+  return { start: 'dry', change: { at: 0.5, to: heavy } };
+}
+const condAt = (wx, frac) => wx.change && frac >= wx.change.at ? wx.change.to : wx.start;
+function weatherText(wx) {
+  if (!wx.change) return wx.start === 'dry' ? 'Dry throughout.' : `${condName(wx.start).replace(/^./, c => c.toUpperCase())} throughout.`;
+  return wx.change.to === 'dry' ? `Started ${condName(wx.start)}, dried out halfway through.` : `Started dry; rain arrived halfway through and the track went ${condName(wx.change.to)}.`;
+}
+
+/* Run the session: who loses which runs, and why. */
+function simulateSession(w, n) {
+  const st = raceSettings(w), wx = sessionWeather(w, n), r = RaceEngine.rng(h32(w.seed, 'fpsim', n)), per = runsPerSession(w);
+  const rec = { n, weather: wx, events: [], lost: {}, cond: {}, crashes: [], failures: [], redFlag: null };
+  const wetty = wx.start !== 'dry' || !!wx.change;
+  const redAt = r() < 0.22 * st.scRate * (wetty ? 1.6 : 1) ? (r() < 0.5 ? 0 : 1) : null;
+  f1Entrants().forEach(e => {
+    const runs = playerRun(w, e) ? runsIn(w, e.id, n) : null, slots = runs ? runs.length : per, team = F1.team(e.teamId);
+    const exp = (e.v3 && e.v3.experience) || 50; let out = null;
+    for (let i = 0; i < slots; i++) {
+      const id = runs ? runs[i].id : null, cond = condAt(wx, (i + 0.5) / per);
+      if (id) rec.cond[id] = cond;
+      if (out) { if (id) rec.lost[id] = out; continue; }
+      if (r() < 0.003 * st.failRate * (1 + (95 - (team.reliability || 90)) / 10)) {
+        out = 'A mechanical problem ended the session early.'; rec.failures.push(e.id); rec.events.push({ slot: i, ids: [e.id], text: `${e.name} stops on track with a mechanical problem.` }); if (id) rec.lost[id] = out; continue; }
+      const quali = runs && runs[i].kind === 'quali';
+      if (r() < 0.006 * st.scRate * (cond === 'wet' ? 3 : cond === 'damp' ? 2 : 1) * (1 + (60 - exp) / 100) * (quali ? 1.5 : 1)) {
+        out = 'Crashed. The car couldn’t be repaired in time.'; rec.crashes.push(e.id); rec.events.push({ slot: i, ids: [e.id], text: `${e.name} crashes${cond !== 'dry' ? ' in the ' + condName(cond) : ''}. Red flag.` }); if (id) rec.lost[id] = 'Crashed. The car needed repairs.'; continue; }
+      if (redAt === i && r() < 0.4 && id) rec.lost[id] = 'Cut short by a red flag.';
+    }
+  });
+  if (redAt != null) { rec.redFlag = redAt; rec.events.push({ slot: redAt, ids: [], text: 'Red flag: debris on the track. Some teams lose their run.' }); }
+  if (wx.change) rec.events.push({ slot: wx.change.at * per, ids: [], text: wx.change.to === 'dry' ? 'The track starts to dry.' : 'Rain arrives.' });
+  rec.events.sort((a, b) => a.slot - b.slot);
+  return rec;
+}
+/* A run's context: not run yet, lost, or the conditions it ran in. */
+function runContext(w, run) {
+  if (!fullPractice(w)) return null;
+  const rec = (S._fpRec && S._fpRec.n === (run.session || 1) && S._fpRec.wid === w.id) ? S._fpRec : endedSessions(w).find(s => s.n === (run.session || 1));
+  if (!rec || !rec.weather) return { pending: true };
+  if (rec.lost && rec.lost[run.id]) return { lost: rec.lost[run.id] };
+  return { cond: (rec.cond && rec.cond[run.id]) || 'dry' };
+}
+/* Lap times for cars nobody plays: their programme in the session's conditions, minus what they lost. */
+function aiSessionLap(w, n, e, entry, rec) {
+  if (!rec.weather) return null;
+  const per = runsPerSession(w), circuit = FormulaRacingAdapter.toCircuit(F1.track(w.trackId)), r = RaceEngine.rng(h32(w.seed, 'fp', n, e.id));
+  const failed = rec.failures.indexOf(e.id) !== -1 || rec.crashes.indexOf(e.id) !== -1, last = n === sessionsOf(w);
+  let best = null;
+  for (let i = 0; i < per; i++) {
+    if (failed && i > 0) break;
+    const cond = condAt(rec.weather, (i + 0.5) / per), prog = last && i === per - 1 ? -RaceEngine.DEFAULTS.fuelEffect - 0.2 : (n === 2 ? 0.55 : 0.85);
+    const t = f1Lap(circuit, entry, f1AiSetup(F1.team(e.teamId))) + prog + WET_PEN[cond] + f1Gauss(r) * 0.22;
+    best = best == null ? t : Math.min(best, t);
+  }
+  return best;
+}
+ACTIONS['run-cancel'] = d => {
+  const r = get('f1_runs', d.id), w = F1.live(); if (!r || !w) return;
+  if (!(runContext(w, r) || {}).pending) { toast('That run has already happened.', true); return; }
+  run(async () => { await Data.remove('f1_runs', r.id); }, 'Run taken off the plan.');
+};
+function sessionReportHtml(w, s) {
+  if (!s.weather) return '';
+  return `<p><b>Conditions:</b> ${esc(weatherText(s.weather))}</p>${s.events.length ? `<ul class="fp-events">${s.events.map(e => `<li>${esc(e.text)}</li>`).join('')}</ul>` : '<p class="muted small">A clean session.</p>'}`;
+}
+function practiceForecastText(w) {
+  const p = Math.round(sessionRainChance(w) * 100);
+  return p ? `${p}% chance of rain in each session.` : 'Dry sessions expected.';
 }
 
 /* =====================================================================
