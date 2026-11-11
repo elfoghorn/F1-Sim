@@ -7,7 +7,9 @@ A multiplayer Formula 1 league. Today's real grid is the starting point; players
 ## What's in it
 
 - **The Grid**: 11 teams, five seats each (team principal, two drivers, two race engineers). Race Control puts characters into seats or opens seats for applications.
-- **Race Weekend**: practice (teams send set-ups), qualifying, then the race, run by Race Control a lap, five laps or the whole race at a time. Pit walls: driving mode, pit stops and tyres, team orders, and drivers refusing them.
+- **Team HQ**: each team's car, budget and upgrades. Team principals order upgrades within a season budget and earn more from results; drivers spend development points earned from results.
+- **Careers**: every driver's record, race by race, with head-to-heads against team-mates.
+- **Race Weekend**: practice (engineers use limited runs to find the set-up the driver wants, and learn how long the tyres last), qualifying, then the race, run by Race Control a lap, five laps or the whole race at a time. Pit walls: driving mode, pit stops and tyres, team orders, and drivers refusing them.
 - **Championship**: drivers' and constructors' standings. Points go to whoever drove the car that weekend.
 - **Paddock**: news and interviews from the media, and paddock life from everyone else, with press notes from the latest race.
 - **Your characters**: players make as many as they like and play one at a time.

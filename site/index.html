@@ -219,15 +219,25 @@ table.data tr.me td { background: var(--me-row); }
 .f1-legend i { display: inline-block; width: 18px; height: 8px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
 .f1-up { color: var(--ok); font-size: 12px; font-weight: 600; } .f1-down { color: var(--bad); font-size: 12px; font-weight: 600; }
 .sub { font: 500 14px var(--body); color: var(--muted); margin-left: 6px; }
+
+/* ---------- roles: practice, upgrades, careers ---------- */
+.dials { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 12px; margin-top: 8px; }
+@media (max-width: 560px) { .dials { grid-template-columns: 1fr; } }
+.runs { margin: 12px 0 0; padding-left: 18px; } .runs > li { margin-bottom: 8px; } .runs ul { margin: 4px 0 0; padding-left: 18px; color: var(--muted); }
+.f1-car .btn-row select { width: auto; min-height: 38px; }
+.proj h3 { margin-bottom: 4px; } .proj p { margin-bottom: 6px; }
+.linkish { border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+.linkish:hover { text-decoration-color: var(--ink); }
+.page-head .field select { min-width: 200px; }
 </style>
 </head>
 <body>
 <div id="auth-root"><div class="boot"><div class="boot-card"><span class="brand-mark big" aria-hidden="true"></span><h1>F1 SIM</h1><p>Loading…</p></div></div></div>
 <div id="app"></div>
-<script>window.F1SIM_BUILD = 'f1sim0001';</script>
+<script>window.F1SIM_BUILD = 'f1sim0002';</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
-<script src="config.js?v=f1sim0001"></script>
-<script src="bridge.js?v=f1sim0001"></script>
+<script src="config.js?v=f1sim0002"></script>
+<script src="bridge.js?v=f1sim0002"></script>
 <noscript>F1 SIM needs JavaScript switched on.</noscript>
 </body>
 </html>

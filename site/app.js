@@ -1,4 +1,4 @@
-/* F1 SIM f1sim0001: a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM f1sim0002: a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -558,7 +558,7 @@
 'use strict';
 
 const COLLECTIONS = ['characters', 'f1_teams', 'f1_people', 'f1_seats', 'f1_tracks', 'f1_weekends', 'f1_calls',
-  'f1_applications', 'f1_posts', 'f1_settings', 'audit'];
+  'f1_applications', 'f1_posts', 'f1_settings', 'f1_runs', 'f1_projects', 'f1_dev', 'audit'];
 
 const S = {
   phase: 'boot', store: {}, delivered: new Set(), db: null, uid: null, isGm: false, isOwner: false,
@@ -593,6 +593,7 @@ const ICONS = {
   users: 'M16 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 20v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8',
   news: 'M4 4h13v16H6a2 2 0 0 1-2-2zM17 8h3v10a2 2 0 0 1-2 2M8 8h5M8 12h5M8 16h3', shield: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',
   server: 'M4 4h16v7H4zM4 13h16v7H4zM8 7.5h.01M8 16.5h.01', logout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9',
+  wrench: 'M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z',
   user: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z'
 };
 const icon = (n, size) => `<svg class="ico" viewBox="0 0 24 24" width="${size || 18}" height="${size || 18}" aria-hidden="true"><path d="${ICONS[n] || ''}"/></svg>`;
@@ -657,7 +658,7 @@ function closeDrawer() { S.ui.drawer = null; renderOverlay(); }
 function go(r) { if (!ROUTES[r]) r = 'home'; S.route = r; S.navOpen = false; S.ui.drawer = null; if (location.hash.slice(1) !== r) history.replaceState(null, '', '#' + r); render(); window.scrollTo(0, 0); }
 
 const NAV = [
-  ['home', 'home', 'Home'], ['grid', 'flag', 'The Grid'], ['weekend', 'radio', 'Race Weekend'], ['standings', 'star', 'Championship'],
+  ['home', 'home', 'Home'], ['grid', 'flag', 'The Grid'], ['team', 'wrench', 'Team HQ'], ['weekend', 'radio', 'Race Weekend'], ['standings', 'star', 'Championship'],
   ['paddock', 'news', 'Paddock'], ['characters', 'user', 'Your characters']
 ];
 const NAV_RC = [['control', 'shield', 'Race Control'], ['admin', 'server', 'Accounts and backups']];
@@ -1005,7 +1006,7 @@ function f1OccupantHtml(seat) {
   if (o.player && o.real) sub = `<span class="muted small">In place of ${esc(o.real.name)}</span>`;
   else if (driver && p) sub = `<span class="muted small">${p.num ? '#' + esc(p.num) + ' ' : ''}${esc(p.abbr || '')}, pace ${esc(p.pace)}</span>`;
   const chips = (o.player ? '<span class="tag player">Player</span>' : (p ? '<span class="tag">Real</span>' : '')) + (you ? ' <span class="tag you">You</span>' : '');
-  return `<div class="f1-occ"><b>${p && p.flag ? esc(p.flag) + ' ' : ''}${esc(o.name)}</b> ${chips}${sub}</div>`;
+  return `<div class="f1-occ"><b>${p && p.flag ? esc(p.flag) + ' ' : ''}${p ? careerLink(p.id, o.name) : esc(o.name)}</b> ${chips}${sub}</div>`;
 }
 function f1SeatControls(seat) {
   const c = currentChar(), mineOpen = list('f1_applications').find(a => c && a.charId === c.id && a.seatId === seat.id && a.status === 'pending');
@@ -1063,7 +1064,7 @@ function f1Entrants() {
     let code = base, n = 2; while (used.has(code)) code = base.slice(0, 2) + n++;
     used.add(code);
     out.push({ id: code, seatId: s.id, car: s.car, teamId: t.id, personId: p.id, charId: s.holderCharId || null, name: p.name,
-      v3: Object.assign({}, F1_ROOKIE, p, { abbr: code, teamId: t.id }) });
+      v3: f1DevApply(Object.assign({}, F1_ROOKIE, p, { abbr: code, teamId: t.id }), s.holderCharId) });
   }));
   return out;
 }
@@ -1088,7 +1089,7 @@ function f1CallAllowed(c, w) {
   const own = role => !!ent && seats.some(s => s.role === role && s.car === ent.car);
   switch (c.type) {
     case 'order': return tp;
-    case 'setup': return tp || own('engineer');
+    case 'setup': return f1CanRun(w, ent, c.charId);
     case 'box': case 'mode': return tp || own('engineer') || own('driver');
     case 'refuseOrder': return own('driver');
     default: return false;
@@ -1101,7 +1102,7 @@ function f1CallText(c, w) {
   if (c.type === 'mode') return `${who}: ${RaceEngine.MODES[c.value].label.toLowerCase()} mode`;
   if (c.type === 'order') return `${who}: team order, ${c.value === 'none' ? 'free to race' : c.value === 'hold' ? 'hold positions' : 'swap the cars'}`;
   if (c.type === 'refuseOrder') return `${who}: refuses the team order`;
-  if (c.type === 'setup') return `${who}: set-up ${c.value}`;
+  if (c.type === 'setup') return `${who}: set-up locked in (${typeof c.value === 'object' ? dialText(c.value) : c.value})`;
   return who;
 }
 function f1SendCall(call) {
@@ -1126,6 +1127,7 @@ ACTIONS['f1-open'] = () => {
   const seed = Math.max(1, parseInt(f.seed, 10) || (1 + Math.floor(Math.random() * 999999)));
   run(async () => {
     await Data.put('f1_weekends', id, { trackId: track.id, round: track.round, session, seed, weatherMode: f.weatherMode || 'track', status: 'practice', createdAt: nowIso() });
+    await f1LockProjects();
     await Data.audit('f1.weekend-open', `${track.name}${session === 'sprint' ? ' sprint' : ''} opened`);
     S.ui.form.f1w = null; S.ui.f1view = null;
   }, 'Weekend open. Teams can send their set-ups.');
@@ -1140,14 +1142,18 @@ ACTIONS['f1-quali'] = () => {
   const w = F1.live(); if (!w || w.status !== 'practice') return;
   const track = F1.track(w.trackId), entrants = f1Entrants();
   if (entrants.length < 2) { toast('The grid needs at least two drivers.', true); return; }
-  const setup = {}, used = [];
-  f1Calls(w).forEach(c => { if (c.type === 'setup' && f1CallAllowed(c, w)) { setup[c.carId] = Number(c.value); used.push(c); } });
+  /* Set-up quality from the dials each team locked in; cars nobody locked in run a standard set-up. */
+  const setup = {}, setupBy = {};
+  f1Calls(w).forEach(c => { const ent = entrants.find(e => e.id === c.carId);
+    if (c.type === 'setup' && ent && c.value && typeof c.value === 'object' && f1CallAllowed(c, w)) { setup[c.carId] = f1SetupQuality(w, ent.teamId, c.value); setupBy[c.carId] = c.charId; } });
+  entrants.forEach(e => { if (setup[e.id] == null) setup[e.id] = f1AiSetup(F1.team(e.teamId)); });
   const circuit = FormulaRacingAdapter.toCircuit(track), weather = f1Weather(w, track);
-  const entries = FormulaRacingAdapter.toEntries(entrants.map(e => e.v3), F1.teams(), track, { setup });
-  const quali = RaceEngine.qualify({ circuit, entries, weather, seed: w.seed });
-  const state = RaceEngine.createRace({ circuit, entries, grid: quali.grid, weather, seed: w.seed, sprint: w.session === 'sprint' });
+  const teams = F1.teams().map(t => f1EffectiveTeam(t));
+  const entries = FormulaRacingAdapter.toEntries(entrants.map(e => e.v3), teams, track, { setup });
+  const quali = RaceEngine.qualify({ circuit, entries, weather, seed: w.seed, rules: F1_RULES });
+  const state = RaceEngine.createRace({ circuit, entries, grid: quali.grid, weather, seed: w.seed, sprint: w.session === 'sprint', rules: F1_RULES });
   const ents = entrants.map(e => { const o = Object.assign({}, e); delete o.v3; return o; });
-  const doc = Object.assign(clone(S.store.f1_weekends[w.id]), { status: 'grid', entrants: ents, setup, weather, quali: { grid: quali.grid, results: quali.results, log: quali.log }, state });
+  const doc = Object.assign(clone(S.store.f1_weekends[w.id]), { status: 'grid', entrants: ents, setup, setupBy, weather, quali: { grid: quali.grid, results: quali.results, log: quali.log }, state });
   run(async () => {
     await Data.put('f1_weekends', w.id, doc);
     for (const c of f1Calls(w)) await Data.remove('f1_calls', c.id);
@@ -1266,12 +1272,7 @@ function f1PitWallHtml(w) {
       const car = st ? st.cars.find(c => c.id === e.id) : null;
       if (w.status === 'practice') {
         if (!can('setup')) return;
-        const v = (S.ui.form.f1setup || {})[e.id] == null ? 60 : S.ui.form.f1setup[e.id];
-        h += `<div class="f1-car" style="--team:${esc(t.color)}"><h3>${esc(e.name)}</h3>
-          <label class="field">Set-up quality, from 20 to 95<input id="f1su-${esc(e.id)}" type="number" min="20" max="95" step="1" value="${esc(v)}" data-bind="ui/form/f1setup/${esc(e.id)}" data-type="number" style="max-width:120px"></label>
-          <p class="muted small">Each point is worth about six thousandths of a second a lap, in qualifying and the race.</p>
-          <div class="btn-row"><button class="btn primary" data-act="f1-call-setup" data-car="${esc(e.id)}">Send set-up</button></div></div>`;
-        return;
+        h += f1PracticeHtml(w, e, t, f1Calls(w)); return;
       }
       if (!car || w.status === 'finished' || !st) return;
       if (car.status !== 'running') { h += `<div class="f1-car" style="--team:${esc(t.color)}"><h3>${esc(e.name)}</h3><p class="muted">Out: ${esc(car.dnf)}</p></div>`; return; }
@@ -1381,9 +1382,321 @@ route('standings', 'Championship', function () {
   const head = `<div class="page-head"><div><h1>Championship</h1><p>${races ? `After ${races} Grand Prix${races === 1 ? '' : ' weekends'}${F1.weekends().some(w => w.status === 'finished' && w.session === 'sprint') ? ' and the sprints' : ''}. Points go to whoever drove the car that weekend.` : 'No races yet. Standings appear after the first chequered flag.'}</p></div></div>`;
   if (!s.drivers.length) return head;
   return head + `<div class="cols2" style="align-items:start"><section class="card"><h2>Drivers</h2><div class="scroll-x"><table class="data"><thead><tr><th>Pos</th><th>Driver</th><th>Team</th><th class="num">Wins</th><th class="num">Podiums</th><th class="num">Points</th></tr></thead><tbody>${s.drivers.map((d, i) =>
-      `<tr${S.charId && d.charId === S.charId ? ' class="me"' : ''}><td><b>${i + 1}</b></td><td>${esc(d.name)}${d.charId ? ' <span class="tag player">Player</span>' : ''}</td><td><span class="f1-bar" style="background:${esc(f1Colour(d.teamId))}"></span>${esc(F1.team(d.teamId).name)}</td><td class="num">${d.wins}</td><td class="num">${d.podiums}</td><td class="num"><b>${d.pts}</b></td></tr>`).join('')}</tbody></table></div></section>
+      `<tr${S.charId && d.charId === S.charId ? ' class="me"' : ''}><td><b>${i + 1}</b></td><td>${careerLink(d.personId, d.name)}${d.charId ? ' <span class="tag player">Player</span>' : ''}</td><td><span class="f1-bar" style="background:${esc(f1Colour(d.teamId))}"></span>${esc(F1.team(d.teamId).name)}</td><td class="num">${d.wins}</td><td class="num">${d.podiums}</td><td class="num"><b>${d.pts}</b></td></tr>`).join('')}</tbody></table></div></section>
     <section class="card"><h2>Constructors</h2><div class="scroll-x"><table class="data"><thead><tr><th>Pos</th><th>Team</th><th class="num">Wins</th><th class="num">Points</th></tr></thead><tbody>${s.teams.map((t, i) =>
       `<tr><td><b>${i + 1}</b></td><td><span class="f1-bar" style="background:${esc(f1Colour(t.teamId))}"></span>${esc(F1.team(t.teamId).name)}</td><td class="num">${t.wins}</td><td class="num"><b>${t.pts}</b></td></tr>`).join('')}</tbody></table></div></section></div>`;
+});
+
+/* =====================================================================
+   F1 SIM — roles: the race engineer's practice programme, the team
+   principal's budget and upgrades, and driver careers.
+   Everything here is worked out from the records each time it's needed,
+   and checked against the seats, so a player can't make a car faster by
+   writing a number: upgrades count only once Race Control has locked
+   them in, and development points only up to what results have earned.
+   ===================================================================== */
+'use strict';
+
+const F1_RULES = { setupCoef: 0.01 };   // a perfect set-up against a poor one: about three tenths a lap
+const h32 = (...parts) => { let h = 2166136261; parts.join('|').split('').forEach(ch => { h = Math.imul(h ^ ch.charCodeAt(0), 16777619); }); return h >>> 0; };
+const roll = (...parts) => RaceEngine.rng(h32(...parts))();
+const clampN = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
+const f1Gauss = r => { const u = 1 - r(), v = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+const finishedGps = () => F1.weekends().filter(w => w.status === 'finished' && w.session === 'gp').sort((a, b) => String(a.finishedAt).localeCompare(String(b.finishedAt)));
+const finishedAll = () => F1.weekends().filter(w => w.status === 'finished').sort((a, b) => String(a.finishedAt).localeCompare(String(b.finishedAt)));
+
+/* ================================================================ practice programme */
+const DIALS = [['wing', 'Downforce', 'low', 'high'], ['susp', 'Suspension', 'soft', 'stiff'], ['diff', 'Differential', 'open', 'locked']];
+const TYPE_IDEAL = { 'low-downforce': { wing: 18, susp: 62 }, 'high-speed': { wing: 40, susp: 70 }, mixed: { wing: 55, susp: 52 },
+  technical: { wing: 70, susp: 45 }, 'high-downforce': { wing: 78, susp: 50 }, street: { wing: 85, susp: 30 } };
+const F1_RUNS_PER_CAR = 4;
+/* Each team's ideal set-up for the weekend: the circuit decides roughly where it is, the car moves it. Nobody sees it. */
+function f1Ideal(w, teamId) {
+  const t = F1.track(w.trackId) || {}, b = TYPE_IDEAL[t.type] || TYPE_IDEAL.mixed, r = k => roll(w.seed, teamId, k);
+  return { wing: clampN(Math.round(b.wing + (r('w') - 0.5) * 24), 5, 95), susp: clampN(Math.round(b.susp + (r('s') - 0.5) * 30), 5, 95), diff: Math.round(25 + r('d') * 50) };
+}
+function f1SetupQuality(w, teamId, dials) {
+  if (!dials || typeof dials !== 'object') return null;
+  const i = f1Ideal(w, teamId), d = k => Math.abs(clampN(Number(dials[k]) || 50, 0, 100) - i[k]);
+  return clampN(Math.round(95 - d('wing') * 0.5 - d('susp') * 0.4 - d('diff') * 0.3), 20, 95);
+}
+/* Cars nobody works on run a competent standard set-up, a little better at the bigger teams. */
+const f1AiSetup = team => clampN(Math.round(62 + ((team.carPace || 80) - 80) * 0.3), 50, 75);
+/* Who may use a car's practice runs: the team principal, the car's race engineer, or its driver if no player engineers it. */
+function f1CanRun(w, ent, charId) {
+  if (!ent || !charId) return false;
+  const seats = F1.seats(ent.teamId).filter(s => s.holderCharId === charId); if (!seats.length) return false;
+  if (seats.some(s => s.role === 'principal') || seats.some(s => s.role === 'engineer' && s.car === ent.car)) return true;
+  const eng = F1.seats(ent.teamId).find(s => s.role === 'engineer' && s.car === ent.car);
+  return seats.some(s => s.role === 'driver' && s.car === ent.car) && !(eng && eng.holderCharId);
+}
+/* Runs count in the order they were made, up to the limit per car. */
+const f1Runs = (w, carId) => list('f1_runs').filter(r => r.weekendId === w.id && r.carId === carId).sort((a, b) => String(a.at).localeCompare(String(b.at))).slice(0, F1_RUNS_PER_CAR);
+function f1Lap(circuit, entry, setup) {
+  return circuit.baseLap - (RaceEngine.carScore(entry.car, circuit) - 85) * RaceEngine.DEFAULTS.carCoef - (entry.driver.pace - 85) * RaceEngine.DEFAULTS.driverCoef - (setup - 60) * F1_RULES.setupCoef;
+}
+const ADJ = d => Math.abs(d) < 12 ? 'a touch' : Math.abs(d) < 25 ? 'a bit' : 'a lot';
+const NOTES = {
+  wing: [d => `Draggy on the straights. Take ${ADJ(d)} of wing off.`, d => `Light and nervous in the fast corners. Add ${ADJ(d)} more wing.`],
+  susp: [d => `Skipping over the bumps and kerbs. Soften it ${ADJ(d)}.`, d => `Lazy changing direction. Stiffen it ${ADJ(d)}.`],
+  diff: [d => `Pushing wide on the way out of corners. Open the diff ${ADJ(d)}.`, d => `Snappy on the throttle out of the slow corners. Lock the diff ${ADJ(d)}.`]
+};
+/* What a run tells the team. Pure: the same run always says the same thing. Experienced drivers give clearer feedback. */
+function f1RunResult(w, ent, run) {
+  const track = F1.track(w.trackId), circuit = FormulaRacingAdapter.toCircuit(track), r = RaceEngine.rng(h32(w.seed, ent.id, run.id));
+  const team = f1EffectiveTeam(F1.team(ent.teamId)), entry = FormulaRacingAdapter.toEntries([ent.v3], [team], track, {})[0];
+  const noise = 2 + (100 - (ent.v3.experience || 50)) / 12;
+  if (run.kind === 'setup') {
+    const i = f1Ideal(w, ent.teamId), q = f1SetupQuality(w, ent.teamId, run.dials);
+    const notes = DIALS.map(([k, label]) => { const d = (Number(run.dials[k]) || 50) - i[k] + f1Gauss(r) * noise;
+      return `${label}: ${Math.abs(d) < 5 ? 'feels right.' : NOTES[k][d > 0 ? 0 : 1](d).replace(/^./, c => c.toLowerCase())}`; });
+    return { lap: f1Lap(circuit, entry, q) + 0.8 + f1Gauss(r) * 0.08, notes };
+  }
+  if (run.kind === 'long') {
+    const c = RaceEngine.COMPOUNDS[run.compound] ? run.compound : 'medium';
+    const life = RaceEngine.tyreLife(c, { driver: entry.driver, car: entry.car }, circuit) * (1 + f1Gauss(r) * 0.03 * noise / 4);
+    return { compound: c, life: Math.max(4, Math.round(life)), lap: f1Lap(circuit, entry, 60) + RaceEngine.COMPOUNDS[c].offset + 2.2 + f1Gauss(r) * 0.1 };
+  }
+  /* Qualifying simulation: one lap against everyone else's likely pace. */
+  const last = f1Runs(w, ent.id).filter(x => x.kind === 'setup' && x.at <= run.at).pop();
+  const mySetup = last ? f1SetupQuality(w, ent.teamId, last.dials) : f1AiSetup(team);
+  const teams = F1.teams().map(t => f1EffectiveTeam(t));
+  const all = FormulaRacingAdapter.toEntries(f1Entrants().map(e => e.v3), teams, track, {});
+  const mine = f1Lap(circuit, entry, mySetup);
+  const faster = all.filter(e => e.id !== ent.id).filter(e => f1Lap(circuit, e, f1AiSetup(F1.team(e.team))) < mine).length;
+  const pos = clampN(faster + 1 + Math.round(f1Gauss(r) * 1.2), 1, all.length);
+  return { lap: mine - RaceEngine.DEFAULTS.fuelEffect - 0.35 + f1Gauss(r) * 0.06, from: Math.max(1, pos - 1), to: Math.min(all.length, pos + 1) };
+}
+ACTIONS['f1-run'] = d => {
+  const w = F1.live(), c = currentChar(); if (!w || w.status !== 'practice' || !c) return;
+  const ent = f1Entrants().find(e => e.id === d.car);
+  if (!f1CanRun(w, ent, c.id)) { toast('Your seat doesn’t run this car.', true); return; }
+  if (f1Runs(w, ent.id).length >= F1_RUNS_PER_CAR) { toast(`This car has used all ${F1_RUNS_PER_CAR} practice runs.`, true); return; }
+  const dials = Object.assign({ wing: 50, susp: 50, diff: 50 }, (S.ui.form.f1d || {})[ent.id] || {});
+  DIALS.forEach(([k]) => { dials[k] = clampN(Math.round(Number(dials[k]) || 0), 0, 100); });
+  const compound = ((S.ui.form.f1long || {})[ent.id]) || 'medium';
+  run(async () => { await Data.put('f1_runs', newId('run'), { userId: S.uid, charId: c.id, weekendId: w.id, carId: ent.id, kind: d.kind, dials, compound, at: nowIso() }); },
+    d.kind === 'setup' ? 'Run done. Read what the driver said.' : 'Run done.');
+};
+ACTIONS['f1-lock'] = d => {
+  const dials = Object.assign({ wing: 50, susp: 50, diff: 50 }, (S.ui.form.f1d || {})[d.car] || {});
+  DIALS.forEach(([k]) => { dials[k] = clampN(Math.round(Number(dials[k]) || 0), 0, 100); });
+  f1SendCall({ type: 'setup', carId: d.car, value: dials });
+};
+const dialText = v => DIALS.map(([k, l]) => `${l.toLowerCase()} ${v[k]}`).join(', ');
+function f1PracticeHtml(w, e, t, mine) {
+  const runs = f1Runs(w, e.id), left = F1_RUNS_PER_CAR - runs.length;
+  const form = S.ui.form.f1d = S.ui.form.f1d || {};
+  if (!form[e.id]) { const lastSetup = runs.filter(x => x.kind === 'setup').pop(); form[e.id] = Object.assign({ wing: 50, susp: 50, diff: 50 }, lastSetup ? lastSetup.dials : {}); }
+  const f = form[e.id], locked = mine.find(c => c.type === 'setup' && c.carId === e.id);
+  const long = (S.ui.form.f1long = S.ui.form.f1long || {})[e.id] || 'medium';
+  const ent = Object.assign({}, e, { v3: (f1Entrants().find(x => x.id === e.id) || {}).v3 });
+  const res = runs.slice().reverse().map(r => { const x = f1RunResult(w, ent, r);
+    if (r.kind === 'setup') return `<li><b>Set-up run</b> (${esc(dialText(r.dials))}): ${f1Fmt(x.lap)}<ul>${x.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul></li>`;
+    if (r.kind === 'long') return `<li><b>Long run on ${esc(RaceEngine.COMPOUNDS[x.compound].label.toLowerCase())}s</b>: about ${x.life} laps before the time falls away. Average lap ${f1Fmt(x.lap)} on full tanks.</li>`;
+    return `<li><b>Qualifying simulation</b>: ${f1Fmt(x.lap)}, which looks like P${x.from} to P${x.to} on one lap.</li>`; }).join('');
+  return `<div class="f1-car" style="--team:${esc(t.color)}"><h3>${esc(e.name)}</h3>
+    <p class="muted small">${left ? `${plural(left, 'practice run')} left for this car.` : 'All practice runs used.'} The driver tells you what the car is doing; find the set-up they want, then lock it in for qualifying.</p>
+    <div class="dials">${DIALS.map(([k, l, lo, hi]) => `<label class="field">${l} <span class="muted">(0 ${lo}, 100 ${hi})</span><input id="f1d-${esc(e.id)}-${k}" type="number" min="0" max="100" step="1" value="${esc(f[k])}" data-bind="ui/form/f1d/${esc(e.id)}/${k}" data-type="number"></label>`).join('')}</div>
+    <div class="btn-row"><button class="btn primary" data-act="f1-run" data-kind="setup" data-car="${esc(e.id)}" ${left ? '' : 'disabled'}>Set-up run</button>
+      <label class="sr-only" for="f1long-${esc(e.id)}">Tyre for the long run</label>${sel('f1long-' + e.id, 'ui/form/f1long/' + e.id, long, [['soft', 'Softs'], ['medium', 'Mediums'], ['hard', 'Hards']])}
+      <button class="btn" data-act="f1-run" data-kind="long" data-car="${esc(e.id)}" ${left ? '' : 'disabled'}>Long run</button>
+      <button class="btn" data-act="f1-run" data-kind="quali" data-car="${esc(e.id)}" ${left ? '' : 'disabled'}>Qualifying simulation</button></div>
+    ${res ? `<ul class="runs">${res}</ul>` : ''}
+    <div class="btn-row"><button class="btn ${locked ? '' : 'primary'}" data-act="f1-lock" data-car="${esc(e.id)}">${locked ? 'Lock in these dials instead' : 'Lock in this set-up'}</button>
+      ${locked ? `<span class="tag player">Locked in: ${esc(dialText(locked.value))}</span>` : '<span class="muted small">Not locked in: the car runs a standard set-up.</span>'}</div></div>`;
+}
+
+/* ================================================================ team budget and upgrades */
+const F1_BUDGET = 30;   // £m for development across the season
+const F1_PROJECTS = {
+  frontwing: { label: 'Front wing update', cost: 4, build: 1, odds: 0.85, fx: { carPace: 0.8 }, note: 'A small, safe step everywhere.' },
+  floor: { label: 'New floor', cost: 9, build: 2, odds: 0.65, fx: { carPace: 1.8 }, note: 'The big one. Takes longer and might not work.' },
+  lowdrag: { label: 'Low-drag package', cost: 5, build: 1, odds: 0.8, fx: { topSpeed: 1.5, cornering: -0.5 }, note: 'Quicker on the straights, at a cost in the corners.' },
+  highdf: { label: 'High-downforce package', cost: 5, build: 1, odds: 0.8, fx: { cornering: 1.5, topSpeed: -0.5 }, note: 'Quicker in the corners, slower on the straights.' },
+  pumode: { label: 'Power unit modes', cost: 6, build: 2, odds: 0.7, fx: { topSpeed: 1.2, reliability: -1.5 }, note: 'More power, a little more fragile.' },
+  reliability: { label: 'Reliability programme', cost: 4, build: 1, odds: 0.9, fx: { reliability: 3 }, note: 'Fewer failures.' },
+  suspension: { label: 'Suspension rework', cost: 5, build: 2, odds: 0.75, fx: { tyreLife: 3 }, note: 'Kinder to the tyres: longer stints.' },
+  pitcrew: { label: 'Pit crew training', cost: 2, build: 1, odds: 0.95, fx: { pitSpeed: 2 }, note: 'Quicker, more reliable stops.' }
+};
+const FX_NAMES = { carPace: 'overall pace', topSpeed: 'top speed', cornering: 'cornering', reliability: 'reliability', tyreLife: 'kindness to tyres', pitSpeed: 'pit stops' };
+const fxText = fx => Object.keys(fx).map(k => `${fx[k] > 0 ? '+' : '−'}${Math.abs(fx[k])} ${FX_NAMES[k]}`).join(', ');
+const projectWorks = p => roll(p.id, 'works') < (F1_PROJECTS[p.type] || { odds: 0 }).odds;
+const projectArrived = (p, n) => !!p.locked && n >= p.lockedAt + (F1_PROJECTS[p.type] || { build: 99 }).build;
+const tpSeat = teamId => F1.seats(teamId).find(s => s.role === 'principal');
+const teamProjects = teamId => list('f1_projects').filter(p => p.teamId === teamId && F1_PROJECTS[p.type]).sort((a, b) => String(a.at).localeCompare(String(b.at)));
+/* Teams without a player in charge develop too: one project every second race, until a player takes over. */
+function aiProjects(teamId, n) {
+  const tp = tpSeat(teamId), since = tp && tp.holderCharId ? tp.holderSince : null, gps = finishedGps(), keys = Object.keys(F1_PROJECTS), out = [];
+  for (let i = 2; i <= n; i += 2) {
+    const gp = gps[i - 1]; if (since && gp && String(gp.finishedAt) > String(since)) break;
+    const type = keys[Math.floor(roll(teamId, 'ai', i) * keys.length)];
+    out.push({ id: `ai-${teamId}-${i}`, type, ai: true, locked: true, lockedAt: i, works: roll(teamId, 'ai-works', i) < F1_PROJECTS[type].odds });
+  }
+  return out;
+}
+/* The car for race n+1 (n races finished): the team's base numbers plus whatever has arrived. */
+function f1EffectiveTeam(team, n) {
+  if (!team) return team;
+  n = n == null ? finishedGps().length : n;
+  const out = Object.assign({}, team), applied = [];
+  teamProjects(team.id).filter(p => projectArrived(p, n)).concat(aiProjects(team.id, n).filter(p => n >= p.lockedAt)).forEach(p => {
+    const def = F1_PROJECTS[p.type], works = p.ai ? p.works : projectWorks(p), k = works ? 1 : 0.25;
+    Object.keys(def.fx).forEach(s => { out[s] = Math.round(((out[s] || 0) + def.fx[s] * k) * 100) / 100; });
+    applied.push(Object.assign({}, p, { works }));
+  });
+  Object.defineProperty(out, 'applied', { value: applied, enumerable: false });
+  return out;
+}
+/* Sponsors expect results in line with the car: the quickest car aims for P2, the slowest for P15. */
+function sponsorTarget(teamId) {
+  const order = F1.teams().slice().sort((a, b) => (b.carPace || 0) - (a.carPace || 0)).map(t => t.id), i = Math.max(0, order.indexOf(teamId));
+  return Math.min(15, 2 + Math.round(i * 1.3));
+}
+function f1TeamMoney(teamId) {
+  const lines = [], target = sponsorTarget(teamId);
+  finishedAll().forEach(w => {
+    const rs = (w.results || []).filter(r => r.teamId === teamId), pts = rs.reduce((s, r) => s + (r.points || 0), 0), t = F1.track(w.trackId) || {};
+    let amt = Math.round(((w.session === 'gp' ? 1 : 0) + pts * 0.05) * 100) / 100, best = Math.min(...rs.map(r => r.position || 99));
+    const bonus = w.session === 'gp' && best <= target ? 0.8 : 0;
+    if (amt + bonus > 0) lines.push({ text: `${t.name || ''}${w.session === 'sprint' ? ' sprint' : ''}: ${pts} points${bonus ? `, sponsor target met (P${best})` : ''}`, amt: Math.round((amt + bonus) * 100) / 100 });
+  });
+  const income = lines.reduce((s, l) => s + l.amt, 0);
+  const spent = teamProjects(teamId).filter(p => p.locked).reduce((s, p) => s + F1_PROJECTS[p.type].cost, 0);
+  return { budget: F1_BUDGET, income: Math.round(income * 100) / 100, spent, left: Math.round((F1_BUDGET + income - spent) * 100) / 100, lines, target };
+}
+/* Race Control locks in what each team principal ordered when it opens a weekend: checked against the seat, the budget and two projects at a time. */
+async function f1LockProjects() {
+  const n = finishedGps().length, done = [];
+  for (const t of F1.teams()) {
+    const tp = tpSeat(t.id), money = f1TeamMoney(t.id); let left = money.left;
+    let building = teamProjects(t.id).filter(p => p.locked && !projectArrived(p, n)).length;
+    for (const p of teamProjects(t.id).filter(x => !x.locked && !x.rejected)) {
+      const def = F1_PROJECTS[p.type], doc = clone(S.store.f1_projects[p.id]);
+      if (!tp || !tp.holderCharId || p.charId !== tp.holderCharId) Object.assign(doc, { rejected: 'Ordered by someone who isn’t the team principal now.' });
+      else if (def.cost > left) Object.assign(doc, { rejected: `Not enough budget: £${left}m left.` });
+      else if (building >= 2) Object.assign(doc, { rejected: 'Two projects are already being built.' });
+      else { Object.assign(doc, { locked: true, lockedAt: n, lockedOn: nowIso() }); left -= def.cost; building += 1; done.push(`${t.name}: ${def.label}`); }
+      await Data.put('f1_projects', p.id, doc);
+    }
+  }
+  if (done.length) await Data.audit('upgrades.lock', 'Upgrades started: ' + done.join('; '));
+}
+ACTIONS['proj-order'] = d => {
+  const c = currentChar(), seat = c && tpSeat(d.team); if (!c || !seat || seat.holderCharId !== c.id) { toast('Only the team principal orders upgrades.', true); return; }
+  const def = F1_PROJECTS[d.type], money = f1TeamMoney(d.team), pending = teamProjects(d.team).filter(p => !p.locked && !p.rejected).reduce((s, p) => s + F1_PROJECTS[p.type].cost, 0);
+  if (def.cost > money.left - pending) { toast(`Not enough budget: £${Math.round((money.left - pending) * 100) / 100}m left after what you’ve already ordered.`, true); return; }
+  run(async () => { await Data.put('f1_projects', newId('proj'), { userId: S.uid, charId: c.id, teamId: d.team, type: d.type, at: nowIso() }); }, `${def.label} ordered. It starts when Race Control opens the next weekend.`);
+};
+ACTIONS['proj-cancel'] = d => run(async () => { await Data.remove('f1_projects', d.id); }, 'Order cancelled.');
+
+/* ================================================================ driver careers */
+const DEV_ATTRS = F1_RATINGS.map(r => r[0]).filter(k => k !== 'experience');
+const devCost = v => v < 80 ? 1 : v < 90 ? 2 : 3;
+/* Each person's race-by-race record, from the results. */
+function f1Record(personId) {
+  const out = [];
+  finishedAll().forEach(w => {
+    const r = (w.results || []).find(x => x.personId === personId); if (!r) return;
+    const mate = (w.results || []).find(x => x.teamId === r.teamId && x.personId !== personId);
+    const pole = w.quali && w.quali.grid && w.quali.grid[0] === r.id;
+    out.push({ w, r, mate, pole, beat: !!mate && (r.position || 99) < (mate.position || 99), qbeat: !!mate && r.grid < mate.grid });
+  });
+  return out;
+}
+function devEarned(personId) {
+  return f1Record(personId).reduce((s, x) => { const p = x.r.position || 0;
+    if (x.w.session === 'sprint') return s + (x.r.points ? 1 : 0);
+    return s + 1 + (x.r.points ? 1 : 0) + (p && p <= 3 ? 1 : 0) + (p === 1 ? 1 : 0) + (x.beat ? 1 : 0); }, 0);
+}
+/* A player's driver with their development spent: in order, while the points last. Experience grows with every second start. */
+function f1DevApply(v3, charId) {
+  if (!charId) return v3;
+  const pid = f1PcId(charId), out = Object.assign({}, v3);
+  const starts = f1Record(pid).filter(x => x.w.session === 'gp').length;
+  out.experience = Math.min(99, (out.experience || 40) + Math.floor(starts / 2));
+  let left = devEarned(pid);
+  list('f1_dev').filter(x => x.charId === charId && DEV_ATTRS.indexOf(x.attr) !== -1).sort((a, b) => String(a.at).localeCompare(String(b.at))).forEach(x => {
+    const cost = devCost(out[x.attr] || 0); if (cost > left || (out[x.attr] || 0) >= 99) return;
+    out[x.attr] = (out[x.attr] || 0) + 1; left -= cost;
+  });
+  Object.defineProperty(out, 'devLeft', { value: left, enumerable: false });
+  return out;
+}
+ACTIONS['dev-spend'] = d => {
+  const c = currentChar(); if (!c || c.id !== d.char) return;
+  const base = Object.assign({}, F1_ROOKIE, F1.person(f1PcId(c.id)) || {}), now = f1DevApply(base, c.id);
+  if (devCost(now[d.attr] || 0) > now.devLeft) { toast('Not enough development points yet. They come from results.', true); return; }
+  run(async () => { await Data.put('f1_dev', newId('dev'), { userId: S.uid, charId: c.id, attr: d.attr, at: nowIso() }); }, `${F1_RATINGS.find(r => r[0] === d.attr)[1]} up by one.`);
+};
+ACTIONS.career = d => { S.ui.career = d.id; go('career'); };
+const careerLink = (personId, name) => personId ? `<button class="linkish" data-act="career" data-id="${esc(personId)}">${esc(name)}</button>` : esc(name);
+
+function devPanelHtml(charId) {
+  const base = Object.assign({}, F1_ROOKIE, F1.person(f1PcId(charId)) || {}), now = f1DevApply(base, charId), mine = S.charId === charId;
+  return `<div class="dev"><p><b>${plural(now.devLeft, 'development point')}</b> to spend. Points come from results: one for each Grand Prix, and more for points finishes, podiums, wins and beating the team-mate.</p>
+    <table class="data compact"><tbody>${F1_RATINGS.map(([k, l]) => `<tr><td>${esc(l)}</td><td class="num"><b>${now[k]}</b>${now[k] !== base[k] ? ` <span class="f1-up">+${now[k] - base[k]}</span>` : ''}</td>
+      <td class="num">${mine && k !== 'experience' && now[k] < 99 ? `<button class="btn small" data-act="dev-spend" data-char="${esc(charId)}" data-attr="${k}" ${devCost(now[k]) > now.devLeft ? 'disabled' : ''}>+1 for ${plural(devCost(now[k]), 'point')}</button>` : k === 'experience' ? '<span class="muted small">Grows with races</span>' : ''}</td></tr>`).join('')}</tbody></table></div>`;
+}
+
+route('career', 'Career', function () {
+  const p = F1.person(S.ui.career);
+  if (!p) return `<div class="empty">Choose a driver from The Grid or the Championship.</div>`;
+  const rec = f1Record(p.id), gps = rec.filter(x => x.w.session === 'gp'), seat = list('f1_seats').find(s => (p.charId && s.holderCharId === p.charId) || (!p.charId && s.defaultPersonId === p.id && !s.holderCharId));
+  const team = seat ? F1.team(seat.teamId) : F1.team(p.teamId), c = p.charId ? get('characters', p.charId) : null;
+  const pts = rec.reduce((s, x) => s + (x.r.points || 0), 0), wins = gps.filter(x => x.r.position === 1).length, pods = gps.filter(x => x.r.position && x.r.position <= 3).length;
+  const best = Math.min(...gps.map(x => x.r.position || 99)), dnf = gps.filter(x => !x.r.position).length, poles = gps.filter(x => x.pole).length;
+  const vs = gps.filter(x => x.mate), mates = [...new Set(vs.map(x => x.mate.name))];
+  const ratings = p.kind === 'driver' || !p.kind ? (p.charId ? f1DevApply(Object.assign({}, F1_ROOKIE, p), p.charId) : p) : null;
+  const eng = p.kind === 'engineer' && c ? F1.weekends().filter(w => w.setupBy && Object.values(w.setupBy).indexOf(c.id) !== -1) : [];
+  const engQ = eng.map(w => { const code = Object.keys(w.setupBy).find(k => w.setupBy[k] === c.id); return w.setup[code]; });
+  return `<div class="page-head"><div><p class="eyebrow">${esc(F1_ROLE[p.kind] || 'Driver')}${team ? ', ' + esc(team.name) : ''}${p.charId ? '' : ', real'}</p><h1>${p.flag ? esc(p.flag) + ' ' : ''}${esc(p.name)}</h1>
+      ${c && c.bio ? `<p>${esc(c.bio.slice(0, 300))}</p>` : ''}</div></div>
+    ${p.kind === 'engineer' ? `<div class="metrics"><div class="metric"><b>${eng.length}</b><span>Weekends with a set-up locked in</span></div><div class="metric"><b>${engQ.length ? Math.round(engQ.reduce((a, b) => a + b, 0) / engQ.length) : '–'}</b><span>Average set-up found (out of 95)</span></div></div>` : ''}
+    ${p.kind !== 'engineer' && p.kind !== 'principal' ? `<div class="metrics"><div class="metric"><b>${gps.length}</b><span>Grands Prix</span></div><div class="metric"><b>${wins}</b><span>Wins</span></div>
+      <div class="metric"><b>${pods}</b><span>Podiums</span></div><div class="metric"><b>${pts}</b><span>Points</span></div></div>
+    <div class="cols2"><section class="card"><h2>Record</h2><table class="data compact"><tbody>
+      <tr><td>Pole positions</td><td class="num">${poles}</td></tr><tr><td>Best finish</td><td class="num">${best < 99 ? 'P' + best : '–'}</td></tr><tr><td>Retirements</td><td class="num">${dnf}</td></tr>
+      ${mates.length ? `<tr><td>Against ${esc(mates.join(' and '))} in races</td><td class="num">${vs.filter(x => x.beat).length} to ${vs.filter(x => !x.beat).length}</td></tr>
+      <tr><td>Against ${esc(mates.join(' and '))} in qualifying</td><td class="num">${vs.filter(x => x.qbeat).length} to ${vs.filter(x => !x.qbeat).length}</td></tr>` : ''}</tbody></table></section>
+      <section class="card"><h2>Ratings</h2>${p.charId ? devPanelHtml(p.charId) : `<table class="data compact"><tbody>${F1_RATINGS.map(([k, l]) => `<tr><td>${esc(l)}</td><td class="num"><b>${esc(ratings[k])}</b></td></tr>`).join('')}</tbody></table>`}</section></div>
+    ${rec.length ? `<section class="card"><h2>Race by race</h2><div class="scroll-x"><table class="data"><thead><tr><th>Race</th><th>Team</th><th class="num">Grid</th><th class="num">Finish</th><th class="num">Points</th></tr></thead><tbody>${rec.slice().reverse().map(x => { const t = F1.track(x.w.trackId) || {};
+      return `<tr><td>${esc(t.name || '')}${x.w.session === 'sprint' ? ' sprint' : ''}</td><td><span class="f1-bar" style="background:${esc(f1Colour(x.r.teamId))}"></span>${esc(F1.team(x.r.teamId).name)}</td><td class="num">${x.r.grid}</td><td class="num">${x.r.position ? 'P' + x.r.position : 'Out'}</td><td class="num">${x.r.points || ''}</td></tr>`; }).join('')}</tbody></table></div></section>` : '<p class="muted">No races yet.</p>'}` : ''}`;
+});
+
+/* ================================================================ Team HQ */
+route('team', 'Team HQ', function () {
+  const teams = F1.teams(); if (!teams.length) return '<div class="empty">The grid isn’t set up yet.</div>';
+  const mySeat = S.charId ? F1.seats().find(s => s.holderCharId === S.charId) : null;
+  const tid = S.ui.teamId || (mySeat && mySeat.teamId) || teams[0].id, team = F1.team(tid), n = finishedGps().length;
+  const eff = f1EffectiveTeam(team, n), money = f1TeamMoney(tid), tp = tpSeat(tid), isTp = !!(tp && S.charId && tp.holderCharId === S.charId);
+  const inTeam = S.isGm || F1.seats(tid).some(s => S.charId && s.holderCharId === S.charId), projs = teamProjects(tid);
+  const pendingCost = projs.filter(p => !p.locked && !p.rejected).reduce((s, p) => s + F1_PROJECTS[p.type].cost, 0);
+  const statRow = ([k, l]) => { const d = Math.round(((eff[k] || 0) - (team[k] || 0)) * 100) / 100; return `<tr><td>${esc(l)}</td><td class="num"><b>${eff[k]}</b>${d ? ` <span class="${d > 0 ? 'f1-up' : 'f1-down'}">${d > 0 ? '+' : '−'}${Math.abs(d)}</span>` : ''}</td></tr>`; };
+  const projStatus = p => { const def = F1_PROJECTS[p.type];
+    if (p.rejected) return `<span class="tag">Not started</span> ${esc(p.rejected)}`;
+    if (!p.locked) return `<span class="tag open">Ordered</span> Starts when the next weekend opens.${isTp ? ` <button class="btn small" data-act="proj-cancel" data-id="${esc(p.id)}">Cancel</button>` : ''}`;
+    if (!projectArrived(p, n)) return `<span class="tag">Being built</span> On the car after ${plural(p.lockedAt + def.build - n, 'more race')}.`;
+    return projectWorks(p) ? `<span class="tag player">On the car</span> It works.` : `<span class="tag flag">On the car</span> It didn’t work as hoped: about a quarter of the gain.`; };
+  const drivers = F1.seats(tid).filter(s => s.role === 'driver').map(s => ({ s, o: f1Occupant(s) }));
+  return `<div class="page-head"><div><h1>${esc(team.name)}</h1><p>${esc(team.powerUnit || '')} power unit. Sponsors expect P${money.target} or better at each Grand Prix.</p></div>
+      <label class="field" style="margin:0">Team${sel('team-pick', 'ui/teamId', tid, teams.map(t => [t.id, t.name]))}</label></div>
+    <div class="cols2">
+      <section class="card" style="--team:${esc(team.color)}"><h2>The car</h2><p class="muted small">For the next race, with ${plural(eff.applied.length, 'upgrade')} fitted.</p>
+        <table class="data compact"><tbody>${[['carPace', 'Overall pace'], ['topSpeed', 'Top speed'], ['cornering', 'Cornering'], ['reliability', 'Reliability'], ['tyreLife', 'Kindness to tyres'], ['pitSpeed', 'Pit crew']].map(statRow).join('')}</tbody></table></section>
+      <section class="card"><h2>People</h2><ul class="f1-seatlist">${F1.seats(tid).map(s => { const o = f1Occupant(s);
+        return `<li><span class="role">${esc(seatTitle(s))}</span><div class="f1-occ">${o.person ? careerLink(o.person.id, o.name) : esc(o.name)} ${o.player ? '<span class="tag player">Player</span>' : o.person ? '<span class="tag">Real</span>' : ''}${s.role === 'driver' && o.person ? `<span class="muted small">${f1Record(o.person.id).reduce((a, x) => a + (x.r.points || 0), 0)} points this season</span>` : ''}</div></li>`; }).join('')}</ul></section></div>
+    ${inTeam ? `<section class="card"><h2>Budget</h2><div class="metrics"><div class="metric"><b>£${money.left}m</b><span>Left to spend${pendingCost ? `, £${pendingCost}m of it on order` : ''}</span></div>
+        <div class="metric"><b>£${money.budget}m</b><span>Season development budget</span></div><div class="metric"><b>£${money.income}m</b><span>Earned from races</span></div><div class="metric"><b>£${money.spent}m</b><span>Spent on upgrades</span></div></div>
+        ${money.lines.length ? `<details><summary>Race by race</summary><table class="data compact"><tbody>${money.lines.map(l => `<tr><td>${esc(l.text)}</td><td class="num">£${l.amt}m</td></tr>`).join('')}</tbody></table></details>` : '<p class="muted small">Each Grand Prix earns £1m, plus £0.05m a point, plus £0.8m when the sponsors’ target is met.</p>'}</section>
+      <section class="card"><h2>Development</h2>
+        ${projs.length || eff.applied.some(p => p.ai) ? `<table class="data"><tbody>${projs.map(p => `<tr><td><b>${esc(F1_PROJECTS[p.type].label)}</b><br><span class="muted small">${esc(fxText(F1_PROJECTS[p.type].fx))}</span></td><td>${projStatus(p)}</td></tr>`).join('')}
+          ${eff.applied.filter(p => p.ai).map(p => `<tr><td><b>${esc(F1_PROJECTS[p.type].label)}</b><br><span class="muted small">${esc(fxText(F1_PROJECTS[p.type].fx))}</span></td><td><span class="tag">Before a player ran the team</span> ${p.works ? 'It works.' : 'It didn’t work as hoped.'}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No upgrades yet.</p>'}
+        ${isTp ? `<h3 style="margin-top:16px">Order an upgrade</h3><p class="muted small">Race Control starts your orders when it opens the next weekend, two at a time, within the budget. Some don’t work as well as hoped.</p>
+          <div class="cards">${Object.keys(F1_PROJECTS).map(k => { const def = F1_PROJECTS[k];
+            return `<article class="card proj"><h3>${esc(def.label)}</h3><p>${esc(def.note)}</p><p class="muted small">${esc(fxText(def.fx))}. £${def.cost}m, on the car after ${plural(def.build, 'race')}. ${Math.round(def.odds * 100)}% chance it works fully.</p>
+              <button class="btn small primary" data-act="proj-order" data-team="${esc(tid)}" data-type="${k}" ${def.cost > money.left - pendingCost ? 'disabled' : ''}>Order for £${def.cost}m</button></article>`; }).join('')}</div>` : tp && !tp.holderCharId ? '<p class="muted small">This team has no player as team principal, so it develops on its own: one upgrade every second race.</p>' : ''}</section>` : '<p class="muted">The budget and upgrade plans are for the team’s own people and Race Control.</p>'}
+    ${drivers.filter(x => x.o.player && x.s.holderCharId === S.charId).map(x => `<section class="card"><h2>Your development</h2>${devPanelHtml(x.s.holderCharId)}</section>`).join('')}`;
 });
 
 /* =====================================================================
