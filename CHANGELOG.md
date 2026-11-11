@@ -25,6 +25,20 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v0.13.0: Characters
+
+11 November 2026. Build `f1sim-0.13.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Characters page | A new page in the menu showing every approved character in the league, in three views. |
+| Cards | Portrait cards in team colours with the car number, role, team and series, and three numbers that suit the role: races, podiums and points for drivers; team points, team position and upgrades for team principals; weekends, set-up awards and rapport for race engineers; posts, interviews and diary entries for media and paddock life. Search, filter by role and series, and sort by team, name, points or newest. |
+| By team | The paddock by series and team, with each team's banner and logo. Player characters stand out; real and computer-run people are greyed; open seats have "Apply for this seat", which takes you to that series' Grid. Media, paddock life and characters without a seat are listed underneath. Shows only teams with players or open seats unless you untick it. |
+| Register | A directory with filters for role, series and years of experience, and a preview of whoever you select: portrait, story, numbers, latest diary entry and rival, with a button to their page. |
+| Character pages | Every name on the site now opens a redesigned page: the team banner with the portrait, role, team and series, details, and the big numbers (for drivers, races, podiums, points and championship position). Then three columns: particulars (helmet, career before F1, contract, race engineer, other series they race in) and relationships; story, diary and timeline; ratings, trophy cabinet and race by race. Owners get buttons to change their portrait, write in the diary, add a relationship and edit details. Real drivers and media characters have pages too. |
+
+---
+
 ## v0.12.0: pit-wall Race Weekend layout, team branding
 
 11 November 2026. Build `f1sim-0.12.0`. **Database update:** `20261111000007_branding.sql`.

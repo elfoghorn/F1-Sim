@@ -388,15 +388,75 @@ table.stops { max-width: 520px; } table.stops select { width: auto; min-height: 
 .brand-preview { height: 130px; border: 1px dashed var(--line); border-radius: 8px; display: grid; place-items: center; overflow: hidden; background: var(--panel-2); }
 .brand-preview img { width: 100%; height: 100%; object-fit: cover; } .brand-slot.logo .brand-preview img { object-fit: contain; padding: 10px; }
 .grid-car { display: block; width: 100%; max-height: 120px; object-fit: cover; border-radius: 8px; margin-bottom: 10px; }
+
+/* ---------- characters showcase ---------- */
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
+.seg button { min-height: 44px; padding: 0 16px; border: 0; background: none; color: var(--ink); font: 600 15px var(--body); cursor: pointer; }
+.seg button[aria-selected="true"] { background: var(--ink); color: var(--panel); }
+.ppl-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 12px; }
+.ppl-filters input[type=search] { flex: 1 1 200px; min-height: 44px; } .ppl-filters select { width: auto; min-height: 44px; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { min-height: 44px; padding: 0 14px; border-radius: 22px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: 500 15px var(--body); cursor: pointer; }
+.chip.on { background: var(--ink); color: var(--panel); border-color: var(--ink); font-weight: 600; }
+.ppl-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+.ppl-card { display: flex; flex-direction: column; text-align: left; padding: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; cursor: pointer; color: var(--ink); font: inherit; }
+.ppl-card:hover { border-color: var(--line-strong); }
+.ppl-photo { position: relative; aspect-ratio: 1 / 1.05; background: var(--panel-2); display: grid; place-items: center; border-bottom: 8px solid var(--team); }
+.ppl-photo img { width: 100%; height: 100%; object-fit: cover; }
+.ppl-init { font: 700 60px var(--cond); color: var(--line-strong); }
+.ppl-num { position: absolute; right: 12px; top: 6px; font: 700 34px var(--cond); color: var(--ink); text-shadow: 0 0 6px var(--panel); }
+.ppl-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 1px; }
+.ppl-name { font: 700 22px/1.1 var(--cond); }
+.ppl-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.ppl-stats > span { display: flex; flex-direction: column; } .ppl-stats b { font: 700 20px var(--cond); } .ppl-stats span span { font-size: 12.5px; color: var(--muted); }
+.ppl-toggle { display: inline-flex; gap: 8px; align-items: center; margin-bottom: 4px; }
+.ppl-series h2 { font: 700 30px var(--cond); margin: 22px 0 10px; }
+.ppl-team { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-bottom: 14px; }
+.ppl-banner { position: relative; height: 84px; background: var(--team); display: flex; align-items: flex-end; }
+.ppl-banner > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.ppl-team-id { position: relative; display: flex; align-items: center; gap: 8px; margin: 0 0 -22px 16px; padding: 6px 14px 6px 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+.ppl-team-id h3 { margin: 0; font: 700 24px var(--cond); } .ppl-team-id .team-logo { margin: 0; width: 36px; height: 36px; }
+.ppl-seats { padding: 34px 16px 16px; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.ppl-seats.loose { padding: 0; }
+.ppl-seat { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); text-align: left; color: var(--ink); font: inherit; }
+.ppl-seat > span { display: flex; flex-direction: column; min-width: 0; } .ppl-seat b { font-weight: 600; }
+button.ppl-seat { cursor: pointer; } button.ppl-seat:hover { border-color: var(--line-strong); }
+.ppl-seat.other { background: var(--panel-2); border-color: transparent; color: var(--muted); }
+.ppl-seat.open { border-style: dashed; border-color: var(--line-strong); }
+.ppl-thumb { flex: none; border-radius: 50%; object-fit: cover; } .ppl-thumb.none { display: inline-grid; place-items: center; background: var(--panel-2); font: 700 17px var(--cond); color: var(--muted); }
+.reg-wrap { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+.reg-filters { flex: 1 1 170px; max-width: 210px; display: flex; flex-direction: column; gap: 10px; }
+.reg-filters input[type=search] { min-height: 44px; } .reg-filters fieldset { border: 0; margin: 4px 0 0; padding: 0; } .reg-filters legend { font: 700 18px var(--cond); margin-bottom: 2px; }
+.reg-check { display: flex; gap: 8px; align-items: center; min-height: 34px; }
+.reg-table { flex: 999 1 460px; min-width: 0; padding: 4px 8px; }
+.reg-preview { flex: 1 1 270px; max-width: 340px; padding: 0 0 16px; overflow: hidden; display: flex; flex-direction: column; gap: 8px; }
+.reg-preview > :not(.reg-photo) { margin-left: 16px; margin-right: 16px; } .reg-preview h2 { margin-top: 6px; margin-bottom: 0; font: 700 28px/1 var(--cond); } .reg-preview p { margin-top: 0; margin-bottom: 0; }
+.reg-photo { height: 190px; background: var(--panel-2); display: grid; place-items: center; border-bottom: 8px solid var(--team); } .reg-photo img { width: 100%; height: 100%; object-fit: cover; }
+/* ---------- a character's page ---------- */
+.char-hero { margin: 10px 0 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.char-banner { position: relative; height: 170px; background: var(--team); } .char-banner img { width: 100%; height: 100%; object-fit: cover; }
+.char-id { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 22px; padding: 0 24px 20px; }
+.char-photo { width: 168px; height: 196px; margin-top: -96px; border-radius: 12px; background: var(--panel-2); border: 4px solid var(--panel); display: grid; place-items: center; overflow: hidden; position: relative; }
+.char-photo img { width: 100%; height: 100%; object-fit: cover; }
+.char-name { flex: 1 1 320px; } .char-name h1 { margin: 2px 0 0; font-size: 56px; line-height: 1; } .char-name p { margin: 4px 0 0; }
+.char-actions { padding: 0 24px 18px; }
+.char-cols { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+.char-left { flex: 1 1 230px; max-width: 300px; } .char-mid { flex: 999 1 420px; min-width: 0; } .char-right { flex: 1 1 280px; max-width: 380px; }
+.char-left .card, .char-mid .card, .char-right .card { margin-bottom: 16px; }
+@media (max-width: 1100px) { .char-left, .char-right { max-width: none; } }
+.rating-bars { display: flex; flex-direction: column; gap: 8px; }
+.rating-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) 32px; gap: 10px; align-items: center; font-size: 15px; }
+.rating-row .bar { height: 8px; background: var(--bar-track); border-radius: 4px; overflow: hidden; } .rating-row .bar span { display: block; height: 8px; background: var(--bar-base); border-radius: 4px; }
+.rating-row b { text-align: right; font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
 <div id="auth-root"><div class="boot"><div class="boot-card"><span class="brand-mark big" aria-hidden="true"></span><h1>F1 SIM</h1><p>Loading…</p></div></div></div>
 <div id="app"></div>
-<script>window.F1SIM_BUILD = 'f1sim-0.12.0'; window.F1SIM_VERSION = '0.12.0';</script>
+<script>window.F1SIM_BUILD = 'f1sim-0.13.0'; window.F1SIM_VERSION = '0.13.0';</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
-<script src="config.js?v=f1sim-0.12.0"></script>
-<script src="bridge.js?v=f1sim-0.12.0"></script>
+<script src="config.js?v=f1sim-0.13.0"></script>
+<script src="bridge.js?v=f1sim-0.13.0"></script>
 <noscript>F1 SIM needs JavaScript switched on.</noscript>
 </body>
 </html>

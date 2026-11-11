@@ -1,4 +1,4 @@
-/* F1 SIM v0.12.0 (build f1sim-0.12.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v0.13.0 (build f1sim-0.13.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -729,6 +729,7 @@ const ICONS = {
   users: 'M16 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 20v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8',
   news: 'M4 4h13v16H6a2 2 0 0 1-2-2zM17 8h3v10a2 2 0 0 1-2 2M8 8h5M8 12h5M8 16h3', shield: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',
   server: 'M4 4h16v7H4zM4 13h16v7H4zM8 7.5h.01M8 16.5h.01', logout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9',
+  users: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8',
   flask: 'M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3M7.5 15h9',
   bell: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0',
   wrench: 'M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z',
@@ -801,7 +802,7 @@ function closeDrawer() { S.ui.drawer = null; renderOverlay(); }
 function go(r) { if (!ROUTES[r]) r = 'home'; S.route = r; S.navOpen = false; S.ui.drawer = null; if (location.hash.slice(1) !== r) history.replaceState(null, '', '#' + r); render(); window.scrollTo(0, 0); }
 
 const NAV = [
-  ['home', 'home', 'Home'], ['notices', 'bell', 'Notifications'], ['grid', 'flag', 'The Grid'], ['team', 'wrench', 'Team HQ'], ['weekend', 'radio', 'Race Weekend'], ['test', 'flask', 'Test Track'], ['standings', 'star', 'Championship'], ['seasons', 'star', 'Seasons'],
+  ['home', 'home', 'Home'], ['notices', 'bell', 'Notifications'], ['grid', 'flag', 'The Grid'], ['team', 'wrench', 'Team HQ'], ['weekend', 'radio', 'Race Weekend'], ['test', 'flask', 'Test Track'], ['standings', 'star', 'Championship'], ['seasons', 'star', 'Seasons'], ['people', 'users', 'Characters'],
   ['paddock', 'news', 'Paddock'], ['characters', 'user', 'Your characters']
 ];
 const NAV_RC = [['control', 'shield', 'Race Control'], ['admin', 'server', 'Accounts and backups']];
@@ -4215,6 +4216,182 @@ ROUTES.team.view = function () {
   const inTeam = S.isGm || F1.seats(tid).some(s => S.charId && s.holderCharId === S.charId);
   return banner + html + (inTeam || b.logo || b.banner || b.car ? brandingHtml(tid) : '');
 };
+
+/* =====================================================================
+   F1 SIM — Characters: the showcase, and each character's own page.
+   One page, three views of everyone in the league: Cards (portrait
+   cards in team colours), By team (the paddock by series and team, with
+   branding and open seats) and Register (a filterable directory with a
+   preview). Every name links to the character's page: a banner and
+   portrait, then particulars and relationships, their story, diary and
+   timeline, and their ratings, trophies and race-by-race record.
+   ===================================================================== */
+'use strict';
+
+const initialsOf = n => String(n || '').split(/\s+/).filter(Boolean).map(x => x[0]).slice(0, 2).join('').toUpperCase();
+const showcaseChars = () => list('characters').filter(c => !c.retired && charApproved(c));
+/* A character's seats in every series; the one shown first is in the series being viewed. */
+function seatsOfChar(charId) { return list('f1_seats').filter(s => s.holderCharId === charId); }
+function primarySeat(charId) { const all = seatsOfChar(charId); return all.find(s => ((get('f1_teams', s.teamId) || {}).seriesId || 'f1') === curSeriesId()) || all[0] || null; }
+const seriesOfTeam = teamId => seriesDoc(((get('f1_teams', teamId) || {}).seriesId) || 'f1');
+function seasonStandingsFor(seriesId) { return standingsOf(seasonWeekendsOf(seriesId, curSeasonId(seriesId))); }
+
+/* Everything the showcase needs about one character. */
+function charInfo(c) {
+  const pid = f1PcId(c.id), p = F1.person(pid), seat = primarySeat(c.id), team = seat ? get('f1_teams', seat.teamId) : null, series = team ? seriesOfTeam(team.id) : null;
+  const rec = f1Record(pid), gps = rec.filter(x => x.w.session === 'gp'), pts = rec.reduce((a, x) => a + (x.r.points || 0), 0);
+  let stats;
+  if (c.role === 'driver') stats = [[gps.length, 'Races'], [gps.filter(x => x.r.position && x.r.position <= 3).length, 'Podiums'], [pts, 'Points']];
+  else if (c.role === 'principal') { const st = team ? seasonStandingsFor(series.id) : { teams: [] }, i = team ? st.teams.findIndex(x => x.teamId === team.id) : -1;
+    stats = [[i >= 0 ? st.teams[i].pts : 0, 'Team points'], [i >= 0 ? 'P' + (i + 1) : '–', 'Team'], [list('f1_projects').filter(x => x.charId === c.id).length, 'Upgrades']]; }
+  else if (c.role === 'engineer') stats = [[list('f1_weekends').filter(w => Object.values(w.setupBy || {}).indexOf(c.id) !== -1).length, 'Weekends'], [f1AwardsFor(pid).filter(a => a.key === 'setup').length, 'Set-up awards'], [seat ? f1Rapport(seat.teamId, seat.car) : 0, 'Rapport']];
+  else { const posts = list('f1_posts').filter(x => x.charId === c.id);
+    stats = [[posts.length, 'Posts'], [posts.filter(x => x.kind === 'interview').length, 'Interviews'], [list('f1_diary').filter(x => x.charId === c.id).length, 'Diary']]; }
+  const where = team ? `${team.name}${seat.role !== 'principal' ? `, car ${seat.car}` : ''}` : (c.role === 'media' || c.role === 'paddock' ? 'The paddock' : 'Looking for a seat');
+  return { c, pid, p, seat, team, series, where, stats, pts, color: team ? team.color : '#56636F', num: c.role === 'driver' ? (c.number || (p && p.num) || '') : '', years: p ? yearsNow(p) : 0 };
+}
+const charThumb = (c, size) => c.portraitUrl ? `<img class="ppl-thumb" src="${esc(c.portraitUrl)}" alt="" width="${size}" height="${size}" loading="lazy">` : `<span class="ppl-thumb none" style="width:${size}px;height:${size}px" aria-hidden="true">${esc(initialsOf(c.name))}</span>`;
+ACTIONS['ppl-view'] = d => { S.ui.pplView = d.view; render(); };
+ACTIONS['ppl-role'] = d => { (S.ui.ppl = S.ui.ppl || {}).role = d.role; render(); };
+ACTIONS['ppl-search'] = () => render();
+ACTIONS['ppl-sel'] = d => { S.ui.pplSel = d.id; render(); };
+ACTIONS['ppl-open'] = d => { S.ui.career = d.id; go('career'); };
+ACTIONS['ppl-apply'] = d => { S.series = d.series; lsSet('f1sim.series', d.series); go('grid'); };
+const roleGroup = r => r === 'paddock' ? 'media' : r;
+
+function filteredInfos() {
+  const f = S.ui.ppl = S.ui.ppl || { role: 'all', series: 'all', sort: 'team', q: '' }, q = String(f.q || '').trim().toLowerCase();
+  let rows = showcaseChars().map(charInfo).filter(x => (f.role === 'all' || roleGroup(x.c.role) === f.role) && (f.series === 'all' || (x.series && x.series.id === f.series)) && (!q || (x.c.name + ' ' + x.where + ' ' + charRoleName(x.c.role)).toLowerCase().indexOf(q) !== -1));
+  const by = { name: (a, b) => String(a.c.name).localeCompare(String(b.c.name)), points: (a, b) => b.pts - a.pts || String(a.c.name).localeCompare(String(b.c.name)),
+    newest: (a, b) => String(b.c.createdAt || '').localeCompare(String(a.c.createdAt || '')),
+    team: (a, b) => String(a.series ? a.series.id : 'zz').localeCompare(String(b.series ? b.series.id : 'zz')) || String(a.team ? a.team.order : 99).localeCompare(String(b.team ? b.team.order : 99), undefined, { numeric: true }) || CHAR_ROLES.findIndex(r => r[0] === a.c.role) - CHAR_ROLES.findIndex(r => r[0] === b.c.role) };
+  return rows.sort(by[f.sort] || by.team);
+}
+function cardsHtml() {
+  const rows = filteredInfos(), f = S.ui.ppl, roles = [['all', 'Everyone'], ['driver', 'Drivers'], ['principal', 'Team principals'], ['engineer', 'Race engineers'], ['media', 'Media and paddock']];
+  return `<div class="ppl-filters" role="search">
+      <label class="sr-only" for="ppl-q">Search characters</label><input id="ppl-q" type="search" placeholder="Search by name or team" value="${esc(f.q || '')}" data-bind="ui/ppl/q"><button class="btn" data-act="ppl-search">Search</button>
+      <div role="group" aria-label="Role" class="chip-row">${roles.map(([k, l]) => `<button class="chip ${f.role === k ? 'on' : ''}" aria-pressed="${f.role === k}" data-act="ppl-role" data-role="${k}">${l}</button>`).join('')}</div>
+      <label class="sr-only" for="ppl-series">Series</label>${sel('ppl-series', 'ui/ppl/series', f.series, [['all', 'Every series']].concat(allSeries().map(s => [s.id, s.name])))}
+      <label class="sr-only" for="ppl-sort">Sort</label>${sel('ppl-sort', 'ui/ppl/sort', f.sort, [['team', 'Sort: by team'], ['name', 'Sort: by name'], ['points', 'Sort: most points'], ['newest', 'Sort: newest']])}</div>
+    <p class="muted small">${plural(rows.length, 'character')}</p>
+    ${rows.length ? `<div class="ppl-cards">${rows.map(x => `<button class="ppl-card" data-act="ppl-open" data-id="${esc(x.pid)}" style="--team:${esc(x.color)}">
+      <span class="ppl-photo">${x.c.portraitUrl ? `<img src="${esc(x.c.portraitUrl)}" alt="" loading="lazy">` : `<span class="ppl-init" aria-hidden="true">${esc(initialsOf(x.c.name))}</span>`}${x.num ? `<span class="ppl-num">${esc(x.num)}</span>` : ''}</span>
+      <span class="ppl-body"><b class="ppl-name">${esc(x.c.name)}</b><span>${esc(charRoleName(x.c.role))}</span><span class="muted small">${esc(x.where)}${x.series ? `, ${esc(x.series.short)}` : ''}</span>
+        <span class="ppl-stats">${x.stats.map(([v, l]) => `<span><b>${esc(v)}</b><span>${esc(l)}</span></span>`).join('')}</span></span></button>`).join('')}</div>`
+      : '<div class="empty">Nobody matches. Try another role or series.</div>'}`;
+}
+function byTeamHtml() {
+  const f = S.ui.ppl = S.ui.ppl || { role: 'all', series: 'all', sort: 'team', q: '' }, onlyActive = S.ui.pplActive !== false;
+  const series = allSeries().filter(s => f.series === 'all' || s.id === f.series);
+  const tile = (seat, team) => { const o = f1Occupant(seat), title = seatTitle(seat);
+    if (o.player) { const c = get('characters', o.charId) || { name: o.name };
+      return `<button class="ppl-seat player" data-act="ppl-open" data-id="${esc(f1PcId(o.charId))}">${charThumb(c, 44)}<span><span class="muted small">${esc(title)}</span><b>${esc(o.name)}</b></span></button>`; }
+    if (seat.open) return `<div class="ppl-seat open"><span class="ppl-thumb none" aria-hidden="true" style="width:44px;height:44px">+</span><span><span class="muted small">${esc(title)}</span><b>Open seat</b><button class="linkish small" data-act="ppl-apply" data-series="${esc(team.seriesId || 'f1')}">Apply for this seat</button></span></div>`;
+    return `<div class="ppl-seat other"><span class="ppl-thumb none" aria-hidden="true" style="width:44px;height:44px">${esc(initialsOf(o.name))}</span><span><span class="muted small">${esc(title)}</span><b>${o.person ? careerLink(o.person.id, o.name) : esc(o.name)}</b><span class="muted small">${o.person ? (o.person.fictional ? 'Not a player' : 'Real') : 'Not a player'}</span></span></div>`; };
+  let h = `<label class="small ppl-toggle"><input type="checkbox" data-bind="ui/pplActive" ${onlyActive ? 'checked' : ''}> Only teams with players or open seats</label>`;
+  series.forEach(s => {
+    const teams = list('f1_teams').filter(t => (t.seriesId || 'f1') === s.id).sort((a, b) => (a.order || 0) - (b.order || 0))
+      .filter(t => !onlyActive || F1.seats(t.id).some(x => x.holderCharId || x.open));
+    if (!teams.length) return;
+    h += `<section class="ppl-series"><h2>${esc(s.name)}</h2>${teams.map(t => { const b = teamBrand(t.id);
+      return `<article class="ppl-team" style="--team:${esc(t.color)}"><div class="ppl-banner">${b.banner ? `<img src="${esc(b.banner)}" alt="">` : ''}<div class="ppl-team-id">${b.logo ? `<img class="team-logo" src="${esc(b.logo)}" alt="">` : ''}<h3>${esc(t.name)}</h3></div></div>
+        <div class="ppl-seats">${F1.seats(t.id).map(x => tile(x, t)).join('')}</div></article>`; }).join('')}</section>`;
+  });
+  const others = showcaseChars().filter(c => c.role === 'media' || c.role === 'paddock' || !primarySeat(c.id));
+  if (others.length) h += `<section class="ppl-series"><h2>Media, paddock and free agents</h2><div class="ppl-seats loose">${others.map(c => `<button class="ppl-seat player" data-act="ppl-open" data-id="${esc(f1PcId(c.id))}">${charThumb(c, 44)}<span><span class="muted small">${esc(charRoleName(c.role))}</span><b>${esc(c.name)}</b></span></button>`).join('')}</div></section>`;
+  return h;
+}
+function registerHtml() {
+  const g = S.ui.pplReg = S.ui.pplReg || { r: { driver: true, principal: true, engineer: true, media: true }, s: {}, y: { a: true, b: true, c: true } };
+  const yb = n => !n ? 'n' : n <= 2 ? 'a' : n <= 6 ? 'b' : 'c', q = String((S.ui.ppl || {}).q || '').trim().toLowerCase();
+  const rows = showcaseChars().map(charInfo).filter(x => g.r[roleGroup(x.c.role)] !== false && (!x.series || g.s[x.series.id] !== false) && (yb(x.years) === 'n' || g.y[yb(x.years)] !== false) && (!q || x.c.name.toLowerCase().indexOf(q) !== -1))
+    .sort((a, b) => String(a.c.name).localeCompare(String(b.c.name)));
+  const pick = rows.find(x => x.c.id === S.ui.pplSel) || rows[0];
+  const cb = (path, on, label) => `<label class="reg-check"><input type="checkbox" data-bind="${path}" ${on !== false ? 'checked' : ''}> ${esc(label)}</label>`;
+  const rec = x => x.c.role === 'driver' ? `${x.pts} pts, ${plural(x.stats[1][0], 'podium')}` : `${x.stats[0][0]} ${x.stats[0][1].toLowerCase()}`;
+  return `<div class="reg-wrap"><aside class="reg-filters" aria-label="Filters">
+      <label class="sr-only" for="ppl-q2">Search the register</label><input id="ppl-q2" type="search" placeholder="Search by name" value="${esc((S.ui.ppl || {}).q || '')}" data-bind="ui/ppl/q"><button class="btn small" data-act="ppl-search">Search</button>
+      <fieldset><legend>Role</legend>${cb('ui/pplReg/r/driver', g.r.driver, 'Drivers')}${cb('ui/pplReg/r/principal', g.r.principal, 'Team principals')}${cb('ui/pplReg/r/engineer', g.r.engineer, 'Race engineers')}${cb('ui/pplReg/r/media', g.r.media, 'Media and paddock')}</fieldset>
+      <fieldset><legend>Series</legend>${allSeries().map(s => cb(`ui/pplReg/s/${s.id}`, g.s[s.id], s.name)).join('')}</fieldset>
+      <fieldset><legend>Experience</legend>${cb('ui/pplReg/y/a', g.y.a, '1 to 2 years')}${cb('ui/pplReg/y/b', g.y.b, '3 to 6 years')}${cb('ui/pplReg/y/c', g.y.c, '7 years or more')}</fieldset></aside>
+    <div class="card reg-table"><div class="scroll-x"><table class="data"><thead><tr><th>Name</th><th>Role</th><th>Team</th><th>Series</th><th class="num">Years</th><th class="num">Record</th></tr></thead><tbody>
+      ${rows.map(x => `<tr class="${pick && x.c.id === pick.c.id ? 'me' : ''}"><td><span class="f1-bar" style="background:${esc(x.color)}"></span><button class="linkish" data-act="ppl-sel" data-id="${esc(x.c.id)}">${esc(x.c.name)}</button></td><td>${esc(charRoleName(x.c.role))}</td><td>${esc(x.team ? x.team.name : x.where)}</td><td>${esc(x.series ? x.series.short : '')}</td><td class="num">${x.years || ''}</td><td class="num">${esc(rec(x))}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">Nobody matches these filters.</td></tr>'}</tbody></table></div></div>
+    ${pick ? (() => { const x = pick, c = x.c, diary = list('f1_diary').filter(d => d.charId === c.id).sort((a, b) => String(b.at).localeCompare(String(a.at)))[0], rival = list('f1_relations').find(r => r.charId === c.id && r.kind === 'rival');
+      return `<aside class="card reg-preview" style="--team:${esc(x.color)}" aria-label="${esc(c.name)}"><div class="reg-photo">${c.portraitUrl ? `<img src="${esc(c.portraitUrl)}" alt="">` : `<span class="ppl-init" aria-hidden="true">${esc(initialsOf(c.name))}</span>`}</div>
+        <h2>${esc(c.name)}${x.num ? ` <span class="muted">#${esc(x.num)}</span>` : ''}</h2><p class="muted small">${esc(charRoleName(c.role))}, ${esc(x.where)}.${c.nationality ? ' ' + esc(c.nationality) + '.' : ''}${x.years ? ` ${plural(x.years, 'year')} of experience.` : ''}</p>
+        ${c.bio ? `<p>${esc(String(c.bio).split('\n')[0].slice(0, 220))}</p>` : ''}
+        <div class="ppl-stats">${x.stats.map(([v, l]) => `<span><b>${esc(v)}</b><span>${esc(l)}</span></span>`).join('')}</div>
+        ${diary ? `<p class="small"><b>Latest diary:</b> ${esc(diary.title)}</p>` : ''}${rival ? `<p class="small"><b>Rival:</b> ${esc((F1.person(rival.otherId) || {}).name || '')}</p>` : ''}
+        <button class="btn primary" data-act="ppl-open" data-id="${esc(x.pid)}">Open ${esc(c.name.split(' ')[0])}’s page</button></aside>`; })() : ''}</div>`;
+}
+route('people', 'Characters', function () {
+  const v = S.ui.pplView || 'cards';
+  return `<div class="page-head"><div><h1>Characters</h1><p>Everyone racing, running teams and reporting in the league.</p></div>
+      <div class="btn-row"><div class="seg" role="tablist" aria-label="View">${[['cards', 'Cards'], ['team', 'By team'], ['register', 'Register']].map(([k, l]) => `<button role="tab" aria-selected="${v === k}" data-act="ppl-view" data-view="${k}">${l}</button>`).join('')}</div>
+      <button class="btn primary" data-act="nav" data-route="characters">Create a character</button></div></div>
+    ${v === 'team' ? byTeamHtml() : v === 'register' ? registerHtml() : cardsHtml()}`;
+});
+
+/* ---------------------------------------------------------------- one character's page */
+route('career', 'Character', function () {
+  let p = F1.person(S.ui.career);
+  const cid = p ? p.charId : (String(S.ui.career || '').indexOf('pc-') === 0 ? String(S.ui.career).slice(3) : null), c = cid ? get('characters', cid) : null;
+  if (!p && c) p = { id: f1PcId(c.id), charId: c.id, name: c.name, kind: c.role };
+  if (!p) return '<div class="empty">Choose someone from Characters, The Grid or the Championship.</div>';
+  const mine = !!(c && (c.userId === S.uid || S.isGm) && S.charId === c.id), isDriver = !p.kind || p.kind === 'driver' || (c && c.role === 'driver');
+  const seat = c ? primarySeat(c.id) : F1.seats().find(s => s.defaultPersonId === p.id && !s.holderCharId) || list('f1_seats').find(s => s.defaultPersonId === p.id);
+  const team = seat ? get('f1_teams', seat.teamId) : (p.teamId ? get('f1_teams', p.teamId) : null), series = team ? seriesOfTeam(team.id) : null, brand = team ? teamBrand(team.id) : {};
+  const color = team ? team.color : '#56636F', rec = f1Record(p.id), gps = rec.filter(x => x.w.session === 'gp'), pts = rec.reduce((a, x) => a + (x.r.points || 0), 0);
+  const role = c ? charRoleName(c.role) : (F1_ROLE[p.kind] || 'Driver'), years = yearsNow(p), styleLbl = isDriver && p.style ? (F1_STYLES.find(s => s[0] === p.style) || ['', ''])[1] : '';
+  let stats;
+  if (isDriver) { const st = series ? seasonStandingsFor(series.id) : { drivers: [] }, i = st.drivers.findIndex(d => d.personId === p.id);
+    stats = [['Races', gps.length], ['Podiums', gps.filter(x => x.r.position && x.r.position <= 3).length], ['Points', pts], ['Championship', i >= 0 ? 'P' + (i + 1) : '–']]; }
+  else stats = (c ? charInfo(c).stats.map(([v, l]) => [l, v]) : []);
+  const awards = f1AwardsFor(p.id), counts = {}; awards.forEach(a => { const k = a.label.replace(/ \(.*\)$/, ''); counts[k] = (counts[k] || 0) + 1; });
+  const diary = c ? list('f1_diary').filter(x => x.charId === c.id).sort((a, b) => String(b.at).localeCompare(String(a.at))) : [];
+  const rels = list('f1_relations').filter(r => r.personId === p.id || r.otherId === p.id), relKind = k => (REL_KINDS.find(x => x[0] === k) || [k, k])[1], relName = id => (F1.person(id) || {}).name || 'someone';
+  const rivals = trackRivals(p.id), tl = timeline(p);
+  const eng = isDriver && seat && seat.role === 'driver' ? F1.seats(seat.teamId).find(s => s.role === 'engineer' && s.car === seat.car && s.holderCharId) : null;
+  const k = c && seat && typeof activeContract === 'function' ? activeContract(c.id, seat.teamId) : null;
+  const ratings = isDriver ? (c ? f1DevApply(Object.assign({}, F1_ROOKIE, p), c.id) : p) : null;
+  const where = team ? `${team.name}${seat && seat.role !== 'principal' ? `, car ${seat.car}` : ''}${series ? `, ${series.name}` : ''}` : (c && (c.role === 'media' || c.role === 'paddock') ? 'the paddock' : '');
+
+  let h = `<button class="linkish small" data-act="nav" data-route="people">All characters</button>
+  <section class="char-hero" style="--team:${esc(color)}"><div class="char-banner">${brand.banner ? `<img src="${esc(brand.banner)}" alt="">` : ''}</div>
+    <div class="char-id"><div class="char-photo">${c && c.portraitUrl ? `<img src="${esc(c.portraitUrl)}" alt="${esc(p.name)}">` : `<span class="ppl-init" aria-hidden="true">${esc(initialsOf(p.name))}</span>`}</div>
+      <div class="char-name"><p class="muted">${brand.logo ? `<img class="team-logo tiny" src="${esc(brand.logo)}" alt="">` : ''}${esc(role)}${where ? `, ${esc(where)}` : ''}${c ? '' : '. Real, not a player'}</p>
+        <h1>${p.flag ? esc(p.flag) + ' ' : ''}${esc(p.name)}</h1>
+        <p class="muted">${[c && c.nickname ? `“${c.nickname}”` : '', p.num || (c && c.number) ? '#' + (c && c.number || p.num) : '', c && c.nationality, c && c.birthplace ? 'from ' + c.birthplace : '', years ? plural(years, 'year') + ' of experience' : '', styleLbl].filter(Boolean).map(esc).join('. ')}</p></div>
+      ${stats.length ? `<div class="stat-strip">${stats.map(([l, v], i) => `<div><span>${esc(l)}</span><b class="${i === stats.length - 1 && isDriver ? 'hi' : ''}">${esc(v)}</b></div>`).join('')}</div>` : ''}</div>
+    ${mine ? `<div class="btn-row char-actions"><label class="btn small file-btn">Change portrait<input type="file" accept="image/*" data-change="portrait" data-id="${esc(c.id)}" class="sr-only"></label><button class="btn small" data-act="diary-new">Write in the diary</button><button class="btn small" data-act="rel-new">Add a relationship</button><button class="btn small" data-act="char-edit" data-id="${esc(c.id)}">Edit details</button></div>` : ''}</section>`;
+
+  const left = `<aside class="char-left">
+    <section class="card"><h2>Particulars</h2><dl class="rail-defaults">
+      ${c && c.helmet ? `<div><dt>Helmet</dt><dd>${esc(c.helmet)}</dd></div>` : ''}${c && c.junior ? `<div><dt>Before Formula 1</dt><dd>${esc(c.junior)}</dd></div>` : ''}
+      ${k ? `<div><dt>Contract</dt><dd>£${k.salary}m a season, until ${esc(contractLeft(k))}</dd></div>` : ''}
+      ${eng ? `<div><dt>Race engineer</dt><dd>${careerLink(f1PcId(eng.holderCharId), eng.holderName)}${f1Rapport(seat.teamId, seat.car) ? `, ${plural(f1Rapport(seat.teamId, seat.car), 'weekend')} together` : ''}</dd></div>` : ''}
+      ${seatsOfChar(cid || '').length > 1 ? `<div><dt>Also races in</dt><dd>${seatsOfChar(cid).filter(s => s.id !== seat.id).map(s => `${esc(seriesOfTeam(s.teamId).name)}, ${esc(F1.team(s.teamId).name)}`).join('<br>')}</dd></div>` : ''}
+      ${c && c.discord ? `<div><dt>Discord</dt><dd>${esc(c.discord)}</dd></div>` : ''}
+      ${!(c && (c.helmet || c.junior || c.discord)) && !k && !eng ? '<p class="muted small">Nothing more yet.</p>' : ''}</dl></section>
+    <section class="card"><h2>Relationships</h2>${rels.length ? `<ul class="rels">${rels.map(r => { const mineRel = r.personId === p.id;
+        return `<li><b>${esc(relKind(r.kind))}:</b> ${mineRel ? careerLink(r.otherId, relName(r.otherId)) : `${careerLink(r.personId, relName(r.personId))} counts them as a ${esc(relKind(r.kind).toLowerCase())}`}${r.note ? `<p class="muted small">${esc(r.note)}</p>` : ''}${mineRel && mine ? ` <button class="btn small ghost" data-act="rel-delete" data-id="${esc(r.id)}">Remove</button>` : ''}</li>`; }).join('')}</ul>` : '<p class="muted small">None declared.</p>'}
+      ${rivals.length ? `<h4>On track</h4><ul class="rels">${rivals.map(r => `<li>${careerLink(r.personId, r.name)} <span class="muted small">${r.won} passes for, ${r.lost} against</span></li>`).join('')}</ul>` : ''}</section></aside>`;
+
+  const mid = `<div class="char-mid">
+    <section class="card"><h2>Story</h2>${c && c.bio ? paras(c.bio) : `<p class="muted">${c ? 'No story written yet.' : `${esc(p.name)} is part of today’s real grid.`}</p>`}</section>
+    ${diary.length || mine ? `<section class="card"><h2>Diary</h2>${diary.length ? diary.slice(0, 8).map(d => `<article class="diary"><p class="muted small">${esc(fmtWhen(d.at))}</p><h3>${esc(d.title)}</h3>${paras(d.body)}${mine ? `<button class="btn small ghost" data-act="diary-delete" data-id="${esc(d.id)}">Delete</button>` : ''}</article>`).join('') : '<p class="muted">No entries yet. Diary entries are public.</p>'}</section>` : ''}
+    <section class="card"><h2>Timeline</h2>${tl.length ? `<ol class="timeline">${tl.map(x => `<li><span class="muted small">${esc(fmtDate(x.at))}</span> ${esc(x.text)}</li>`).join('')}</ol>` : '<p class="muted small">The story starts at the first race.</p>'}</section></div>`;
+
+  const right = `<aside class="char-right">
+    ${isDriver ? `<section class="card"><h2>Ratings</h2>${mine && c ? devPanelHtml(c.id) : `<div class="rating-bars">${F1_RATINGS.map(([key, l]) => { const v = ratings[key]; const max = key === 'mental' ? 10 : 100;
+        return v == null ? '' : `<div class="rating-row"><span>${esc(l)}</span><span class="bar" role="img" aria-label="${esc(l)} ${v}"><span style="width:${Math.min(100, v / max * 100)}%"></span></span><b>${esc(v)}</b></div>`; }).join('')}</div>`}</section>` : ''}
+    <section class="card"><h2>Trophy cabinet</h2>${awards.length ? `<p>${Object.keys(counts).map(k2 => `<span class="tag trophy">${esc(k2)}${counts[k2] > 1 ? ' ×' + counts[k2] : ''}</span>`).join(' ')}</p>` : '<p class="muted small">Empty, for now.</p>'}</section>
+    ${rec.length ? `<section class="card"><h2>Race by race</h2><table class="data compact"><thead><tr><th>Race</th><th class="num">Grid</th><th class="num">Finish</th><th class="num">Pts</th></tr></thead><tbody>${rec.slice().reverse().slice(0, 12).map(x => { const t = get('f1_tracks', x.w.trackId) || {};
+        return `<tr><td>${esc(t.name || '')}${x.w.session === 'sprint' ? ' sprint' : ''}${wSeries(x.w) !== 'f1' ? ` <span class="muted small">${esc(seriesDoc(wSeries(x.w)).short)}</span>` : ''}</td><td class="num">${x.r.grid}</td><td class="num">${x.r.position ? 'P' + x.r.position : 'Out'}</td><td class="num">${x.r.points || ''}</td></tr>`; }).join('')}</tbody></table></section>` : ''}
+    ${isDriver ? `<button class="btn" data-act="card-open" data-id="${esc(p.id)}" data-kind="card">Make a driver card</button>` : ''}</aside>`;
+  return h + `<div class="char-cols" style="--team:${esc(color)}">${left}${mid}${right}</div>`;
+});
 
 /* =====================================================================
    F1 SIM — Home, Paddock, Race Control desk, accounts and backups.
