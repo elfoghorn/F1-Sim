@@ -25,6 +25,34 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v0.11.0: a streamlined Race Weekend, and nothing to lock in
+
+11 November 2026. Build `f1sim-0.11.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| What's happening now | The Race Weekend page opens with one card: the current stage and what to do (for example "FP2 is next: plan up to 2 runs per car"), then a line for each of your cars with runs left, confidence, the set-up it will use for qualifying and the race plans it will use. During the race it shows position, grid slot and the plan running. |
+| Tabs | Practice: **Set-up**, **Race plan**, **Timing**, **Entry list**. After qualifying: **Qualifying debrief**, **Race plan**, **Timing**, **Entry list**. During an official race, **Timing** first (nobody can make calls); in races that allow calls, **Pit wall** first. People without a seat see Timing and the Entry list. Race Control's controls stay at the top. |
+| One car at a time | A team principal switches between their two cars with buttons, instead of seeing both stacked. |
+| Tidier practice panel | The set-up guide folds into one line showing the engineer's guess, with a button to put it on the dials. Only the current session's runs and the latest debrief show; earlier ones are tucked underneath. |
+| Nothing to lock in | A car's qualifying set-up is, in order: dials chosen for qualifying (optional), the latest set-up run this weekend, the set-up it used at its last race (scored against what this circuit and driver need), or a standard set-up. The panel always says which one applies. |
+| Plans carry over | If nobody saves race plans this weekend, the car uses its plans from its last race, with stop laps and trigger laps resized to this race's length, then the team's own preset. The Race plan tab starts from whichever applies. |
+| Qualifying debrief | Says where the set-up came from. |
+| Triggers | The Triggers section folds away to one line ("3 triggers set") and stays open while you edit it. |
+
+---
+
+## v0.10.1: seat applications across series
+
+11 November 2026. Build `f1sim-0.10.1`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Fix: approving across series | Approving a seat application, or putting a character in a seat, now hands back only their other seat **in that seat's series**. Before, it used the series Race Control happened to be viewing, so approving an F2 application while viewing F1 could take away the character's F1 seat. |
+| Series on applications | Race Control's seat applications show which series each one is for, and players' Home lists show the series beside each application. |
+
+---
+
 ## v0.10.0: full practice sessions
 
 11 November 2026. Build `f1sim-0.10.0`. **No database update.**
