@@ -526,15 +526,20 @@ table.data tr.me td, table.data tr.picked td, .data tr.me { background: var(--me
 .brand { white-space: nowrap; }
 
 .engine-card h3 { margin-top: 14px; } .eng-num { max-width: 72px; min-height: 34px; padding: 4px 8px; text-align: right; }
+
+.f1-feed li.red { border-left-color: var(--red); background: color-mix(in srgb, var(--red) 22%, transparent); font-weight: 700; }
+.f1-feed li.damage { border-left-color: #F28C28; } .f1-feed li.incident { border-left-color: var(--f1-flag); } .f1-feed li.penalty { border-left-color: #F5C400; }
+.tag.pen { background: #F5C400; color: #2A2200; } .tag.dmg { background: #F28C28; color: #2A1500; } .timing .tag.pen, .timing .tag.dmg { margin-left: 4px; font-size: 11.5px; padding: 1px 5px; }
+.inc-family { margin-bottom: 18px; } .inc-family h3 { margin-bottom: 2px; } td.nowrap { white-space: nowrap; }
 </style>
 </head>
 <body>
 <div id="auth-root"><div class="boot"><div class="boot-card"><span class="brand-mark big" aria-hidden="true"></span><h1>F1 SIM</h1><p>Loading…</p></div></div></div>
 <div id="app"></div>
-<script>window.F1SIM_BUILD = 'f1sim-0.20.0'; window.F1SIM_VERSION = '0.20.0';</script>
+<script>window.F1SIM_BUILD = 'f1sim-0.21.0'; window.F1SIM_VERSION = '0.21.0';</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
-<script src="config.js?v=f1sim-0.20.0"></script>
-<script src="bridge.js?v=f1sim-0.20.0"></script>
+<script src="config.js?v=f1sim-0.21.0"></script>
+<script src="bridge.js?v=f1sim-0.21.0"></script>
 <noscript>F1 SIM needs JavaScript switched on.</noscript>
 </body>
 </html>

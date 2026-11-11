@@ -25,6 +25,27 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v0.21.0: race incidents
+
+11 November 2026. Build `f1sim-0.21.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Incident catalogue | Races now draw from 40 kinds of incident in eight groups: driver errors and crashes, contact between cars, pile-ups, tyres, stewards, mechanical, pit lane, and outside events. "What can happen?" (beside the weekend settings, and on the Test Track) lists each one, how often it happens on the usual settings and what it does. |
+| Crash levels | Lock-up (1 to 2.5s, sometimes a flat-spotted tyre), off and rejoin (3 to 7s), spin (8 to 16s), through the gravel (15 to 30s), front wing damage (slower until the car pits for a new nose), beached in the gravel (out, virtual safety car), hits the barrier (out, safety car, sometimes a red flag), heavy crash (out, often a red flag). |
+| Contact | When one car attacks another: a touch, a puncture, wing damage, one car out or both out. Stewards often penalise whoever caused it. |
+| Pile-ups | First-lap and restart tangles of 2 to 5 cars, and rare pile-ups of 5 to 8 cars with a red flag. |
+| Mechanical | Ten ways to retire (power unit, gearbox, hydraulics, energy store, fuel pressure, electrical shutdown (a third restart after a power cycle), brakes, suspension, engine fire, overheating) and four to carry on with: loss of power, gearshift problems, brake temperatures, floor damage. More for less reliable cars and worn power units, and by engine era: V8s fail least, V12s most. |
+| Tyres and pit lane | Punctures (more at street circuits and on worn tyres), tyre failures past 85% wear, wheel nut problems, stalls, unsafe releases and pit-lane speeding. |
+| Outside events | Debris, debris in a brake duct, an animal on the track, a spectator on the track, a loose drain cover (red flag), a sudden cloudburst (only when the weekend's weather isn't set to dry), and lightning (red flag; in the last quarter the race isn't resumed and the results stand). |
+| Red flags | The race stops; the gaps close up; every car gets fresh tyres and repairs; the race restarts behind the safety car. The live race pauses at a red flag, as at a safety car. |
+| Penalties | 5 or 10 seconds, served at the next pit stop or added to the race time at the finish. |
+| On screen | The timing tower shows penalties to serve (+5s) and cars with damage or a problem. The race log marks red flags, penalties, damage and incidents. The race report includes them all. |
+| Settings | Three settings scale the groups: "Crashes, contact and driver errors", "Mechanical failures and pit problems" and the new "Outside events". Each now has None, as well as fewer, as usual, more and chaos. |
+| How often (measured) | Over 240 dry races on the usual settings: 2.5 retirements, 0.9 safety cars, 0.7 virtual safety cars, a red flag about one race in seven, and 1.2 penalties per race. On chaos with a 60% chance of rain: 7.5 retirements, 2.7 safety cars, 2 virtual safety cars and a red flag in more than half of races. |
+
+---
+
 ## v0.20.0: calendar and championship exports
 
 11 November 2026. Build `f1sim-0.20.0`. **No database update.** Optional: two new Discord webhook secrets (SETUP.md, Discord).

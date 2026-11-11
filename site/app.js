@@ -1,4 +1,4 @@
-/* F1 SIM v0.20.0 (build f1sim-0.20.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v0.21.0 (build f1sim-0.21.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -79,7 +79,9 @@
     crashRate: 0.0008, mistakeRate: 0.006,
     /* Engine eras. modeEnergy replaces how much each driving mode recharges (or drains) the battery;
        emptyBattery is the time lost on a lap run with a flat battery; noHybrid removes the battery boost. */
-    modeEnergy: null, emptyBattery: 0, noHybrid: false
+    modeEnergy: null, emptyBattery: 0, noHybrid: false,
+    /* Race incidents: multipliers for each family (see INCIDENTS). */
+    incidents: { crashes: 1, failures: 1, outside: 1 }, weatherEvents: true
   };
 
   /* ------------------------------------------------------------ randomness */
@@ -386,7 +388,9 @@
     var R = s.rules, circuit = s.circuit, r = rng(mix(s.seed, s.lap, 2)), track = s.track[s.lap - 1];
     if (s.lap > 1 && track !== s.track[s.lap - 2]) log.push({ kind: 'weather', text: 'Track now ' + TRACK[track] });
     var field = order(s), leader0 = field[0] ? field[0].cum : 0;
-    var newSc = null;
+    var newSc = null, ctx = {};
+    /* The start, and restarts after a safety car: tangles and (rarely) pile-ups. */
+    if (!s.sc.type && (s.lap === 1 || s.restartLap === s.lap)) startIncidents(s, R, r, track, field, log, ctx, s.lap !== 1);
 
     if (!s.sc.type) applyApproach(s, field);
     /* An all-electric race: everyone eases off when the battery runs low, unless the pit wall has just made a call. */
@@ -397,25 +401,23 @@
     /* raw lap times */
     var raw = {};
     field.forEach(function (car, i) {
+      if (car.status !== 'running') return;
       var m = MODES[car.mode], t = basePace(car, circuit, R, track) + m.pace + tyreTime(car.tyre, car, circuit, track)
         + R.fuelEffect * (1 - (s.lap - 1) / s.laps);
       if (R.emptyBattery && !R.noHybrid && car.energy <= 0) t += R.emptyBattery;
       t += gauss(r) * (0.12 + (100 - car.driver.consistency) * 0.008);
       if (s.lap === 1) t += 4 + gauss(r) * (0.5 + (100 - car.driver.racecraft) * 0.02);
       var risk = m.risk * (1 + track * 1.5) * (1 + ((car.driver.aggression || 50) - 50) / 100) * composure(car.driver) * (s.lap === 1 ? 4 : 1);
-      if (!s.sc.type && r() < R.mistakeRate * risk) { var lost = 0.8 + r() * 2.7; t += lost; log.push({ kind: 'mistake', ids: [car.id], text: car.driver.code + ' makes a mistake, ' + lost.toFixed(1) + 's lost' }); }
-      if (!s.sc.type && r() < R.crashRate * risk * (1 + track)) { retire(car, 'Accident', log, s); newSc = r() < 0.65 ? 'sc' : 'vsc'; return; }
-      if (r() < R.failureRate * (1 - (car.car.reliability || 85) / 100) * (1 + (car.car.wear || 0) / 100)) {
-        var what = ['power unit', 'gearbox', 'hydraulics', 'energy store', 'brakes'][Math.floor(r() * 5)];
-        retire(car, 'Failure: ' + what, log, s); if (r() < 0.3) newSc = 'vsc'; return;
-      }
+      var lost = carIncidents(car, s, R, r, track, risk, log, ctx);
+      if (lost === null) return;
+      t += lost;
       if (i > 0 && !s.sc.type) {
         var gap = car.cum - field[i - 1].cum;
         if (gap < 1.0) t += R.dirtyAir * (1 - gap);
       }
       raw[car.id] = t;
     });
-    if (!newSc && !s.sc.type && r() < (circuit.scChance || 0.004)) { newSc = r() < 0.5 ? 'sc' : 'vsc'; log.push({ kind: 'incident', text: 'Debris on track' }); }
+    trackIncidents(s, R, r, track, log, ctx);
 
     field = field.filter(function (c) { return c.status === 'running'; });
     var start = {}; field.forEach(function (c) { start[c.id] = c.cum; });
@@ -440,6 +442,14 @@
           var ord = s.orders[car.team];
           if (end < aheadEnd + R.minGap) {
             var hold = sameTeam && ord && ord.value === 'hold' && !car.refuse;
+            /* Racing close: sometimes they touch. */
+            if (!hold && ahead.status === 'running') {
+              var cc = 0.003 * (R.incidents ? R.incidents.crashes : 1) * (1 + track) * (1 + ((car.driver.aggression || 50) - 50) / 80) * (s.lap === 1 || s.restartLap === s.lap ? 2.5 : 1);
+              if (r() < cc) {
+                var before = car.cum; contactIncident(car, ahead, s, R, r, log, ctx); end += car.cum - before; car.cum = before;
+                if (car.status !== 'running' || ahead.status !== 'running') { car.lastLap = round3(end - car.cum); car.cum = round3(end); return; }
+              }
+            }
             var chance = 0;
             if (!hold) {
               var adv = raw[ahead.id] - t, ease = circuit.overtaking == null ? 0.7 : circuit.overtaking;
@@ -461,6 +471,7 @@
         }
         car.lastLap = round3(end - car.cum); car.cum = round3(end);
       });
+      field = field.filter(function (c) { return c.status === 'running'; });
       /* Team order: swap */
       Object.keys(s.orders).forEach(function (team) {
         var o = s.orders[team]; if (!o || o.value !== 'swap') return;
@@ -496,6 +507,14 @@
         var crew = car.car.pitSpeed == null ? 85 : car.car.pitSpeed;
         var stop = Math.max(1.9, R.pitStop.mean - (crew - 85) * 0.03 + gauss(r) * R.pitStop.sd);
         var slow = r() < R.pitStop.slowChance * (1 + (85 - crew) / 30); if (slow) stop += 2 + r() * 6;
+        var pm = (R.incidents || { failures: 1 }).failures, note = '';
+        if (car.repair) { stop += car.repair; note += ', a new nose'; }
+        if (car.limp && car.limp.fix) car.limp = null;
+        car.repair = 0; car.flatSpot = false;
+        if (car.pen) { stop += car.pen; note += ', serving a ' + car.pen + '-second penalty'; car.penServed = (car.penServed || 0) + car.pen; car.pen = 0; }
+        if (r() < INC.wheelnut.perStop * pm) { var wn = rr(r, 5, 12); stop += wn; log.push({ kind: 'incident', inc: 'wheelnut', ids: [car.id], text: car.driver.code + ' loses ' + wn.toFixed(0) + 's with a wheel nut problem' }); }
+        else if (r() < INC.stall.perStop * pm) { var stl = rr(r, 6, 10); stop += stl; log.push({ kind: 'incident', inc: 'stall', ids: [car.id], text: car.driver.code + ' stalls in the pit box, ' + stl.toFixed(0) + 's lost' }); }
+        var unsafe = r() < INC.unsafe.perStop * pm, speeding = r() < INC.speeding.perStop * pm;
         var loss = (circuit.pitLoss || 21) * (s.sc.type === 'sc' ? 0.55 : s.sc.type === 'vsc' ? 0.65 : 1) + stop;
         car.cum = round3(car.cum + loss); car.lastLap = round3(car.lastLap + loss);
         car.stints[car.stints.length - 1].to = s.lap;
@@ -506,26 +525,44 @@
         var weatherStop = COMPOUNDS[comp].wet;
         if (!weatherStop && car.plan.length) car.plan.shift();
         car.plan = car.plan.filter(function (p) { return p.lap > s.lap + 3; });
-        log.push({ kind: 'pit', ids: [car.id], text: car.driver.code + ' pits for ' + COMPOUNDS[comp].label + 's (' + stop.toFixed(1) + 's' + (slow ? ', slow stop' : '') + ')' });
+        log.push({ kind: 'pit', ids: [car.id], text: car.driver.code + ' pits for ' + COMPOUNDS[comp].label + 's (' + stop.toFixed(1) + 's' + (slow ? ', slow stop' : '') + note + ')' });
+        if (unsafe) { penalise(car, 5, { inc: 'unsafe', text: 'unsafe release' }, log); if (r() < 0.2) { retire(car, 'Lost a wheel after an unsafe release', log, s, 'unsafe'); flagUp(ctx, 'vsc'); } }
+        if (speeding && car.status === 'running') penalise(car, 5, { inc: 'speeding', text: 'speeding in the pit lane' }, log);
       }
     });
 
     /* safety car bookkeeping */
+    if (ctx.flag === 'sc' || ctx.flag === 'vsc') newSc = newSc === 'sc' ? 'sc' : ctx.flag;
     if (s.sc.type) {
       s.sc.laps -= 1;
-      if (s.sc.laps <= 0) { log.push({ kind: s.sc.type, text: (s.sc.type === 'sc' ? 'Safety car' : 'Virtual safety car') + ' ends, racing resumes' }); s.sc = { type: null, laps: 0 }; }
+      if (s.sc.laps <= 0) { log.push({ kind: s.sc.type, text: (s.sc.type === 'sc' ? 'Safety car' : 'Virtual safety car') + ' ends, racing resumes' }); if (s.sc.type === 'sc') s.restartLap = s.lap + 1; s.sc = { type: null, laps: 0 }; }
     } else if (newSc && s.lap < s.laps - 1) {
       s.sc = { type: newSc, laps: newSc === 'sc' ? 3 + Math.floor(r() * 3) : 2 + Math.floor(r() * 2) };
       log.push({ kind: newSc, text: newSc === 'sc' ? 'Safety car deployed' : 'Virtual safety car deployed' });
     }
 
+    /* A red flag: the race stops. Gaps close up, everyone gets fresh tyres and repairs, then a restart behind the safety car. */
+    if (ctx.endRace && s.lap < s.laps) { log.push({ kind: 'red', inc: 'storm', text: 'Red flag: the race is not resumed, and the results stand' }); s.laps = s.lap; }
+    else if (ctx.flag === 'red' && s.lap < s.laps - 1) {
+      var stopped = order(s), lead0 = stopped[0], nt = s.track[s.lap] != null ? s.track[s.lap] : track;
+      log.push({ kind: 'red', inc: 'red', text: 'Red flag: the race is stopped' }); s.redFlags = (s.redFlags || 0) + 1;
+      stopped.forEach(function (c, i) {
+        c.cum = round3((lead0 ? lead0.cum : 0) + i * 0.8);
+        var comp = chooseCompound(c, s, nt);
+        if (comp !== c.tyre.compound) { c.stints[c.stints.length - 1].to = s.lap; c.stints.push({ compound: comp, from: s.lap + 1, to: null }); if (c.used.indexOf(comp) < 0) c.used.push(comp); }
+        c.tyre = { compound: comp, wear: 0, age: 0 }; if (c.limp && c.limp.fix) c.limp = null; c.repair = 0; c.flatSpot = false; c.pendingBox = null;
+      });
+      s.sc = { type: 'sc', laps: 2 }; log.push({ kind: 'sc', text: 'The race will restart behind the safety car, with fresh tyres and repairs for everyone' });
+    }
+    if (s.slippery > 0) s.slippery -= 1;
     order(s).forEach(function (car, i) { car.positions.push(i + 1); car.lapTimes.push(car.lastLap); car.refuse = car.refuse && !!s.orders[car.team]; });
     if (!s.finished || s.lap < s.laps) checkTriggers(s, r, log, track, log.some(function (l) { return (l.kind === 'sc' || l.kind === 'vsc') && /deployed/.test(l.text); }));
     s.cars.forEach(function (car) { if (car.status !== 'running' && car.positions.length < s.lap) car.positions.push(null); });
 
     if (s.lap >= s.laps) {
       s.finished = true;
-      running(s).forEach(function (c) { c.stints[c.stints.length - 1].to = s.lap; });
+      running(s).forEach(function (c) { c.stints[c.stints.length - 1].to = s.lap;
+        if (c.pen) { c.cum = round3(c.cum + c.pen); c.penServed = (c.penServed || 0) + c.pen; log.push({ kind: 'penalty', inc: 'served', ids: [c.id], text: c.driver.code + '’s ' + c.pen + '-second penalty is added to their race time' }); c.pen = 0; } });
       var w = order(s)[0];
       log.push({ kind: 'finish', ids: w ? [w.id] : [], text: w ? w.driver.code + ' wins the ' + (circuit.race || circuit.name) : 'Race over' });
     }
@@ -534,10 +571,165 @@
     return { state: s, log: log };
   }
 
-  function retire(car, why, log, s) {
-    car.status = 'dnf'; car.dnf = why; car.retiredLap = s.lap;
+  /* ------------------------------------------------------------ race incidents
+     The catalogue: each incident's family, what it does, and how often it happens on a normal
+     setting (perRace: about how many in a dry 55-lap race with 22 cars; perStop: chance at each pit
+     stop; perStart: chance at the start). Race Control's settings scale each family:
+     crashes (driver errors, contact, pile-ups, tyres and stewards), failures (mechanical and pit lane)
+     and outside events. Rain, lap 1, restarts, push mode, aggression, reliability, tyre wear, street
+     circuits and the engine era move the odds for each car. */
+  var INCIDENTS = [
+    { id: 'lockup', family: 'driver', label: 'Lock-up, runs wide', perRace: 4.0, effect: '1 to 2.5s lost; sometimes a flat-spotted tyre (slower until the next stop)' },
+    { id: 'off', family: 'driver', label: 'Off the track, rejoins', perRace: 2.0, effect: '3 to 7s lost' },
+    { id: 'spin', family: 'driver', label: 'Spin', perRace: 0.7, effect: '8 to 16s lost' },
+    { id: 'gravel', family: 'driver', label: 'Through the gravel', perRace: 0.35, effect: '15 to 30s lost; sometimes front wing damage' },
+    { id: 'wing', family: 'driver', label: 'Clips the barrier: front wing damage', perRace: 0.3, effect: 'About 1.4s a lap slower until the car pits for a new nose' },
+    { id: 'beached', family: 'driver', label: 'Beached in the gravel', perRace: 0.12, effect: 'Out; virtual safety car or safety car' },
+    { id: 'wall', family: 'driver', label: 'Hits the barrier', perRace: 0.4, effect: 'Out; safety car (sometimes virtual), red flag 1 in 10' },
+    { id: 'heavy', family: 'driver', label: 'Heavy crash', perRace: 0.07, effect: 'Out; red flag half the time, else safety car' },
+    { id: 'contact', family: 'contact', label: 'Contact between two cars', perRace: 0.8, effect: 'A touch (time lost), a puncture, wing damage, one car out, or both out; stewards often penalise whoever caused it' },
+    { id: 'tangle', family: 'pileup', label: 'First-lap or restart tangle (2 to 5 cars)', perStart: 0.2, effect: 'Each car: out, damaged, punctured or delayed; safety car or red flag' },
+    { id: 'pileup', family: 'pileup', label: 'Multi-car pile-up (5 to 8 cars)', perStart: 0.02, effect: 'Red flag; several cars out' },
+    { id: 'pu', family: 'mechanical', label: 'Power unit failure', perRace: 0.28, effect: 'Out; sometimes smoke and a virtual safety car, sometimes oil on the track' },
+    { id: 'gearbox', family: 'mechanical', label: 'Gearbox failure', perRace: 0.14, effect: 'Out' },
+    { id: 'hydraulics', family: 'mechanical', label: 'Hydraulics failure', perRace: 0.10, effect: 'Out' },
+    { id: 'energy', family: 'mechanical', label: 'Energy store failure (hybrid eras)', perRace: 0.07, effect: 'Out' },
+    { id: 'fuel', family: 'mechanical', label: 'Fuel pressure problem', perRace: 0.05, effect: 'Out' },
+    { id: 'electrical', family: 'mechanical', label: 'Electrical shutdown', perRace: 0.10, effect: 'A third restart after a power cycle (25s lost); the rest are out' },
+    { id: 'brakes', family: 'mechanical', label: 'Brake failure', perRace: 0.05, effect: 'Out; half end in the barrier (safety car)' },
+    { id: 'suspension', family: 'mechanical', label: 'Suspension failure', perRace: 0.05, effect: 'Out; some end in the barrier' },
+    { id: 'fire', family: 'mechanical', label: 'Engine fire', perRace: 0.025, effect: 'Out; safety car' },
+    { id: 'overheat', family: 'mechanical', label: 'Overheating (water leak)', perRace: 0.07, effect: 'A second a lap slower for 2 to 4 laps, then out' },
+    { id: 'power', family: 'mechanical', label: 'Loss of power (MGU-K, or a misfire without hybrid)', perRace: 0.18, effect: 'About 0.6 to 0.9s a lap slower for the rest of the race' },
+    { id: 'shift', family: 'mechanical', label: 'Gearshift problems', perRace: 0.12, effect: '0.6s a lap slower for 5 to 10 laps' },
+    { id: 'braketemp', family: 'mechanical', label: 'Brake temperatures', perRace: 0.10, effect: '0.35s a lap slower for the rest of the race' },
+    { id: 'floor', family: 'mechanical', label: 'Floor damage from the kerbs', perRace: 0.08, effect: '0.5s a lap slower for the rest of the race' },
+    { id: 'puncture', family: 'tyre', label: 'Puncture', perRace: 0.22, effect: 'A slow lap back to the pits (12 to 20s) and a stop; more at street circuits and on worn tyres' },
+    { id: 'blowout', family: 'tyre', label: 'Tyre failure on worn tyres', perRace: 0.05, effect: 'Only past 85% wear: a third crash out (safety car), the rest limp to the pits' },
+    { id: 'wheelnut', family: 'pit', label: 'Wheel nut problem', perStop: 0.018, effect: '5 to 12s lost in the stop' },
+    { id: 'unsafe', family: 'pit', label: 'Unsafe release', perStop: 0.006, effect: '5-second penalty; 1 in 5 lose a wheel and are out' },
+    { id: 'speeding', family: 'pit', label: 'Speeding in the pit lane', perStop: 0.004, effect: '5-second penalty' },
+    { id: 'stall', family: 'pit', label: 'Stalls in the pit box', perStop: 0.005, effect: '6 to 10s lost' },
+    { id: 'tracklimits', family: 'stewards', label: 'Track limits', perRace: 0.35, effect: '5-second penalty' },
+    { id: 'jumpstart', family: 'stewards', label: 'Jump start', perRace: 0.08, effect: '5-second penalty' },
+    { id: 'debris', family: 'external', label: 'Debris on the track', perRace: 0.22, effect: 'Virtual safety car or safety car (more at circuits that have more)' },
+    { id: 'bag', family: 'external', label: 'Debris in a brake duct or radiator', perRace: 0.10, effect: '0.4s a lap slower for 3 to 6 laps; sometimes out with overheating' },
+    { id: 'animal', family: 'external', label: 'An animal on the track', perRace: 0.03, effect: 'Virtual safety car' },
+    { id: 'invasion', family: 'external', label: 'A spectator on the track', perRace: 0.01, effect: 'Safety car' },
+    { id: 'drain', family: 'external', label: 'Loose drain cover', perRace: 0.012, effect: 'Red flag while it is fixed' },
+    { id: 'cloudburst', family: 'external', label: 'Sudden cloudburst', perRace: 0.05, effect: 'Wet track for 3 to 8 laps, then damp (not when the weekend is set to dry)' },
+    { id: 'storm', family: 'external', label: 'Storm: lightning in the area', perRace: 0.008, effect: 'Red flag; in the last quarter of the race it is not resumed and the results stand' }
+  ];
+  var INC = {}; INCIDENTS.forEach(function (x) { INC[x.id] = x; });
+  var REF_CAR_LAPS = 22 * 55, REF_LAPS = 55;
+  function flagUp(ctx, kind) { var rank = { vsc: 1, sc: 2, red: 3 }; if (!ctx.flag || rank[kind] > rank[ctx.flag]) ctx.flag = kind; }
+  function rr(r, a, b) { return a + r() * (b - a); }
+  function penalise(car, secs, why, log) { car.pen = (car.pen || 0) + secs; log.push({ kind: 'penalty', inc: why.inc, ids: [car.id], text: car.driver.code + ' gets a ' + secs + '-second penalty: ' + why.text }); }
+  function limp(car, o) { car.limp = o; }
+  function needsPit(car, repair) { car.pendingBox = car.pendingBox || 'auto'; car.repair = Math.max(car.repair || 0, repair || 0); }
+  var ANIMALS = ['A dog', 'A hare', 'A groundhog', 'A monitor lizard', 'A cat', 'A fox'];
+
+  /* Incidents for one car on one lap. Returns time lost, or null if the car is out. */
+  function carIncidents(car, s, R, r, track, risk, log, ctx) {
+    var mult = R.incidents || { crashes: 1, failures: 1, outside: 1 }, add = 0, code = car.driver.code;
+    /* What's already wrong with the car. */
+    if (car.limp) {
+      add += car.limp.pace;
+      if (car.limp.laps != null) { car.limp.laps -= 1; if (car.limp.laps <= 0) { if (car.limp.out) { retire(car, car.limp.out, log, s, car.limp.inc); if (r() < 0.4) flagUp(ctx, 'vsc'); return null; } car.limp = null; } }
+    }
+    if (car.flatSpot) add += 0.2;
+    if (s.sc.type) return add;
+    var slip = s.slippery > 0 ? 2.5 : 1, cm = mult.crashes * slip, fm = mult.failures, om = mult.outside;
+    var drv = function (id) { return INC[id].perRace / REF_CAR_LAPS * risk * cm; };
+    /* Driver errors, most serious first; one per lap at most. */
+    var roll = r(), acc = 0, pick = null, order = ['heavy', 'wall', 'beached', 'wing', 'gravel', 'spin', 'off', 'lockup'];
+    for (var k = 0; k < order.length && !pick; k++) { acc += drv(order[k]) * (order[k] === 'lockup' || order[k] === 'off' ? 1 : (1 + track)); if (roll < acc) pick = order[k]; }
+    if (pick === 'heavy') { retire(car, 'Heavy crash', log, s, 'heavy'); flagUp(ctx, r() < 0.5 ? 'red' : 'sc'); return null; }
+    if (pick === 'wall') { retire(car, 'Hit the barrier', log, s, 'wall'); flagUp(ctx, r() < 0.1 ? 'red' : r() < 0.7 ? 'sc' : 'vsc'); return null; }
+    if (pick === 'beached') { retire(car, 'Beached in the gravel', log, s, 'beached'); flagUp(ctx, r() < 0.7 ? 'vsc' : 'sc'); return null; }
+    if (pick === 'wing') { limp(car, { pace: 1.4, laps: null, fix: true, inc: 'wing' }); needsPit(car, 9); log.push({ kind: 'damage', inc: 'wing', ids: [car.id], text: code + ' clips the barrier: front wing damage, pitting for a new nose' }); return add + rr(r, 2, 5); }
+    if (pick === 'gravel') { var g = rr(r, 15, 30); log.push({ kind: 'mistake', inc: 'gravel', ids: [car.id], text: code + ' goes through the gravel, ' + g.toFixed(0) + 's lost' }); if (r() < 0.3) { limp(car, { pace: 1.4, laps: null, fix: true, inc: 'wing' }); needsPit(car, 9); log.push({ kind: 'damage', inc: 'wing', ids: [car.id], text: code + ' has front wing damage and pits for a new nose' }); } return add + g; }
+    if (pick === 'spin') { var sp = rr(r, 8, 16); if (r() < 0.25) car.flatSpot = true; log.push({ kind: 'mistake', inc: 'spin', ids: [car.id], text: code + ' spins, ' + sp.toFixed(0) + 's lost' + (car.flatSpot ? ' and a flat-spotted tyre' : '') }); return add + sp; }
+    if (pick === 'off') { var of = rr(r, 3, 7); log.push({ kind: 'mistake', inc: 'off', ids: [car.id], text: code + ' goes off and rejoins, ' + of.toFixed(1) + 's lost' }); return add + of; }
+    if (pick === 'lockup') { var lu = rr(r, 1, 2.5); if (r() < 0.15) car.flatSpot = true; log.push({ kind: 'mistake', inc: 'lockup', ids: [car.id], text: code + ' locks up and runs wide, ' + lu.toFixed(1) + 's lost' + (car.flatSpot ? ', flat-spotting a tyre' : '') }); return add + lu; }
+    /* Stewards. */
+    if (r() < INC.tracklimits.perRace / REF_CAR_LAPS * mult.crashes * (1 + ((car.driver.aggression || 50) - 50) / 100)) penalise(car, 5, { inc: 'tracklimits', text: 'track limits' }, log);
+    if (s.lap === 1 && r() < INC.jumpstart.perRace / 22 * mult.crashes) penalise(car, 5, { inc: 'jumpstart', text: 'jump start' }, log);
+    /* Mechanical: worse with low reliability, a worn power unit and a fragile engine era. */
+    var relF = Math.max(0.2, (1 - (car.car.reliability || 85) / 100) / 0.15) * (1 + (car.car.wear || 0) / 100) * fm;
+    var mech = function (id) { return INC[id].perRace / REF_CAR_LAPS * relF; };
+    var mroll = r(), macc = 0, mpick = null, mlist = ['pu', 'gearbox', 'hydraulics', 'energy', 'fuel', 'electrical', 'brakes', 'suspension', 'fire', 'overheat', 'power', 'shift', 'braketemp', 'floor'];
+    for (var j = 0; j < mlist.length && !mpick; j++) { if (mlist[j] === 'energy' && R.noHybrid) continue; macc += mech(mlist[j]); if (mroll < macc) mpick = mlist[j]; }
+    if (mpick && car.limp && ['overheat', 'power', 'shift', 'braketemp', 'floor'].indexOf(mpick) >= 0) mpick = null;
+    if (mpick === 'pu') { retire(car, 'Power unit failure', log, s, 'pu'); if (r() < 0.25) flagUp(ctx, 'vsc'); if (r() < 0.15) { s.slippery = 3; log.push({ kind: 'incident', inc: 'oil', text: 'Oil on the track: it’s slippery for a few laps' }); } return null; }
+    if (['gearbox', 'hydraulics', 'energy', 'fuel'].indexOf(mpick) >= 0) { retire(car, { gearbox: 'Gearbox failure', hydraulics: 'Hydraulics failure', energy: 'Energy store failure', fuel: 'Fuel pressure' }[mpick], log, s, mpick); if (r() < 0.2) flagUp(ctx, 'vsc'); return null; }
+    if (mpick === 'electrical') { if (r() < 0.35) { log.push({ kind: 'damage', inc: 'electrical', ids: [car.id], text: code + ' stops with an electrical shutdown, power-cycles the car and gets going again, 25s lost' }); return add + 25; } retire(car, 'Electrical shutdown', log, s, 'electrical'); if (r() < 0.4) flagUp(ctx, 'vsc'); return null; }
+    if (mpick === 'brakes' || mpick === 'suspension') { var wall = r() < (mpick === 'brakes' ? 0.5 : 0.4); retire(car, (mpick === 'brakes' ? 'Brake failure' : 'Suspension failure') + (wall ? ', into the barrier' : ''), log, s, mpick); if (wall) flagUp(ctx, 'sc'); return null; }
+    if (mpick === 'fire') { retire(car, 'Engine fire', log, s, 'fire'); flagUp(ctx, 'sc'); return null; }
+    if (mpick === 'overheat') { limp(car, { pace: 1.0, laps: 2 + Math.floor(r() * 3), out: 'Overheating', inc: 'overheat' }); log.push({ kind: 'damage', inc: 'overheat', ids: [car.id], text: code + ' is overheating: a water leak' }); return add + 1; }
+    if (mpick === 'power') { var pw = rr(r, 0.6, 0.9); limp(car, { pace: pw, laps: null, inc: 'power' }); log.push({ kind: 'damage', inc: 'power', ids: [car.id], text: code + (R.noHybrid ? ' has an engine misfire' : ' loses electrical power (MGU-K)') + ', ' + pw.toFixed(1) + 's a lap slower' }); return add + pw; }
+    if (mpick === 'shift') { limp(car, { pace: 0.6, laps: 5 + Math.floor(r() * 6), inc: 'shift' }); log.push({ kind: 'damage', inc: 'shift', ids: [car.id], text: code + ' has gearshift problems' }); return add + 0.6; }
+    if (mpick === 'braketemp') { limp(car, { pace: 0.35, laps: null, inc: 'braketemp' }); log.push({ kind: 'damage', inc: 'braketemp', ids: [car.id], text: code + ' is managing brake temperatures' }); return add + 0.35; }
+    if (mpick === 'floor') { limp(car, { pace: 0.5, laps: null, inc: 'floor' }); log.push({ kind: 'damage', inc: 'floor', ids: [car.id], text: code + ' has floor damage from the kerbs' }); return add + 0.5; }
+    /* Tyres. */
+    var street = (s.circuit.type || '') === 'street' ? 1.8 : 1, wearNow = car.tyre.wear || 0;
+    if (r() < INC.puncture.perRace / REF_CAR_LAPS * street * (1 + wearNow / 100) * mult.crashes * slip) { var pc = rr(r, 12, 20); needsPit(car, 0); log.push({ kind: 'damage', inc: 'puncture', ids: [car.id], text: code + ' has a puncture: ' + pc.toFixed(0) + 's lost getting back to the pits' }); return add + pc; }
+    if (wearNow > 85 && r() < 0.012 * (wearNow - 85) / 15 * mult.crashes) {
+      if (r() < 0.35) { retire(car, 'Tyre failure, into the barrier', log, s, 'blowout'); flagUp(ctx, 'sc'); return null; }
+      needsPit(car, 0); log.push({ kind: 'damage', inc: 'blowout', ids: [car.id], text: code + '’s worn tyre fails: limping back to the pits' }); return add + 25;
+    }
+    /* Debris picked up. */
+    if (r() < INC.bag.perRace / REF_CAR_LAPS * om && !car.limp) { var bl = 3 + Math.floor(r() * 4); limp(car, { pace: 0.4, laps: bl, out: r() < 0.15 ? 'Overheating (debris in the radiator)' : null, inc: 'bag' }); log.push({ kind: 'damage', inc: 'bag', ids: [car.id], text: code + ' has debris caught in a brake duct' }); return add + 0.4; }
+    return add;
+  }
+  /* Race-wide events on a lap. */
+  function trackIncidents(s, R, r, track, log, ctx) {
+    var om = (R.incidents || { outside: 1 }).outside, per = function (id) { return INC[id].perRace / REF_LAPS * om; };
+    if (s.sc.type) return;
+    if (r() < (s.circuit.scChance || 0.004) * om) { flagUp(ctx, r() < 0.6 ? 'vsc' : 'sc'); log.push({ kind: 'incident', inc: 'debris', text: 'Debris on the track' }); }
+    if (r() < per('animal')) { flagUp(ctx, 'vsc'); log.push({ kind: 'incident', inc: 'animal', text: ANIMALS[Math.floor(r() * ANIMALS.length)] + ' on the track' }); }
+    if (r() < per('invasion')) { flagUp(ctx, 'sc'); log.push({ kind: 'incident', inc: 'invasion', text: 'A spectator gets onto the track' }); }
+    if (r() < per('drain')) { flagUp(ctx, 'red'); log.push({ kind: 'incident', inc: 'drain', text: 'A loose drain cover: red flag while it’s fixed' }); }
+    if (R.weatherEvents !== false && track === 0 && s.lap < s.laps - 3 && r() < per('cloudburst')) {
+      var n = 3 + Math.floor(r() * 6); for (var i = s.lap; i < Math.min(s.laps, s.lap + n); i++) s.track[i] = 2;
+      for (var d = s.lap + n; d < Math.min(s.laps, s.lap + n + 2); d++) if (s.track[d] === 0) s.track[d] = 1;
+      log.push({ kind: 'weather', inc: 'cloudburst', text: 'A sudden cloudburst: heavy rain for the next few laps' });
+    }
+    if (r() < per('storm')) { log.push({ kind: 'incident', inc: 'storm', text: 'Lightning in the area' }); if (s.lap >= s.laps * 0.75) ctx.endRace = true; else flagUp(ctx, 'red'); }
+  }
+  /* First lap and restarts: a tangle, or (rarely) a pile-up. */
+  function startIncidents(s, R, r, track, field, log, ctx, restart) {
+    var cm = (R.incidents || { crashes: 1 }).crashes * (1 + track) * (restart ? 0.4 : 1), n = field.length;
+    var big = r() < INC.pileup.perStart * cm, tangle = !big && r() < INC.tangle.perStart * cm;
+    if ((!big && !tangle) || n < 4) return;
+    var m = big ? 5 + Math.floor(r() * 4) : 2 + Math.floor(r() * 4); m = Math.min(m, n - 1);
+    var at = 1 + Math.floor(r() * Math.max(1, n - m)), who = field.slice(at, at + m), out = 0;
+    log.push({ kind: 'incident', inc: big ? 'pileup' : 'tangle', ids: who.map(function (c) { return c.id; }), text: (big ? 'Multi-car pile-up' : ['Two', 'Three', 'Four', 'Five'][m - 2] + '-car tangle') + (restart ? ' at the restart' : ' at the first corner') + ': ' + who.map(function (c) { return c.driver.code; }).join(', ') });
+    who.forEach(function (c) {
+      var x = r();
+      if (x < (big ? 0.55 : 0.35)) { retire(c, big ? 'Pile-up' : 'First-lap collision', log, s, big ? 'pileup' : 'tangle'); out++; }
+      else if (x < 0.7) { limp(c, { pace: 1.4, laps: null, fix: true, inc: 'wing' }); needsPit(c, 9); c.cum += rr(r, 3, 8); log.push({ kind: 'damage', inc: 'wing', ids: [c.id], text: c.driver.code + ' has front wing damage and pits for a new nose' }); }
+      else if (x < 0.85) { needsPit(c, 0); c.cum += rr(r, 10, 18); log.push({ kind: 'damage', inc: 'puncture', ids: [c.id], text: c.driver.code + ' has a puncture from the contact' }); }
+      else { c.cum += rr(r, 4, 12); }
+    });
+    if (big || out >= 2) flagUp(ctx, big || r() < 0.35 ? 'red' : 'sc'); else flagUp(ctx, out ? 'sc' : 'vsc');
+  }
+  /* Two cars touch while racing: the follower (attacker) is usually to blame. */
+  function contactIncident(car, ahead, s, R, r, log, ctx) {
+    var x = r(), a = car.driver.code, b = ahead.driver.code;
+    if (x < 0.45) { car.cum += rr(r, 1, 3); ahead.cum += rr(r, 1, 3); log.push({ kind: 'incident', inc: 'contact', ids: [car.id, ahead.id], text: a + ' and ' + b + ' touch, both lose time' }); if (r() < 0.3) penalise(car, 5, { inc: 'contact', text: 'causing a collision' }, log); return; }
+    if (x < 0.65) { needsPit(ahead, 0); ahead.cum += rr(r, 12, 18); log.push({ kind: 'incident', inc: 'contact', ids: [car.id, ahead.id], text: a + ' hits ' + b + ', who gets a puncture' }); if (r() < 0.5) penalise(car, r() < 0.5 ? 5 : 10, { inc: 'contact', text: 'causing a collision' }, log); return; }
+    if (x < 0.8) { limp(car, { pace: 1.4, laps: null, fix: true, inc: 'wing' }); needsPit(car, 9); log.push({ kind: 'incident', inc: 'contact', ids: [car.id, ahead.id], text: a + ' runs into the back of ' + b + ' and breaks the front wing' }); if (r() < 0.4) penalise(car, 5, { inc: 'contact', text: 'causing a collision' }, log); return; }
+    if (x < 0.95) { var victim = r() < 0.5 ? ahead : car, other = victim === car ? ahead : car; retire(victim, 'Collision with ' + other.driver.code, log, s, 'contact'); log.push({ kind: 'incident', inc: 'contact', ids: [car.id, ahead.id], text: a + ' and ' + b + ' collide; ' + victim.driver.code + ' is out' }); flagUp(ctx, r() < 0.6 ? 'sc' : 'vsc'); if (car.status === 'running') penalise(car, 10, { inc: 'contact', text: 'causing a collision' }, log); return; }
+    retire(car, 'Collision with ' + b, log, s, 'contact'); retire(ahead, 'Collision with ' + a, log, s, 'contact');
+    log.push({ kind: 'incident', inc: 'contact', ids: [car.id, ahead.id], text: a + ' and ' + b + ' collide: both are out' }); flagUp(ctx, 'sc');
+  }
+
+  function retire(car, why, log, s, inc) {
+    if (car.status !== 'running') return;
+    car.status = 'dnf'; car.dnf = why; car.retiredLap = s.lap; car.limp = null;
     car.stints[car.stints.length - 1].to = s.lap;
-    log.push({ kind: 'dnf', ids: [car.id], text: car.driver.code + ' out: ' + why });
+    log.push({ kind: 'dnf', inc: inc || null, ids: [car.id], text: car.driver.code + ' out: ' + why });
   }
 
   function runTo(state, lap, callsByLap) {
@@ -562,7 +754,7 @@
   }
 
   var api = { momentOdds: momentOdds, COMPOUNDS: COMPOUNDS, MODES: MODES, TRACK: TRACK, DEFAULTS: DEFAULTS, rng: rng, carScore: carScore, tyreLife: tyreLife, composure: composure,
-              weatherPlan: weatherPlan, qualify: qualify, createRace: createRace, stepLap: stepLap, runTo: runTo, classify: classify };
+              weatherPlan: weatherPlan, INCIDENTS: INCIDENTS, qualify: qualify, createRace: createRace, stepLap: stepLap, runTo: runTo, classify: classify };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.RaceEngine = api;
 })(typeof window !== 'undefined' ? window : this);
 
@@ -1252,10 +1444,14 @@ function f1Weather(w, track) {
 /* The circuit and rules for this weekend, with Race Control's chances for safety cars and failures. */
 function f1RaceSetup(w, track) {
   const st = raceSettings(w), circuit = FormulaRacingAdapter.toCircuit(track);
-  circuit.scChance = circuit.scChance * st.scRate; circuit.sprintLaps = track.sprintLaps;
+  circuit.sprintLaps = track.sprintLaps;
   const rules = Object.assign({}, F1_RULES, seriesRules(seriesDoc(wSeries(w))), { crashRate: RaceEngine.DEFAULTS.crashRate * st.scRate, failureRate: RaceEngine.DEFAULTS.failureRate * st.failRate });
   /* The season's engine era: lap times, power, battery and boost, fuel, tyres and reliability. */
-  return engineRaceSetup(w, circuit, rules);
+  const out = engineRaceSetup(w, circuit, rules);
+  /* Race incidents: Race Control's settings scale each family; the engine era makes failures likelier or rarer. */
+  out.rules.incidents = { crashes: rateNum(st.scRate), failures: rateNum(st.failRate) * engineFormula(wSeries(w), wSeason(w)).fail, outside: rateNum(st.extRate) };
+  out.rules.weatherEvents = w.weatherMode !== 'dry';
+  return out;
 }
 function f1NextTrack() {
   const done = new Set(F1.weekends().filter(w => w.status === 'finished' && w.session === 'gp').map(w => w.trackId));
@@ -1316,7 +1512,7 @@ ACTIONS['f1-open'] = () => {
   const seed = Math.max(1, parseInt(f.seed, 10) || (1 + Math.floor(Math.random() * 999999)));
   run(async () => {
     await Data.put('f1_weekends', id, { seriesId: curSeriesId(), seasonId: curSeasonId(), trackId: track.id, round: track.round, session, seed, weatherMode: f.weatherMode || 'track', status: 'practice', createdAt: nowIso(),
-      settings: { lock: f.lock !== false, scRate: Number(f.scRate) || 1, failRate: Number(f.failRate) || 1, rainPct: f.rainPct || 'track', practice: f.practice || 'full' } });
+      settings: { lock: f.lock !== false, scRate: rateNum(f.scRate), failRate: rateNum(f.failRate), extRate: rateNum(f.extRate), rainPct: f.rainPct || 'track', practice: f.practice || 'full' } });
     await f1LockProjects();
     await Data.audit('f1.weekend-open', `${track.name}${session === 'sprint' ? ' sprint' : ''} opened`);
     S.ui.form.f1w = null; S.ui.f1view = null;
@@ -1378,7 +1574,7 @@ async function f1Advance(laps) {
     const out = RaceEngine.stepLap(st, i === 0 ? engineCalls : []);
     if (i === 0 && notes.length) { notes.forEach(n => { n.lap = out.state.lap; }); out.state.events = out.state.events.slice(0, out.state.events.length - out.log.length).concat(notes, out.log); }
     st = out.state; log = log.concat(out.log); lastLog = out.log;
-    if (stopSc && i < laps - 1 && out.log.some(l => (l.kind === 'sc' || l.kind === 'vsc') && /deployed/.test(l.text))) break;
+    if (stopSc && i < laps - 1 && out.log.some(l => l.kind === 'red' || ((l.kind === 'sc' || l.kind === 'vsc') && /deployed/.test(l.text)))) break;
   }
   const doc = Object.assign(clone(S.store.f1_weekends[w.id]), { status: st.finished ? 'finished' : 'running', state: st, live: !!S.f1live && !st.finished });
   /* Moments: record how the settled ones went, drop any that were missed, and look for new ones (one lap at a time only). */
@@ -1513,7 +1709,7 @@ function f1PitWallHtml(w) {
 function f1OpenFormHtml() {
   const tracks = F1.tracks(); if (!tracks.length) return '';
   if (seasonClosed()) return `<section class="card"><h2>Between seasons</h2><p>${esc(curSeason().name)} is catalogued. Start the next season on the Seasons page to open weekends again.</p><button class="btn primary" data-act="nav" data-route="seasons">Seasons</button></section>`;
-  const f = S.ui.form.f1w = S.ui.form.f1w || { trackId: (f1NextTrack() || {}).id, session: 'gp', weatherMode: 'track', seed: '', rainPct: 'track', scRate: '1', failRate: '1', lock: true, practice: 'full' };
+  const f = S.ui.form.f1w = S.ui.form.f1w || { trackId: (f1NextTrack() || {}).id, session: 'gp', weatherMode: 'track', seed: '', rainPct: 'track', scRate: '1', failRate: '1', extRate: '1', lock: true, practice: 'full' };
   const t = F1.track(f.trackId) || tracks[0];
   return `<section class="card"><h2>Open the next weekend</h2>
     <div class="metrics" style="align-items:end">
@@ -2010,7 +2206,7 @@ async function liveTick() {
   if (!log) { liveStop('The race is paused: the lap couldn’t be saved.'); return; }
   const now = F1.live();
   if (!now || !now.state || now.state.finished) { S.f1live = null; render(); return; }
-  if (S.ui.form.f1stopSc !== false && log.some(l => (l.kind === 'sc' || l.kind === 'vsc') && /deployed/.test(l.text))) { liveStop('Safety car. The race is paused so the teams can make their calls.'); return; }
+  if (S.ui.form.f1stopSc !== false && log.some(l => l.kind === 'red' || ((l.kind === 'sc' || l.kind === 'vsc') && /deployed/.test(l.text)))) { liveStop(log.some(l => l.kind === 'red') ? 'Red flag. The race is stopped: everyone gets fresh tyres and repairs, and it restarts behind the safety car when Race Control carries on.' : 'Safety car. The race is paused so the teams can make their calls.'); return; }
   S.f1live = setTimeout(liveTick, Number(S.ui.form.f1speed || 2000));
 }
 ACTIONS['f1-moments'] = (d, el) => { S.ui.form.f1moments = !!el.checked; };
@@ -2025,6 +2221,8 @@ function lvFeedHtml(w) {
   const shown = log.slice(0, upto).reverse();
   return shown.length ? `<ul class="f1-feed">${shown.map(l => `<li class="${esc(l.kind)}"><span class="l">Q</span><span class="t">${esc(l.text)}</span></li>`).join('')}</ul>` : '<p class="muted">No news from qualifying yet.</p>';
 }
+/* What's wrong with a car that's still running. */
+function lvLimpText(c) { const l = c.limp || {}; return { wing: 'Front wing damage: pitting for a new nose', power: 'Down on power', shift: 'Gearshift problems', braketemp: 'Managing brake temperatures', floor: 'Floor damage', overheat: 'Overheating', bag: 'Debris in a brake duct' }[l.inc] || 'A problem with the car'; }
 function lvDriverBtn(w, c) {
   const e = f1Ent(w, c.id), mine = S.charId && e.charId === S.charId;
   return `<button class="drv-btn" data-act="f1-pick" data-id="${esc(c.id)}" aria-pressed="${S.ui.f1pick === c.id}"><span class="f1-bar" style="background:${esc(f1Colour(e.teamId))}"></span><b>${esc(c.id)}</b><span class="full">${esc(e.name)}</span></button>${e.charId ? ' <span class="tag player">Player</span>' : ''}${mine ? ' <span class="tag you">You</span>' : ''}`;
@@ -2039,7 +2237,7 @@ function lvTowerHtml(w) {
     if (c.status !== 'running') return `<tr class="${cls}"><td>–</td><td>${lvDriverBtn(w, c)}</td><td colspan="5" class="muted">Out on lap ${c.retiredLap}: ${esc(c.dnf)}</td></tr>`;
     const gap = c.cum - lead.cum, down = Math.floor(gap / avg), moved = c.grid - (i + 1);
     const lapCls = fast && fast.id === c.id && c.lastLap === fast.time ? 'fl' : c.lastLap && c.lastLap === c.bestLap ? 'pb' : '';
-    return `<tr class="${cls}"><td><b>${i + 1}</b>${moved ? ` <span class="${moved > 0 ? 'f1-up' : 'f1-down'}">${moved > 0 ? '▲' : '▼'}${Math.abs(moved)}</span>` : ''}</td><td>${lvDriverBtn(w, c)}</td>
+    return `<tr class="${cls}"><td><b>${i + 1}</b>${moved ? ` <span class="${moved > 0 ? 'f1-up' : 'f1-down'}">${moved > 0 ? '▲' : '▼'}${Math.abs(moved)}</span>` : ''}</td><td>${lvDriverBtn(w, c)}${c.pen ? `<span class="tag pen" title="Penalty to serve">+${c.pen}s</span>` : ''}${c.limp ? `<span class="tag dmg" title="${esc(lvLimpText(c))}">${c.limp.fix ? 'Damage' : 'Problem'}</span>` : ''}</td>
       <td class="num">${i === 0 ? 'Leader' : down >= 1 ? `+${down} lap${down > 1 ? 's' : ''}` : '+' + gap.toFixed(1)}</td><td class="num">${i === 0 ? '' : '+' + (c.cum - order[i - 1].cum).toFixed(1)}</td>
       <td>${f1TyreChip(c.tyre.compound, c.tyre.age)}</td><td class="num ${lapCls}">${f1Fmt(c.lastLap)}</td><td class="num">${c.stops}</td></tr>`; }).join('')}</tbody></table>
     <p class="legend-line muted small"><span class="fl">Purple</span>: fastest lap of the race. <span class="pb">Green</span>: a driver’s personal best. Click a driver for their race.</p>`;
@@ -3179,7 +3377,8 @@ function defaultPlanDoc(w, ent) { const pr = presetFor('team', w, ent); return {
 const teamHasPlayers = teamId => F1.seats(teamId).some(s => s.holderCharId);
 
 /* ---------------------------------------------------------------- official races */
-const raceSettings = w => Object.assign({ lock: true, scRate: 1, failRate: 1, rainPct: 'track' }, (w && w.settings) || {});
+const raceSettings = w => Object.assign({ lock: true, scRate: 1, failRate: 1, extRate: 1, rainPct: 'track' }, (w && w.settings) || {});
+const rateNum = v => v == null || v === '' || isNaN(Number(v)) ? 1 : Number(v);
 const raceLocked = w => !!(w && w.state && w.state.lap > 0 && !w.state.finished && !w.test && raceSettings(w).lock !== false);
 const RACE_CALLS = ['box', 'mode', 'order', 'refuseOrder', 'strategy', 'moment'];
 
@@ -3225,13 +3424,15 @@ function lockedStatusHtml(w, ent, car) {
 }
 
 /* ---------------------------------------------------------------- randomness (Race Control, and the Test Track) */
-const RATES = [['0.5', 'Fewer than usual'], ['1', 'As usual'], ['2', 'More than usual'], ['3', 'Chaos']];
+const RATES = [['0', 'None'], ['0.5', 'Fewer than usual'], ['1', 'As usual'], ['2', 'More than usual'], ['3', 'Chaos']];
 const RAIN_PCTS = [['track', 'The circuit’s usual'], ['0', 'No chance'], ['20', '20%'], ['40', '40%'], ['60', '60%'], ['90', '90%']];
 function randomnessHtml(prefix, f, t) {
   return `<div class="metrics" style="align-items:end">
     <label class="field">Chance of rain (changeable weather)${sel(prefix + '-rain', `ui/form/${prefix}/rainPct`, f.rainPct || 'track', RAIN_PCTS.map(([k, l]) => [k, k === 'track' ? `${l} (${Math.round((t.wr || 0) * 0.6)}%)` : l]))}</label>
-    <label class="field">Safety cars and crashes${sel(prefix + '-sc', `ui/form/${prefix}/scRate`, String(f.scRate || '1'), RATES)}</label>
-    <label class="field">Mechanical failures${sel(prefix + '-fail', `ui/form/${prefix}/failRate`, String(f.failRate || '1'), RATES)}</label></div>`;
+    <label class="field">Crashes, contact and driver errors${sel(prefix + '-sc', `ui/form/${prefix}/scRate`, String(f.scRate == null ? '1' : f.scRate), RATES)}</label>
+    <label class="field">Mechanical failures and pit problems${sel(prefix + '-fail', `ui/form/${prefix}/failRate`, String(f.failRate == null ? '1' : f.failRate), RATES)}</label>
+    <label class="field">Outside events (debris, animals, storms)${sel(prefix + '-ext', `ui/form/${prefix}/extRate`, String(f.extRate == null ? '1' : f.extRate), RATES)}</label>
+    <button class="btn small ghost" data-act="inc-open">What can happen?</button></div>`;
 }
 
 /* =====================================================================
@@ -3250,7 +3451,7 @@ function ttCfg() {
   if (!S.tt.cfg) {
     const mine = S.charId ? F1.seats().find(s => s.holderCharId === S.charId && s.role !== 'engineer') : null;
     const ents = F1.teams().length ? f1Entrants() : [], myCar = mine ? (ents.find(e => e.teamId === mine.teamId && (mine.car ? e.car === mine.car : true)) || {}).id : null;
-    S.tt.cfg = { trackId: (f1NextTrack() || {}).id, session: 'gp', weatherMode: 'track', rainPct: 'track', scRate: '1', failRate: '1', seed: '', car: myCar || (ents[0] || {}).id, setup: 75, speed: '1000' };
+    S.tt.cfg = { trackId: (f1NextTrack() || {}).id, session: 'gp', weatherMode: 'track', rainPct: 'track', scRate: '1', failRate: '1', extRate: '1', seed: '', car: myCar || (ents[0] || {}).id, setup: 75, speed: '1000' };
   }
   return S.ui.form.tt = S.tt.cfg;
 }
@@ -3258,7 +3459,7 @@ function ttCfg() {
 function ttW() {
   const f = ttCfg(), w = S.tt.w;
   return w || { id: 'test-' + f.trackId + '-' + f.session, test: true, trackId: f.trackId, session: f.session, seed: Number(f.seed) || 1, weatherMode: f.weatherMode,
-    seriesId: curSeriesId(), seasonId: curSeasonId(), settings: { lock: false, scRate: Number(f.scRate), failRate: Number(f.failRate), rainPct: f.rainPct }, status: 'practice', entrants: null, state: null };
+    seriesId: curSeriesId(), seasonId: curSeasonId(), settings: { lock: false, scRate: rateNum(f.scRate), failRate: rateNum(f.failRate), extRate: rateNum(f.extRate), rainPct: f.rainPct }, status: 'practice', entrants: null, state: null };
 }
 function ttStop() { clearTimeout(S.tt.timer); S.tt.timer = null; }
 ACTIONS['tt-reset'] = () => { ttStop(); S.tt.w = null; S.tt.calls = []; S.tt.choice = {}; render(); };
@@ -5219,6 +5420,35 @@ ACTIONS['sh-discord'] = () => {
   const text = x.kind === 'calendar' ? `**${s.name}: the ${sea.name} calendar**` : `**${s.name} ${sea.name}: ${x.kind === 'teams' ? 'constructors’' : x.kind === 'drivers' ? 'drivers’' : 'the'} championship${done ? ` after round ${done}` : ''}**`;
   run(async () => { const ch = await discordSend(sharePurpose(x.kind), { content: text }, { blob: x.blob, name: `${s.id}-${sea.name}-${x.kind}.png` }, x.channel); x.posted = ch;
     await Data.audit('discord.share', `${text.replace(/\*/g, '')} posted to Discord #${ch}`); }, 'Posted to Discord.');
+};
+
+/* =====================================================================
+   F1 SIM — race incidents: the reference list.
+   Everything that can happen in a race, by family, with how often on the
+   usual settings, and how Race Control's three settings scale them.
+   ===================================================================== */
+'use strict';
+
+const INC_FAMILIES = [
+  ['driver', 'Driver errors and crashes', 'Crashes, contact and driver errors', 'More in the rain, on lap 1 and at restarts, in push mode, and for aggressive or rattled drivers.'],
+  ['contact', 'Contact between cars', 'Crashes, contact and driver errors', 'Happens when one car attacks another; more in the rain and on lap 1.'],
+  ['pileup', 'Pile-ups', 'Crashes, contact and driver errors', 'At the start, and less often at restarts after a safety car; more in the rain.'],
+  ['tyre', 'Tyres', 'Crashes, contact and driver errors', 'More at street circuits and on worn tyres.'],
+  ['stewards', 'Stewards', 'Crashes, contact and driver errors', 'Penalties are served at the next stop, or added to the race time at the finish.'],
+  ['mechanical', 'Mechanical', 'Mechanical failures and pit problems', 'More for less reliable cars and worn power units, and in the V10 and V12 eras; fewer with V8s.'],
+  ['pit', 'Pit lane', 'Mechanical failures and pit problems', 'At each pit stop.'],
+  ['external', 'Outside events', 'Outside events', 'Race-wide. Cloudbursts only when the weekend’s weather isn’t set to dry.']
+];
+const incRate = x => x.perRace != null ? (x.perRace >= 1 ? `About ${x.perRace.toFixed(1).replace('.0', '')} a race` : `1 race in ${Math.max(1, Math.round(1 / x.perRace))}`)
+  : x.perStop != null ? `${(x.perStop * 100).toFixed(1).replace('.0', '')}% of stops` : `${Math.round(x.perStart * 100)}% of starts`;
+ACTIONS['inc-open'] = () => openDrawer('incidents');
+DRAWERS.incidents = function () {
+  const list = RaceEngine.INCIDENTS || [];
+  return `<header><div><h2>What can happen in a race</h2><p>How often each incident happens on the usual settings, in a dry race of about 55 laps with 22 cars. Race Control’s settings scale each group: none, fewer, as usual, more, or chaos.</p></div><button class="btn ghost" data-act="close-drawer">Close</button></header>
+    <div class="body">${INC_FAMILIES.map(([fam, title, setting, note]) => { const xs = list.filter(x => x.family === fam); if (!xs.length) return '';
+      return `<section class="inc-family"><h3>${esc(title)}</h3><p class="muted small">${esc(note)} Setting: <b>${esc(setting)}</b>.</p>
+        <div class="scroll-x"><table class="data compact"><thead><tr><th>Incident</th><th>How often</th><th>What it does</th></tr></thead><tbody>${xs.map(x => `<tr><td><b>${esc(x.label)}</b></td><td class="nowrap">${esc(incRate(x))}</td><td class="small">${esc(x.effect)}</td></tr>`).join('')}</tbody></table></div></section>`; }).join('')}
+      <section class="inc-family"><h3>Red flags</h3><p class="small">The race stops. The gaps close up, every car gets fresh tyres and repairs, and the race restarts behind the safety car. A storm in the last quarter ends the race there, and the results stand.</p></section></div>`;
 };
 
 /* =====================================================================
