@@ -25,6 +25,33 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v0.12.0: pit-wall Race Weekend layout, team branding
+
+11 November 2026. Build `f1sim-0.12.0`. **Database update:** `20261111000007_branding.sql`.
+
+| Area | What it does |
+| --- | --- |
+| Race Weekend layout | For players, the page is now three columns with nothing hidden behind tabs, in the site's own colours and type. Left: the car (with its team logo), the weekend's sessions and how each went, what to work on, and what the car will use if you do nothing. Middle: the work. Right: the latest debrief and a short timesheet; after qualifying, the qualifying debrief and the grid; in the race, your car and the race log. |
+| Big numbers | Along the top, changing with the stage: in practice the next session, chance of rain, runs to plan and confidence; before the race the stage, grid slot, confidence and laps; in the race the lap, position, tyre and plan. |
+| Work on | Practice: set-up, race plan, full timing, entry list. Qualifying: qualifying, race plan, entry list. Race: timing (the tower, then the driver, lap chart or tyre strategy beneath it), race plan, entry list. |
+| Two cars | A team principal picks the car at the top of the left column. |
+| Without a seat | People without a seat this weekend keep the simpler tabbed page. |
+| Team branding | Each team can have a logo, a banner photo and a car photo. The team principal uploads them in Team HQ (they count while they hold the seat), or Race Control does for any team. Team HQ shows them in a banner across the top; The Grid shows the logo and car photo; the Race Weekend page and drivers' profiles show the logo. |
+| Database | Team principals' uploaded pictures belong to the account that uploaded them. |
+
+---
+
+## v0.11.1: drivers can follow practice
+
+11 November 2026. Build `f1sim-0.11.1`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Drivers in practice | A driver whose car has a player race engineer used to see "nothing to do" in practice. They now see who runs their car's practice, the set-up guide, the planned runs, the results and the debriefs, without the controls. |
+| Fix: race log | Driver-moment lines in the race log had a red box around them, borrowed from the driver-moment card. |
+
+---
+
 ## v0.11.0: a streamlined Race Weekend, and nothing to lock in
 
 11 November 2026. Build `f1sim-0.11.0`. **No database update.**

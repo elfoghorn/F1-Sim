@@ -283,8 +283,8 @@ table.stops { max-width: 520px; } table.stops select { width: auto; min-height: 
 .strategy .f1-car .tabs { margin-top: 8px; }
 
 /* ---------- moments, notifications, profiles, awards, team depth ---------- */
-.moment { border: 2px solid var(--f1-soft); box-shadow: 0 0 0 4px color-mix(in srgb, var(--f1-soft) 18%, transparent); }
-.moment h2 { font-size: 28px; }
+.card.moment { border: 2px solid var(--f1-soft); box-shadow: 0 0 0 4px color-mix(in srgb, var(--f1-soft) 18%, transparent); }
+.card.moment h2 { font-size: 28px; }
 .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 10px; }
 .choice { display: flex; flex-direction: column; gap: 4px; text-align: left; background: var(--panel-2); border: 2px solid var(--line); border-radius: 8px; padding: 12px; cursor: pointer; color: var(--ink); font: inherit; }
 .choice b { font: 700 20px var(--cond); } .choice span { font-size: 13.5px; color: var(--muted); } .choice .odds { color: var(--ink); font-weight: 600; margin-top: auto; }
@@ -348,15 +348,55 @@ table.stops { max-width: 520px; } table.stops select { width: auto; min-height: 
 .trig-box { margin-top: 10px; } .trig-box summary { cursor: pointer; margin-bottom: 6px; }
 
 .guide { margin-bottom: 6px; } .guide-use { margin: 0 0 12px; }
+
+/* ---------- race weekend: pit-wall layout ---------- */
+.wk-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 18px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.wk-title h1 { margin: 2px 0 0; } .wk-title p { margin: 0; }
+.stat-strip { display: flex; flex-wrap: wrap; gap: 28px; }
+.stat-strip > div { display: flex; flex-direction: column; }
+.stat-strip span { font-size: 13.5px; color: var(--muted); }
+.stat-strip b { font: 700 34px/1.05 var(--cond); }
+.stat-strip b.hi { color: var(--ink); box-shadow: inset 0 -5px 0 var(--team, var(--line)); }
+.wk-cols { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+.wk-rail { flex: 1 1 220px; max-width: 300px; display: flex; flex-direction: column; gap: 6px; }
+.wk-main { flex: 999 1 520px; min-width: 0; }
+.wk-side { flex: 1 1 300px; max-width: 420px; min-width: 0; }
+.wk-side .card, .wk-main .card { margin-bottom: 16px; }
+@media (max-width: 1100px) { .wk-rail, .wk-side { max-width: none; } }
+.wk-rail h2 { font: 700 18px var(--cond); margin: 14px 0 4px; }
+.rail-car { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: inset 0 3px 0 var(--team); }
+.rail-car b { display: block; font: 700 19px var(--cond); }
+.rail-sessions { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.rail-sessions li { display: flex; justify-content: space-between; gap: 8px; padding: 8px 10px; border-radius: 6px; font-size: 14.5px; color: var(--muted); }
+.rail-sessions li.now { background: var(--panel); color: var(--ink); font-weight: 600; box-shadow: inset 3px 0 0 var(--team); }
+.rail-views { display: flex; flex-direction: column; gap: 2px; }
+.rail-views button { text-align: left; min-height: 40px; padding: 6px 10px; border: 0; border-radius: 6px; background: none; color: var(--ink); font: 500 15px var(--sans); cursor: pointer; }
+.rail-views button.on { background: var(--ink); color: var(--panel); font-weight: 600; }
+.rail-views button:hover:not(.on) { background: var(--panel); }
+.rail-defaults { margin: 0; display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
+.rail-defaults dt { color: var(--muted); font-size: 13px; } .rail-defaults dd { margin: 0; }
+.short-times td:first-child { width: 28px; color: var(--muted); }
+.rail-feed { max-height: 520px; overflow-y: auto; }
+/* ---------- team branding ---------- */
+.team-logo { width: 28px; height: 28px; object-fit: contain; vertical-align: middle; margin-right: 8px; border-radius: 4px; background: var(--panel); }
+.team-logo.big { width: 64px; height: 64px; margin: 0; } .team-logo.tiny { width: 18px; height: 18px; margin-right: 6px; }
+.team-banner { position: relative; border-radius: 12px; overflow: hidden; background: var(--team); min-height: 120px; margin-bottom: 18px; display: flex; align-items: flex-end; }
+.team-banner .banner-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.team-banner-id { position: relative; display: flex; align-items: center; gap: 12px; margin: 16px; padding: 8px 14px; background: var(--panel); border-radius: 10px; font: 700 26px var(--cond); }
+.team-banner .car-img { position: relative; margin: 0 16px 0 auto; max-height: 120px; max-width: 40%; object-fit: contain; align-self: center; }
+.brand-slots { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+.brand-preview { height: 130px; border: 1px dashed var(--line); border-radius: 8px; display: grid; place-items: center; overflow: hidden; background: var(--panel-2); }
+.brand-preview img { width: 100%; height: 100%; object-fit: cover; } .brand-slot.logo .brand-preview img { object-fit: contain; padding: 10px; }
+.grid-car { display: block; width: 100%; max-height: 120px; object-fit: cover; border-radius: 8px; margin-bottom: 10px; }
 </style>
 </head>
 <body>
 <div id="auth-root"><div class="boot"><div class="boot-card"><span class="brand-mark big" aria-hidden="true"></span><h1>F1 SIM</h1><p>Loading…</p></div></div></div>
 <div id="app"></div>
-<script>window.F1SIM_BUILD = 'f1sim-0.11.0'; window.F1SIM_VERSION = '0.11.0';</script>
+<script>window.F1SIM_BUILD = 'f1sim-0.12.0'; window.F1SIM_VERSION = '0.12.0';</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
-<script src="config.js?v=f1sim-0.11.0"></script>
-<script src="bridge.js?v=f1sim-0.11.0"></script>
+<script src="config.js?v=f1sim-0.12.0"></script>
+<script src="bridge.js?v=f1sim-0.12.0"></script>
 <noscript>F1 SIM needs JavaScript switched on.</noscript>
 </body>
 </html>

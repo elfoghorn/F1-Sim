@@ -1,4 +1,4 @@
-/* F1 SIM v0.11.0 (build f1sim-0.11.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v0.12.0 (build f1sim-0.12.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -694,7 +694,7 @@
 
 const COLLECTIONS = ['characters', 'f1_teams', 'f1_people', 'f1_seats', 'f1_tracks', 'f1_weekends', 'f1_calls',
   'f1_applications', 'f1_posts', 'f1_settings', 'f1_runs', 'f1_projects', 'f1_dev', 'f1_plans',
-  'f1_notices', 'f1_diary', 'f1_relations', 'f1_votes', 'f1_parts', 'f1_contracts', 'f1_series', 'f1_seasons', 'audit'];
+  'f1_notices', 'f1_diary', 'f1_relations', 'f1_votes', 'f1_parts', 'f1_contracts', 'f1_series', 'f1_seasons', 'f1_branding', 'audit'];
 
 const S = {
   phase: 'boot', store: {}, delivered: new Set(), db: null, uid: null, isGm: false, isOwner: false,
@@ -1189,7 +1189,8 @@ function f1SeatControls(seat) {
 function f1TeamCard(t) {
   const arch = FormulaRacingAdapter.ARCHETYPES[t.strategy] || FormulaRacingAdapter.ARCHETYPES.reactive;
   return `<section class="card f1-team" style="--team:${esc(t.color)}" aria-label="${esc(t.name)}">
-    <header><h2>${esc(t.name)}</h2><span class="meta">${esc(t.powerUnit || '')} power unit. AI strategist: ${esc(arch.label.toLowerCase())}.</span>
+    ${(b => b.car ? `<img class="grid-car" src="${esc(b.car)}" alt="${esc(t.name)} car">` : '')(teamBrand(t.id))}
+    <header><h2>${(b => b.logo ? `<img class="team-logo" src="${esc(b.logo)}" alt="">` : '')(teamBrand(t.id))}${esc(t.name)}</h2><span class="meta">${esc(t.powerUnit || '')} power unit. AI strategist: ${esc(arch.label.toLowerCase())}.</span>
       ${S.isGm ? `<button class="btn small ghost" data-act="car-edit" data-id="${esc(t.id)}">Car</button>` : ''}</header>
     <ul class="f1-seatlist">${F1.seats(t.id).map(s => `<li><span class="role">${esc(seatTitle(s))}</span>${f1OccupantHtml(s)}${f1SeatControls(s)}</li>`).join('')}</ul>
   </section>`;
@@ -1463,8 +1464,10 @@ function f1PitWallHtml(w) {
       const can = type => f1CallAllowed({ type, carId: e.id, teamId: null, charId: S.charId }, w);
       const car = st ? st.cars.find(c => c.id === e.id) : null;
       if (w.status === 'practice') {
-        if (!can('setup')) return;
-        h += f1PracticeHtml(w, e, t, f1Calls(w)); return;
+        if (can('setup')) { h += f1PracticeHtml(w, e, t, f1Calls(w)); return; }
+        /* A driver whose car has a player engineer follows the programme without running it. */
+        if (seats.some(s => s.teamId === tid && s.role === 'driver' && s.car === e.car)) h += f1PracticeHtml(w, e, t, f1Calls(w), true);
+        return;
       }
       if (!car || w.status === 'finished' || w.status === 'quali' || !st) return;
       if (st.lap === 0 && (can('setup') || seats.some(s => s.teamId === tid))) h += `<div class="f1-car" style="--team:${esc(t.color)}"><h3>${esc(e.name)}</h3>${qualiDebriefHtml(w, Object.assign({}, e, { v3: (f1Entrants().find(x => x.id === e.id) || {}).v3 }))}</div>`;
@@ -1688,7 +1691,7 @@ ACTIONS['f1-lock'] = d => {
   f1SendCall({ type: 'setup', carId: d.car, value: dials });
 };
 const dialText = v => DIALS.map(([k, l]) => `${l.toLowerCase()} ${v[k]}`).join(', ');
-function f1PracticeHtml(w, e, t, mine) {
+function f1PracticeHtml(w, e, t, mine, ro) {
   const runs = f1Runs(w, e.id), over = endedSessions(w).length >= sessionsOf(w), n = curSession(w), left = over ? 0 : runsPerSession(w) - runsIn(w, e.id, n).length;
   const form = S.ui.form.f1d = S.ui.form.f1d || {};
   if (!form[e.id]) { const lastSetup = runs.filter(x => x.kind === 'setup').pop(); form[e.id] = Object.assign({ wing: 50, susp: 50, diff: 50 }, lastSetup ? lastSetup.dials : {}); }
@@ -1699,7 +1702,7 @@ function f1PracticeHtml(w, e, t, mine) {
   const runLine = r => { const x = f1RunResult(w, ent, r);
     const sn = `<span class="muted small">${sessionName(w, r.session || 1)}</span> `, kl = r.kind === 'setup' ? `set-up run (${esc(dialText(r.dials))})` : r.kind === 'long' ? `long run on ${esc(RaceEngine.COMPOUNDS[r.compound] ? RaceEngine.COMPOUNDS[r.compound].label.toLowerCase() : 'medium')}s` : 'qualifying simulation';
     const wt = x.cond && x.cond !== 'dry' ? ` <span class="tag">${esc(x.cond)} track</span>` : '';
-    if (x.pending) return `<li>${sn}<b>Planned:</b> ${kl}. It runs when Race Control runs ${esc(sessionName(w, r.session || 1))}. <button class="btn small ghost" data-act="run-cancel" data-id="${esc(r.id)}">Take it off the plan</button></li>`;
+    if (x.pending) return `<li>${sn}<b>Planned:</b> ${kl}. It runs when Race Control runs ${esc(sessionName(w, r.session || 1))}. ${ro ? '' : `<button class="btn small ghost" data-act="run-cancel" data-id="${esc(r.id)}">Take it off the plan</button>`}</li>`;
     if (x.lost) return `<li>${sn}<b>Lost:</b> ${kl}. ${esc(x.lost)}</li>`;
     if (x.wet) return `<li>${sn}<b>Long run</b>${wt}: too wet for slicks, so it ran on ${x.compound === 'wet' ? 'full wets' : 'intermediates'}. No dry tyre data. Average lap ${f1Fmt(x.lap)}.</li>`;
     if (r.kind === 'setup') return `<li>${sn}<b>Set-up run</b> (${esc(dialText(r.dials))})${wt}: ${f1Fmt(x.lap)}<ul>${x.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul></li>`;
@@ -1710,17 +1713,18 @@ function f1PracticeHtml(w, e, t, mine) {
   const choice = setupChoiceText(w, ent);
   return `<div class="f1-car" style="--team:${esc(t.color)}"><h3>${esc(e.name)}</h3>
     <p class="muted small"><b>${over ? 'Practice is over' : esc(sessionName(w, n))}</b>${over ? '' : `: ${left ? plural(left, 'run') + ' left' : 'all runs used; more in the next session'}`}.${fullPractice(w) && !over ? ` Planned runs play out when Race Control runs the session. ${esc(practiceForecastText(w))}` : ''}</p>
-    ${setupGuideHtml(w, ent)}
-    <div class="dials">${DIALS.map(([k, l, lo, hi]) => `<label class="field">${l} <span class="muted">(0 ${lo}, 100 ${hi})</span><input id="f1d-${esc(e.id)}-${k}" type="number" min="0" max="100" step="1" value="${esc(f[k])}" data-bind="ui/form/f1d/${esc(e.id)}/${k}" data-type="number"></label>`).join('')}</div>
+    ${ro ? `<p class="small">${esc((F1.seats(e.teamId).find(s => s.role === 'engineer' && s.car === e.car) || {}).holderName || 'Your race engineer')} runs this car’s practice. Here’s what’s planned, what you’ve told them, and the debriefs.</p>` : ''}
+    ${setupGuideHtml(w, ent, ro)}
+    ${ro ? '' : `<div class="dials">${DIALS.map(([k, l, lo, hi]) => `<label class="field">${l} <span class="muted">(0 ${lo}, 100 ${hi})</span><input id="f1d-${esc(e.id)}-${k}" type="number" min="0" max="100" step="1" value="${esc(f[k])}" data-bind="ui/form/f1d/${esc(e.id)}/${k}" data-type="number"></label>`).join('')}</div>
     <div class="btn-row"><button class="btn primary" data-act="f1-run" data-kind="setup" data-car="${esc(e.id)}" ${left ? '' : 'disabled'}>${fullPractice(w) ? 'Plan a set-up run' : 'Set-up run'}</button>
       <label class="sr-only" for="f1long-${esc(e.id)}">Tyre for the long run</label>${sel('f1long-' + e.id, 'ui/form/f1long/' + e.id, long, [['soft', 'Softs'], ['medium', 'Mediums'], ['hard', 'Hards']])}
       <button class="btn" data-act="f1-run" data-kind="long" data-car="${esc(e.id)}" ${left ? '' : 'disabled'}>${fullPractice(w) ? 'Plan a long run' : 'Long run'}</button>
-      <button class="btn" data-act="f1-run" data-kind="quali" data-car="${esc(e.id)}" ${left ? '' : 'disabled'}>${fullPractice(w) ? 'Plan a qualifying simulation' : 'Qualifying simulation'}</button></div>
+      <button class="btn" data-act="f1-run" data-kind="quali" data-car="${esc(e.id)}" ${left ? '' : 'disabled'}>${fullPractice(w) ? 'Plan a qualifying simulation' : 'Qualifying simulation'}</button></div>`}
     ${now ? `<h4>${esc(sessionName(w, focus))}</h4><ul class="runs">${now}</ul>` : ''}
-    ${practiceDebriefsHtml(w, ent)}
+    ${S.ui.wkRail ? '' : practiceDebriefsHtml(w, ent)}
     ${earlier.length ? `<details><summary>Earlier runs (${earlier.length})</summary><ul class="runs">${earlier.map(runLine).join('')}</ul></details>` : ''}
     <div class="quali-setup"><p class="small"><b>For qualifying:</b> ${esc(choice)} ${locked ? '' : '<span class="muted">Nothing needs locking in.</span>'}</p>
-      <button class="btn small" data-act="f1-lock" data-car="${esc(e.id)}">${locked ? 'Use these dials instead' : 'Use these dials for qualifying'}</button></div></div>`;
+      ${ro ? '' : `<button class="btn small" data-act="f1-lock" data-car="${esc(e.id)}">${locked ? 'Use these dials instead' : 'Use these dials for qualifying'}</button>`}</div></div>`;
 }
 
 /* ================================================================ team budget and upgrades */
@@ -2865,7 +2869,7 @@ route('career', 'Driver profile', function () {
   const ratings = c ? f1DevApply(Object.assign({}, F1_ROOKIE, p), c.id) : p;
   const isDriver = !p.kind || p.kind === 'driver';
   return `<div class="profile-head" style="--team:${esc(team.color || '#888')}">${portraitHtml(c || { name: p.name, code: p.abbr }, 132)}
-      <div><p class="eyebrow">${esc(F1_ROLE[p.kind] || 'Driver')}${team ? ', ' + esc(team.name) : ''}${c ? '' : ', real'}</p><h1>${p.flag ? esc(p.flag) + ' ' : ''}${esc(p.name)}</h1>
+      <div><p class="eyebrow">${team && teamBrand(team.id).logo ? `<img class="team-logo tiny" src="${esc(teamBrand(team.id).logo)}" alt="">` : ''}${esc(F1_ROLE[p.kind] || 'Driver')}${team ? ', ' + esc(team.name) : ''}${c ? '' : ', real'}</p><h1>${p.flag ? esc(p.flag) + ' ' : ''}${esc(p.name)}</h1>
         <p class="muted">${[c && c.nickname ? `“${c.nickname}”` : '', yearsNow(p) ? plural(yearsNow(p), 'year') + ' of experience' : '', p.num ? '#' + p.num : '', c && c.nationality, c && c.birthplace ? 'from ' + c.birthplace : ''].filter(Boolean).map(esc).join(', ')}</p>
         <div class="btn-row">${mine ? `<label class="btn small file-btn">Change portrait<input type="file" accept="image/*" data-change="portrait" data-id="${esc(c.id)}" class="sr-only"></label>
           <button class="btn small" data-act="diary-new">Write in the diary</button><button class="btn small" data-act="rel-new">Add a relationship</button>` : ''}
@@ -3710,7 +3714,7 @@ function timesheetHtml(w, s) {
 
 /* ---------------------------------------------------------------- the set-up guide */
 const fuzz = (v, r, sd) => clampN(Math.round((v + f1Gauss(r) * sd) / 5) * 5, 0, 100);
-function setupGuideHtml(w, ent) {
+function setupGuideHtml(w, ent, ro) {
   const t = F1.track(w.trackId) || {}, base = TYPE_IDEAL[t.type] || TYPE_IDEAL.mixed, st = styleOf(ent), pref = STYLE_PREF[st] || STYLE_PREF.technical;
   const done = endedSessions(w).length, exp = (ent.v3 && ent.v3.experience) || 50, rap = f1Rapport(ent.teamId, ent.car);
   /* The engineer's error is fixed for the weekend and shrinks each session, so the guess closes in steadily. */
@@ -3721,7 +3725,7 @@ function setupGuideHtml(w, ent) {
     <p><b>${esc(t.name || '')}:</b> ${esc(TYPE_TEXT[t.type] || TYPE_TEXT.mixed)} <span class="muted small">Teams usually start around downforce ${base.wing}, suspension ${base.susp}.</span></p>
     <p><b>${esc(ent.name)} (${esc(styleName(st).toLowerCase())}):</b> likes ${esc(pref.likes)}. Can’t stand ${esc(pref.hates)}. Against a typical driver: downforce ${dir(pref.wing, 'lower', 'higher')}, suspension ${dir(pref.susp, 'softer', 'stiffer')}, diff ${dir(pref.diff, 'more open', 'more locked')}.</p>
     <p><b>Engineer’s best guess${done ? ` after ${sessionName(w, done)}` : ''}:</b> downforce ${guess.wing}, suspension ${guess.susp}, differential ${guess.diff}. <span class="muted small">Within about ±${Math.round(sd * 1.5 / 5) * 5 || 5} on each; it sharpens with every session${rap ? ', and rapport helps' : ''}.</span></p>
-    </details><div class="guide-use"><button class="btn small" data-act="guide-use" data-car="${esc(ent.id)}" data-wing="${guess.wing}" data-susp="${guess.susp}" data-diff="${guess.diff}">Put the engineer’s guess on the dials</button></div>`;
+    </details>${ro ? '' : `<div class="guide-use"><button class="btn small" data-act="guide-use" data-car="${esc(ent.id)}" data-wing="${guess.wing}" data-susp="${guess.susp}" data-diff="${guess.diff}">Put the engineer’s guess on the dials</button></div>`}`;
 }
 ACTIONS['guide-use'] = d => { const f = (S.ui.form.f1d = S.ui.form.f1d || {}); f[d.car] = { wing: Number(d.wing), susp: Number(d.susp), diff: Number(d.diff) }; render(); };
 
@@ -4016,6 +4020,200 @@ ROUTES.weekend.view = function () {
   else if (tab === 'timing') h += timingHtml(w);
   else h += entryListHtml(w);
   return h;
+};
+
+/* =====================================================================
+   F1 SIM — the Race Weekend page, pit-wall layout.
+   Three columns, nothing hidden behind tabs: on the left the weekend's
+   sessions and what your car will use if you do nothing; in the middle
+   the work (set-up, race plan, timing or the entry list, picked from the
+   left); on the right the latest debrief and timing, or during the race
+   your car and the race log. The big numbers along the top change with
+   the stage. People without a seat keep the simpler tabbed page.
+   ===================================================================== */
+'use strict';
+
+const _weekendTabs = ROUTES.weekend.view;
+const pctRain = w => Math.round(sessionRainChance(w) * 100);
+const gridPos = (w, id) => (w.quali && w.quali.grid ? w.quali.grid.indexOf(id) + 1 : 0);
+function entWithV3(e) { return Object.assign({}, e, { v3: (f1Entrants().find(x => x.id === e.id) || {}).v3 }); }
+
+/* The weekend's sessions, with what each meant (or will mean) for this car. */
+function railSessionsHtml(w, ent) {
+  const st = w.state, rows = [], done = endedSessions(w), cur = w.status === 'practice' && done.length < sessionsOf(w) ? curSession(w) : 0;
+  for (let n = 1; n <= sessionsOf(w); n++) {
+    const s = done.find(x => x.n === n), times = s && s.times ? Object.keys(s.times).filter(k => s.times[k]).sort((a, b) => s.times[a] - s.times[b]) : [];
+    const pos = ent && times.indexOf(ent.id) + 1;
+    rows.push({ label: sessionName(w, n), status: s ? (pos ? `Done, P${pos}` : 'Done') : n === cur ? (fullPractice(w) ? 'Plan now' : 'Running') : w.status === 'practice' ? `${runsPerSession(w)} runs` : 'Skipped', now: n === cur });
+  }
+  const single = seriesDoc(wSeries(w)).quali === 'single', g = ent ? gridPos(w, ent.id) : 0;
+  rows.push({ label: single ? 'Qualifying' : 'Qualifying', status: w.status === 'practice' ? (single ? 'One session' : 'Q1 to Q3') : w.status === 'quali' ? `Q${w.qualiStage || 1} done` : g ? `Grid P${g}` : 'Done', now: w.status === 'quali' });
+  const car = ent && st ? st.cars.find(c => c.id === ent.id) : null, pos = car ? f1Order(st).indexOf(car) + 1 : 0;
+  rows.push({ label: 'Race', status: !st || st.lap === 0 ? (raceSettings(w).lock !== false ? 'Official' : 'Live calls') : st.finished ? (car && car.status === 'running' ? `P${pos}` : 'Done') : `Lap ${st.lap}, P${pos || '–'}`, now: !!(st && st.lap > 0) || (w.status === 'grid') });
+  return `<ol class="rail-sessions">${rows.map(r => `<li class="${r.now ? 'now' : ''}"><span>${esc(r.label)}</span><span>${esc(r.status)}</span></li>`).join('')}</ol>`;
+}
+/* The big numbers along the top, for the stage and the car. */
+function statStripHtml(w, ent) {
+  const st = w.state, cells = [];
+  if (w.status === 'practice') {
+    const all = endedSessions(w).length >= sessionsOf(w);
+    cells.push(['Next', all ? (seriesDoc(wSeries(w)).quali === 'single' ? 'Quali' : 'Q1') : sessionName(w, curSession(w)), true], ['Rain chance', `${pctRain(w)}%`]);
+    if (ent) cells.push(['Runs to plan', all ? '0' : String(runsPerSession(w) - runsIn(w, ent.id, curSession(w)).length)], ['Confidence', `${Math.round(confidenceNow(w, ent) * 100)}%`]);
+  } else if (!st || st.lap === 0) {
+    cells.push(['Stage', w.status === 'quali' ? `Q${w.qualiStage || 1}` : 'Grid set', true]);
+    if (ent) cells.push(['Grid', gridPos(w, ent.id) ? `P${gridPos(w, ent.id)}` : '–'], ['Confidence', `${Math.round(((w.confidence || {})[ent.id] != null ? w.confidence[ent.id] : confidenceNow(w, ent)) * 100)}%`]);
+    cells.push(['Laps', String(st ? st.laps : raceLaps(w))]);
+  } else {
+    const car = ent ? st.cars.find(c => c.id === ent.id) : null;
+    cells.push(['Lap', `${st.lap}/${st.laps}`, true]);
+    if (car) { const pos = f1Order(st).indexOf(car) + 1;
+      cells.push(['Position', car.status === 'running' ? `P${pos}` : 'Out'], ['Tyre', car.status === 'running' ? `${RaceEngine.COMPOUNDS[car.tyre.compound].label} ${car.tyre.age}` : '–'], ['Plan', car.planName ? car.planName.replace('Plan ', '') : 'AI']); }
+  }
+  return `<div class="stat-strip">${cells.map(([k, v, hi]) => `<div><span>${esc(k)}</span><b class="${hi ? 'hi' : ''}">${esc(v)}</b></div>`).join('')}</div>`;
+}
+/* A short timesheet: the top eight, plus your cars if they're further down. */
+function shortTimesheetHtml(w, s, mine) {
+  const ents = w.entrants || f1Entrants(), rows = Object.keys(s.times).filter(k => s.times[k]).sort((a, b) => s.times[a] - s.times[b]), best = s.times[rows[0]];
+  const show = rows.filter((id, i) => i < 8 || mine.indexOf(id) !== -1);
+  return `<table class="data compact short-times"><tbody>${show.map(id => { const i = rows.indexOf(id), e = ents.find(z => z.id === id) || {};
+    return `<tr class="${mine.indexOf(id) !== -1 ? 'me' : ''}"><td>${i + 1}</td><td><span class="f1-bar" style="background:${esc(f1Colour(e.teamId))}"></span>${esc(e.name || id)}</td><td class="num">${i ? '+' + (s.times[id] - best).toFixed(3) : f1Fmt(best)}</td></tr>`; }).join('')}</tbody></table>`;
+}
+function shortQualiHtml(w, mine) {
+  const g = (w.quali && w.quali.grid) || [], ents = w.entrants || [], show = g.filter((id, i) => i < 10 || mine.indexOf(id) !== -1);
+  return `<table class="data compact short-times"><tbody>${show.map(id => { const e = ents.find(z => z.id === id) || {};
+    return `<tr class="${mine.indexOf(id) !== -1 ? 'me' : ''}"><td>${g.indexOf(id) + 1}</td><td><span class="f1-bar" style="background:${esc(f1Colour(e.teamId))}"></span>${esc(e.name || id)}</td></tr>`; }).join('')}</tbody></table>`;
+}
+ACTIONS['wk-view'] = d => { S.ui.wkView = d.view; S.ui.wkViewFor = d.stage; render(); };
+
+ROUTES.weekend.view = function () {
+  S.ui.wkRail = false;
+  const view = S.ui.f1view ? get('f1_weekends', S.ui.f1view) : null, w = view || F1.live();
+  if (!w || w.status === 'finished' || view || !F1.teams().length) return _weekendTabs();
+  const cars = myWeekendCars(w); if (!cars.length) return _weekendTabs();
+  S.ui.wkRail = true;
+  const sel = cars.find(e => e.id === S.ui.wkCar) || cars[0], ent = entWithV3(sel), team = F1.team(sel.teamId), brand = typeof teamBrand === 'function' ? teamBrand(sel.teamId) : {};
+  S.ui.wkCarNow = sel.id;
+  const t = F1.track(w.trackId) || { name: w.trackId, laps: 0 }, st = w.state, sprint = w.session === 'sprint', racing = !!(st && st.lap > 0);
+  const stage = w.status === 'practice' ? 'practice' : racing ? 'race' : 'quali';
+  const views = stage === 'practice' ? [['setup', 'Set-up'], ['plan', 'Race plan'], ['timing', 'Full timing'], ['entry', 'Entry list']]
+    : stage === 'quali' ? [['timing', 'Qualifying'], ['plan', 'Race plan'], ['entry', 'Entry list']]
+    : [['timing', 'Timing'], ['plan', 'Race plan'], ['entry', 'Entry list']];
+  const v = S.ui.wkView && S.ui.wkViewFor === stage && views.some(x => x[0] === S.ui.wkView) ? S.ui.wkView : views[0][0];
+  const mine = cars.map(e => e.id);
+
+  let h = `<div class="wk-head" style="--team:${esc(team.color)}"><div class="wk-title"><p class="muted">Round ${esc(t.round || '')}, ${esc(t.circuit || t.name)}, ${st ? st.laps : raceLaps(w)} laps${sprint ? ', sprint' : ''}</p>
+    <h1>${esc(t.flag || '')} ${esc(t.name)}${sprint ? ' Sprint' : ''}</h1>${racing ? `<p class="chips"><span class="tag ${st.track[Math.max(0, st.lap - 1)] === 2 ? 'wet' : st.track[Math.max(0, st.lap - 1)] === 1 ? 'damp' : ''}">${['Dry', 'Damp', 'Wet'][st.track[Math.max(0, st.lap - 1)]]} track</span>${st.sc.type ? ` <span class="tag flag">${st.sc.type === 'sc' ? 'Safety car' : 'Virtual safety car'}</span>` : ''}</p>` : ''}</div>
+    ${statStripHtml(w, ent)}</div>`;
+  if (S.isGm) h += lvControlHtml(w) || '';
+
+  /* Left: the car, the weekend, the defaults, and what to work on. */
+  const left = `<aside class="wk-rail" aria-label="Your weekend">
+    ${cars.length > 1 ? `<div class="car-pick" role="tablist" aria-label="Car">${cars.map(e => `<button role="tab" class="pill" data-act="wk-car" data-id="${esc(e.id)}" aria-selected="${e.id === sel.id}" style="--team:${esc(F1.team(e.teamId).color)}">${esc(e.name)}</button>`).join('')}</div>` : ''}
+    <div class="rail-car">${brand.logo ? `<img src="${esc(brand.logo)}" alt="${esc(team.name)}" class="team-logo">` : ''}<div><b>${esc(sel.name)}</b><span class="muted small">${esc(team.name)}, car ${esc(sel.car)}</span></div></div>
+    <h2>Weekend</h2>${railSessionsHtml(w, ent)}
+    <h2>Work on</h2><nav class="rail-views" aria-label="Work on">${views.map(([k, l]) => `<button class="${v === k ? 'on' : ''}" aria-current="${v === k ? 'page' : 'false'}" data-act="wk-view" data-view="${k}" data-stage="${stage}">${esc(l)}</button>`).join('')}</nav>
+    ${!racing ? `<h2>If you do nothing</h2><dl class="rail-defaults">${stage === 'practice' ? `<div><dt>Qualifying set-up</dt><dd>${esc(setupChoiceText(w, ent))}</dd></div>` : ''}<div><dt>Race plans</dt><dd>${esc(planSourceText(w, ent))}</dd></div></dl>` : ''}
+  </aside>`;
+
+  /* Middle: the work. */
+  let mid = racing ? f1MomentCardHtml(w) : '';
+  if (v === 'setup') mid += f1PitWallHtml(w) || '<section class="card"><p class="muted">Nothing to do on this car right now.</p></section>';
+  else if (v === 'plan') mid += f1StrategyCardHtml(w) || '<section class="card"><p class="muted">Only the team principal, the car’s race engineer and its driver plan its race.</p></section>';
+  else if (v === 'entry') mid += entryListHtml(w);
+  else if (stage === 'race') {
+    /* The race: the tower, then the lap chart, tyres or your driver beneath it. The race log is on the right. */
+    if (!S.ui.f1pick) S.ui.f1pick = sel.id;
+    const tab = ['lapchart', 'tyres', 'driver'].indexOf(S.ui.f1tab) !== -1 ? S.ui.f1tab : 'driver';
+    const body = tab === 'lapchart' ? lvLapChartHtml(w) : tab === 'tyres' ? f1ChartHtml(w) : lvDriverHtml(w);
+    mid += `<section class="card"><h2>Timing</h2><div class="scroll-x">${lvTowerHtml(w)}</div></section>
+      <section class="card"><div class="tabs" role="tablist">${[['driver', `Driver: ${S.ui.f1pick}`], ['lapchart', 'Lap chart'], ['tyres', 'Tyre strategy']].map(([k, l]) => `<button role="tab" class="tab" data-act="f1-tab" data-tab="${k}" aria-selected="${tab === k}">${esc(l)}</button>`).join('')}</div>${body}</section>`;
+  } else mid += timingHtml(w);
+
+  /* Right: what the last session said, and the timing; in the race, your car and the race log. */
+  let right = '';
+  if (stage === 'practice') {
+    const done = endedSessions(w), last = done[done.length - 1];
+    right += last ? `<section class="card"><h2>${esc(sessionName(w, last.n))} debrief</h2>${last.weather ? `<p class="muted small">${esc(weatherText(last.weather))}</p>` : ''}<ul class="runs">${sessionDebriefHtml(w, ent, last)}</ul>
+        ${done.length > 1 ? `<details><summary>Earlier debriefs</summary><ul class="runs">${done.slice(0, -1).reverse().map(s => sessionDebriefHtml(w, ent, s)).join('')}</ul></details>` : ''}</section>
+      <section class="card"><h2>${esc(sessionName(w, last.n))} timesheet</h2>${shortTimesheetHtml(w, last, mine)}<button class="linkish small" data-act="wk-view" data-view="timing" data-stage="${stage}">Full timesheet</button></section>`
+      : `<section class="card"><h2>Debriefs</h2><p class="muted">After each session, the debrief for ${esc(sel.name.split(' ')[0])}’s car appears here, with the timesheet.</p></section>`;
+  } else if (stage === 'quali') {
+    right += `<section class="card">${qualiDebriefHtml(w, ent) || `<h2>Qualifying debrief</h2><p class="muted">It comes when qualifying is over.</p>`}</section>`;
+    if (w.status === 'grid') right += `<section class="card"><h2>Grid</h2>${shortQualiHtml(w, mine)}</section>`;
+  } else {
+    const car = st.cars.find(c => c.id === sel.id);
+    right += raceLocked(w) ? `<section class="card"><h2>${esc(sel.name)}</h2>${car && car.status === 'running' ? lockedStatusHtml(w, sel, car) : `<p class="muted">Out: ${esc((car || {}).dnf || '')}</p>`}</section>`
+      : (f1PitWallHtml(w) || '');
+    right += `<section class="card"><h2>Race log</h2><div class="rail-feed">${lvFeedHtml(w)}</div></section>`;
+  }
+  h += `<div class="wk-cols" style="--team:${esc(team.color)}">${left}<div class="wk-main">${mid}</div><aside class="wk-side" aria-label="Debrief and timing">${right}</aside></div>`;
+  return h;
+};
+
+/* =====================================================================
+   F1 SIM — team branding.
+   Each team can have a logo, a banner photo and a car photo. The team
+   principal uploads them from Team HQ (their uploads count while they
+   hold the seat), or Race Control does (stored on the team itself). The
+   newest valid upload for each picture wins. They show on Team HQ, The
+   Grid, the Race Weekend page and driver profiles.
+   ===================================================================== */
+'use strict';
+
+const BRAND_SLOTS = [
+  ['logo', 'Team logo', 'Square works best. Shown beside the team’s name.', 512],
+  ['banner', 'Banner photo', 'Wide: the garage, the crew, the crowd. Across the top of Team HQ.', 1800],
+  ['car', 'Car photo', 'The car in its livery. On Team HQ and The Grid.', 1600]
+];
+const isTpOf = (teamId, charId) => F1.seats(teamId).some(s => s.role === 'principal' && s.holderCharId === charId) || list('f1_seats').some(s => s.teamId === teamId && s.role === 'principal' && s.holderCharId === charId);
+/* The pictures a team shows now: for each, the newest of Race Control's and the current team principal's. */
+function teamBrand(teamId) {
+  const t = get('f1_teams', teamId) || {}, out = {};
+  BRAND_SLOTS.forEach(([slot]) => {
+    const cands = [];
+    const rc = (t.brand || {})[slot]; if (rc && rc.at) cands.push(rc);
+    list('f1_branding').filter(b => b.teamId === teamId && b.slot === slot && isTpOf(teamId, b.charId) && (get('characters', b.charId) || {}).userId === b.userId).forEach(b => cands.push(b));
+    const best = cands.sort((a, b) => String(b.at).localeCompare(String(a.at)))[0];
+    if (best && best.url) out[slot] = best.url;
+  });
+  return out;
+}
+const canBrand = teamId => S.isGm || !!(S.charId && isTpOf(teamId, S.charId));
+async function saveBrand(teamId, slot, url) {
+  const c = currentChar();
+  if (c && isTpOf(teamId, c.id)) { await Data.put('f1_branding', `${teamId}-${slot}-${c.id}`, { userId: asOwner(), charId: c.id, teamId, slot, url, at: nowIso() }); return; }
+  if (!S.isGm) throw { message: 'Only the team principal or Race Control can change the team’s pictures.' };
+  const doc = clone(S.store.f1_teams[teamId]); doc.brand = Object.assign({}, doc.brand || {}, { [slot]: { url, at: nowIso() } });
+  await Data.put('f1_teams', teamId, doc);
+}
+CHANGES['brand-upload'] = (v, d, el) => {
+  const file = el.files && el.files[0], slot = BRAND_SLOTS.find(s => s[0] === d.slot); if (!file || !slot) return;
+  if (!/^image\//.test(file.type)) { toast('Choose a picture: a JPEG, PNG or WebP.', true); return; }
+  run(async () => {
+    const blob = await shrinkImage(file, slot[3]), assets = await window.claude.use('assets'), up = await assets.upload(blob, { type: 'image/jpeg' });
+    await saveBrand(d.team, slot[0], up.url);
+    await Data.audit('team.brand', `${F1.team(d.team).name}: new ${slot[1].toLowerCase()}`);
+  }, `${slot[1]} saved.`);
+  el.value = '';
+};
+ACTIONS['brand-remove'] = d => askConfirm('Remove this picture?', 'Remove', () => run(async () => { await saveBrand(d.team, d.slot, null); }, 'Picture removed.'), true);
+
+function brandingHtml(tid) {
+  const b = teamBrand(tid), can = canBrand(tid), t = F1.team(tid);
+  return `<section class="card"><h2>Team branding</h2><p class="muted small">${can ? 'Upload the team’s pictures. They show on Team HQ, The Grid, the Race Weekend page and drivers’ profiles.' : `${esc(t.name)}’s team principal and Race Control set these.`}</p>
+    <div class="brand-slots">${BRAND_SLOTS.map(([slot, label, hint]) => `<div class="brand-slot ${slot}">
+      <div class="brand-preview">${b[slot] ? `<img src="${esc(b[slot])}" alt="${esc(t.name)} ${esc(label.toLowerCase())}">` : `<span class="muted small">No ${esc(label.toLowerCase())} yet</span>`}</div>
+      <p><b>${esc(label)}</b><br><span class="muted small">${esc(hint)}</span></p>
+      ${can ? `<div class="btn-row"><label class="btn small file-btn">${b[slot] ? 'Replace' : 'Upload'}<input type="file" accept="image/*" class="sr-only" data-change="brand-upload" data-team="${esc(tid)}" data-slot="${slot}"></label>${b[slot] ? `<button class="btn small ghost" data-act="brand-remove" data-team="${esc(tid)}" data-slot="${slot}">Remove</button>` : ''}</div>` : ''}</div>`).join('')}</div></section>`;
+}
+/* Team HQ: the banner across the top, and the branding section. */
+const _teamViewBrand = ROUTES.team.view;
+ROUTES.team.view = function () {
+  const html = _teamViewBrand(), teams = F1.teams(); if (!teams.length) return html;
+  const my = S.charId ? F1.seats().find(s => s.holderCharId === S.charId) : null, tid = S.ui.teamId || (my && my.teamId) || teams[0].id, b = teamBrand(tid), t = F1.team(tid);
+  const banner = b.banner || b.logo || b.car ? `<div class="team-banner" style="--team:${esc(t.color)}">${b.banner ? `<img class="banner-img" src="${esc(b.banner)}" alt="">` : ''}<div class="team-banner-id">${b.logo ? `<img class="team-logo big" src="${esc(b.logo)}" alt="">` : ''}<span>${esc(t.name)}</span></div>${b.car ? `<img class="car-img" src="${esc(b.car)}" alt="${esc(t.name)} car">` : ''}</div>` : '';
+  const inTeam = S.isGm || F1.seats(tid).some(s => S.charId && s.holderCharId === S.charId);
+  return banner + html + (inTeam || b.logo || b.banner || b.car ? brandingHtml(tid) : '');
 };
 
 /* =====================================================================
