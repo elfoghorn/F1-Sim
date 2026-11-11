@@ -25,6 +25,22 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v0.15.0: timing sheet export
+
+11 November 2026. Build `f1sim-0.15.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Export timing | A button on the Race Weekend page (beside the stage strip, or under the title in the three-column layout) once there's timing to share. |
+| Every stage | Each practice session once it has run, Q1, Q2 and Q3 as they finish (or qualifying in one-session series), the race at the current lap, and the result. Drivers knocked out show "Out in Q1" or "Out in Q2"; retirements show "Out". |
+| 1. Podium | Portrait, 1080 by 1350. P1 to P3 on podium steps (P1 in the middle and tallest) with portraits, car numbers, team colours and times, and the rest of the field in two columns below. |
+| 2. Broadcast | Widescreen, 1920 by 1080. P1 to P3 as three big cards with large position numbers in team colour, and a timing tower for everyone else. In the race, tyres and their age, and a live marker. |
+| Look | Dark or light. |
+| Portraits | Player characters show their uploaded portraits; real drivers show initials and their car number. |
+| Sharing | Anyone can download the image. Race Control can post it to Discord (the results channel), with the stage as the message. |
+
+---
+
 ## v0.14.0: development points by races, and team development
 
 11 November 2026. Build `f1sim-0.14.0`. **No database update.**

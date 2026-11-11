@@ -1,4 +1,4 @@
-/* F1 SIM v0.14.0 (build f1sim-0.14.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v0.15.0 (build f1sim-0.15.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -4114,7 +4114,7 @@ ROUTES.weekend.view = function () {
   const mine = cars.map(e => e.id);
 
   let h = `<div class="wk-head" style="--team:${esc(team.color)}"><div class="wk-title"><p class="muted">Round ${esc(t.round || '')}, ${esc(t.circuit || t.name)}, ${st ? st.laps : raceLaps(w)} laps${sprint ? ', sprint' : ''}</p>
-    <h1>${esc(t.flag || '')} ${esc(t.name)}${sprint ? ' Sprint' : ''}</h1>${racing ? `<p class="chips"><span class="tag ${st.track[Math.max(0, st.lap - 1)] === 2 ? 'wet' : st.track[Math.max(0, st.lap - 1)] === 1 ? 'damp' : ''}">${['Dry', 'Damp', 'Wet'][st.track[Math.max(0, st.lap - 1)]]} track</span>${st.sc.type ? ` <span class="tag flag">${st.sc.type === 'sc' ? 'Safety car' : 'Virtual safety car'}</span>` : ''}</p>` : ''}</div>
+    <h1>${esc(t.flag || '')} ${esc(t.name)}${sprint ? ' Sprint' : ''}</h1>${exportButtonHtml(w) ? `<div class="wk-actions">${exportButtonHtml(w)}</div>` : ''}${racing ? `<p class="chips"><span class="tag ${st.track[Math.max(0, st.lap - 1)] === 2 ? 'wet' : st.track[Math.max(0, st.lap - 1)] === 1 ? 'damp' : ''}">${['Dry', 'Damp', 'Wet'][st.track[Math.max(0, st.lap - 1)]]} track</span>${st.sc.type ? ` <span class="tag flag">${st.sc.type === 'sc' ? 'Safety car' : 'Virtual safety car'}</span>` : ''}</p>` : ''}</div>
     ${statStripHtml(w, ent)}</div>`;
   if (S.isGm) h += lvControlHtml(w) || '';
 
@@ -4462,6 +4462,175 @@ ROUTES.team.view = function () {
   const my = S.charId ? F1.seats().find(s => s.holderCharId === S.charId) : null, tid = S.ui.teamId || (my && my.teamId) || teams[0].id;
   return html + teamDevHtml(tid);
 };
+
+/* =====================================================================
+   F1 SIM — timing sheet export.
+   An image of the timing at any stage of a weekend: each practice
+   session, Q1, Q2 and Q3 (or qualifying in one-session series), the race
+   at the current lap, and the result. Two formats: 1. Podium (portrait,
+   1080 by 1350: P1 to P3 on podium steps, the rest in two columns) and
+   2. Broadcast (widescreen, 1920 by 1080: three big cards and a timing
+   tower). Drawn in the browser; anyone downloads it, Race Control can
+   post it to Discord. Player characters show their portraits.
+   ===================================================================== */
+'use strict';
+
+const EXPORT_FORMATS = [['podium', '1. Podium (portrait)'], ['broadcast', '2. Broadcast (widescreen)']];
+const TYRE_COL = { soft: '#E10600', medium: '#F5C400', hard: '#F2F2F2', inter: '#2FA84F', wet: '#1D6FD1' };
+
+/* The stages that have timing to export. */
+function exportStages(w) {
+  const out = [];
+  endedSessions(w).forEach(s => out.push([`fp${s.n}`, sessionName(w, s.n) === 'Practice' ? 'Practice' : `Practice ${s.n}`]));
+  if (w.quali && w.quali.results) {
+    const single = w.state && w.state.rules.qualifying && w.state.rules.qualifying.q2 >= 99, upto = w.status === 'quali' ? (w.qualiStage || 1) : 3;
+    if (single) out.push(['q3', 'Qualifying']); else for (let k = 1; k <= upto; k++) out.push([`q${k}`, `Q${k}`]);
+  }
+  if (w.state && w.state.lap > 0 && !w.state.finished) out.push(['race', `Lap ${w.state.lap} of ${w.state.laps}`]);
+  if (w.status === 'finished') out.push(['result', w.session === 'sprint' ? 'Sprint result' : 'Race result']);
+  return out;
+}
+const fmtRaceTime = s => { const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = (s % 60).toFixed(1).padStart(4, '0'); return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`; };
+/* The order and the numbers for a stage. */
+function exportRows(w, key) {
+  const ents = w.entrants || f1Entrants(), info = id => { const e = ents.find(x => x.id === id) || { id, name: id };
+    const c = e.charId ? get('characters', e.charId) : null, p = e.personId ? F1.person(e.personId) : null;
+    return { id, code: id, name: e.name || id, team: (get('f1_teams', e.teamId) || {}).name || '', color: f1Colour(e.teamId), num: (c && c.number) || (p && p.num) || '', portrait: c && c.portraitUrl ? c.portraitUrl : null }; };
+  let rows = [];
+  if (/^fp/.test(key)) {
+    const s = endedSessions(w).find(x => `fp${x.n}` === key); if (!s) return [];
+    const ids = Object.keys(s.times || {}).filter(k => s.times[k]).sort((a, b) => s.times[a] - s.times[b]), best = s.times[ids[0]];
+    rows = ids.map((id, i) => Object.assign(info(id), { value: i ? '+' + (s.times[id] - best).toFixed(3) : f1Fmt(best), lap: s.times[id] }));
+    Object.keys(s.times || {}).filter(k => !s.times[k]).forEach(id => rows.push(Object.assign(info(id), { value: 'No time' })));
+  } else if (/^q/.test(key)) {
+    const k = Number(key.slice(1)) - 1, res = w.quali.results, best = r => r.times[k];
+    const inIt = res.filter(r => best(r)).sort((a, b) => best(a) - best(b)), fast = inIt.length ? best(inIt[0]) : 0;
+    rows = inIt.map((r, i) => Object.assign(info(r.id), { value: i ? '+' + (best(r) - fast).toFixed(3) : f1Fmt(fast) }));
+    for (let j = k - 1; j >= 0; j--) res.filter(r => !r.times[j + 1] && r.times[j] && rows.every(x => x.id !== r.id)).sort((a, b) => a.times[j] - b.times[j]).forEach(r => rows.push(Object.assign(info(r.id), { value: `Out in Q${j + 1}` })));
+  } else if (key === 'race') {
+    const st = w.state, ord = f1Order(st), lead = ord[0];
+    rows = ord.map((c, i) => Object.assign(info(c.id), { value: c.status !== 'running' ? 'Out' : i ? '+' + (c.cum - lead.cum).toFixed(1) : 'Leader', tyre: c.status === 'running' ? c.tyre.compound : null, age: c.tyre ? c.tyre.age : 0 }));
+  } else {
+    const rs = (w.results || []).slice().sort((a, b) => (a.position || 99) - (b.position || 99));
+    rows = rs.map((r, i) => Object.assign(info(r.id), { value: !r.position ? 'Out' : i === 0 ? fmtRaceTime(r.time || 0) : String(r.gap || '').replace(/s$/, ''), tyre: null }));
+  }
+  return rows.map((r, i) => Object.assign(r, { pos: i + 1 }));
+}
+
+/* ---------------------------------------------------------------- drawing */
+const EXP_THEMES = {
+  dark: { bg: '#11161B', panel: '#1B2229', ink: '#EEF2F5', muted: '#A3AEB8', line: '#2C353E', photo: '#262E36', photoInk: '#56626C', step: '#EEF2F5', stepInk: '#11161B' },
+  light: { bg: '#E6E9EC', panel: '#FFFFFF', ink: '#142130', muted: '#56636F', line: '#CDD3D8', photo: '#D3D9DE', photoInk: '#9AA6B0', step: '#142130', stepInk: '#F7F8F9' }
+};
+const cond = (wt, px) => `${wt} ${px}px "Barlow Condensed", "Arial Narrow", sans-serif`, bodyF = (wt, px) => `${wt} ${px}px "Barlow", system-ui, sans-serif`;
+function rr(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+function fitText(g, text, font, size, max) { let s = size; g.font = font(s); while (g.measureText(text).width > max && s > 10) { s -= 2; g.font = font(s); } return s; }
+const initials = n => String(n || '').split(/\s+/).map(x => x[0]).join('').slice(0, 2).toUpperCase();
+async function loadImg(url) { if (!url) return null; try { const img = new Image(); img.crossOrigin = 'anonymous'; await new Promise((ok, bad) => { img.onload = ok; img.onerror = bad; img.src = url; }); return img; } catch (e) { return null; } }
+function drawPhoto(g, img, x, y, w, h, r, row, T) {
+  g.save(); rr(g, x, y, w, h, r); g.clip(); g.fillStyle = T.photo; g.fillRect(x, y, w, h);
+  if (img) { const s = Math.max(w / img.width, h / img.height), iw = img.width * s, ih = img.height * s; g.drawImage(img, x + (w - iw) / 2, y + (h - ih) / 2, iw, ih); }
+  else { g.fillStyle = T.photoInk; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = cond(700, Math.round(Math.min(w, h) * 0.38)); g.fillText(initials(row.name), x + w / 2, y + h / 2); }
+  g.restore(); g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+}
+function drawMark(g, x, y, T) { [[0, 0, T.ink], [13, 13, T.ink], [13, 0, T.line], [0, 13, T.line]].forEach(([dx, dy, c]) => { g.fillStyle = c; g.fillRect(x + dx, y + dy, 13, 13); }); g.fillStyle = T.ink; g.font = cond(700, 30); g.fillText('F1 SIM', x + 38, y + 24); }
+function tyreDot(g, x, y, r, compound, T) { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.lineWidth = Math.max(3, r / 3); g.strokeStyle = TYRE_COL[compound] || T.muted; g.stroke(); g.fillStyle = T.ink; g.font = cond(700, Math.round(r * 1.1)); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText((compound || '').charAt(0).toUpperCase(), x, y + 1); g.textAlign = 'left'; g.textBaseline = 'alphabetic'; }
+
+async function drawTiming(w, key, format, theme) {
+  const T = EXP_THEMES[theme] || EXP_THEMES.dark, rows = exportRows(w, key), stage = (exportStages(w).find(s => s[0] === key) || ['', ''])[1];
+  const t = get('f1_tracks', w.trackId) || {}, race = key === 'race' || key === 'result', top = rows.slice(0, 3), rest = rows.slice(3);
+  try { await Promise.all(['700 100px "Barlow Condensed"', '600 30px "Barlow"'].map(f => document.fonts.load(f))); } catch (e) { /* fall back */ }
+  const imgs = await Promise.all(top.map(r => loadImg(r.portrait)));
+  const wide = format === 'broadcast', W = wide ? 1920 : 1080, H = wide ? 1080 : 1350, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d'); g.fillStyle = T.bg; g.fillRect(0, 0, W, H);
+  const title = `${t.name || ''}${w.session === 'sprint' ? ' Sprint' : ''}`, sub = race ? 'Gaps to the leader' : 'Best laps';
+  if (!wide) {
+    drawMark(g, 60, 56, T); g.font = cond(600, 24); g.fillStyle = T.muted; g.textAlign = 'right'; g.fillText(`Round ${t.round || ''}, ${t.circuit || ''}`.trim(), W - 60, 80); g.textAlign = 'left';
+    g.font = cond(600, 32); g.fillText(title, 60, 150); fitText(g, stage, s => cond(700, s), 116, W - 120); g.fillStyle = T.ink; g.fillText(stage, 58, 252);
+    /* Podium: P2, P1, P3. */
+    const colW = (W - 120 - 36) / 3, baseY = 860, cardH = [450, 400, 370], stepH = [110, 72, 44];
+    [1, 0, 2].forEach((i, slot) => { const r = top[i]; if (!r) return; const x = 60 + slot * (colW + 18), y = baseY - stepH[i] - cardH[i];
+      g.save(); rr(g, x, y, colW, cardH[i], 16); g.clip(); g.fillStyle = r.color; g.fillRect(x, y, colW, cardH[i]); g.restore();
+      drawPhoto(g, imgs[i], x + 8, y + 8, colW - 16, cardH[i] - 118, 10, r, T);
+      if (r.num) { g.font = cond(700, 58); g.fillStyle = '#FFFFFF'; g.textAlign = 'right'; g.shadowColor = 'rgba(0,0,0,0.45)'; g.shadowBlur = 8; g.fillText(String(r.num), x + colW - 18, y + 62); g.shadowBlur = 0; g.textAlign = 'left'; }
+      g.fillStyle = T.panel; g.fillRect(x, y + cardH[i] - 104, colW, 104); g.fillStyle = r.color; g.fillRect(x, y + cardH[i] - 104, colW, 7);
+      g.fillStyle = T.ink; fitText(g, r.name, s => cond(700, s), 34, colW - 28); g.fillText(r.name, x + 14, y + cardH[i] - 58);
+      g.font = bodyF(500, 18); g.fillStyle = T.muted; g.fillText(r.team, x + 14, y + cardH[i] - 24); g.font = bodyF(600, 20); g.fillStyle = T.ink; g.textAlign = 'right'; g.fillText(r.value, x + colW - 14, y + cardH[i] - 24); g.textAlign = 'left';
+      g.fillStyle = T.step; g.fillRect(x, baseY - stepH[i], colW, stepH[i]); g.fillStyle = T.stepInk; g.font = cond(700, Math.min(60, stepH[i] - 6)); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(`P${r.pos}`, x + colW / 2, baseY - stepH[i] / 2 + 2); g.textAlign = 'left'; g.textBaseline = 'alphabetic'; });
+    /* The rest, in two columns. */
+    const per = Math.ceil(rest.length / 2), rh = Math.min(36, Math.floor(380 / Math.max(1, per))), cw = (W - 120 - 36) / 2;
+    rest.forEach((r, k) => { const col = k < per ? 0 : 1, x = 60 + col * (cw + 36), y = 900 + (k % per) * rh;
+      g.fillStyle = T.line; g.fillRect(x, y + rh - 1, cw, 1);
+      g.fillStyle = T.muted; g.font = cond(700, Math.min(24, rh - 8)); g.fillText(String(r.pos), x, y + rh - 10);
+      g.fillStyle = r.color; g.fillRect(x + 42, y + 7, 6, rh - 14);
+      g.fillStyle = T.ink; g.font = cond(700, Math.min(24, rh - 8)); g.fillText(r.code, x + 58, y + rh - 10);
+      g.fillStyle = T.muted; g.font = bodyF(500, Math.min(18, rh - 12)); const nm = r.name; g.fillText(nm.length > 18 ? nm.slice(0, 17) + '…' : nm, x + 122, y + rh - 11);
+      g.fillStyle = T.ink; g.font = bodyF(600, Math.min(19, rh - 12)); g.textAlign = 'right'; g.fillText(r.value, x + cw, y + rh - 11); g.textAlign = 'left'; });
+    g.fillStyle = T.muted; g.font = bodyF(500, 17); g.fillText(sub, 60, H - 40); g.textAlign = 'right'; g.fillText(fmtDate(nowIso()), W - 60, H - 40); g.textAlign = 'left';
+  } else {
+    drawMark(g, 56, 52, T); g.fillStyle = T.line; g.fillRect(240, 50, 2, 34); g.fillStyle = T.ink; g.font = cond(700, 44); g.fillText(title, 262, 84);
+    g.font = cond(700, 34); const sw = g.measureText(stage).width + (key === 'race' ? 64 : 40); rr(g, W - 56 - sw, 44, sw, 52, 26); g.fillStyle = T.panel; g.fill();
+    if (key === 'race') { g.beginPath(); g.arc(W - 56 - sw + 28, 70, 8, 0, Math.PI * 2); g.fillStyle = '#E10600'; g.fill(); }
+    g.fillStyle = T.ink; g.fillText(stage, W - 56 - sw + (key === 'race' ? 46 : 20), 82);
+    /* Three cards, stacked. */
+    const cx = 56, cw = W - 56 - 640 - 36 - 56, ch = 270, gap = 18;
+    top.forEach((r, i) => { const y = 126 + i * (ch + gap);
+      rr(g, cx, y, cw, ch, 14); g.fillStyle = T.panel; g.fill();
+      g.save(); rr(g, cx, y, cw, ch, 14); g.clip(); g.fillStyle = r.color; g.fillRect(cx, y, 180, ch); g.restore();
+      g.fillStyle = '#FFFFFF'; g.shadowColor = 'rgba(0,0,0,0.35)'; g.shadowBlur = 10; g.font = cond(700, 150); g.textAlign = 'center'; g.fillText(String(r.pos), cx + 90, y + ch / 2 + 52); g.shadowBlur = 0; g.textAlign = 'left';
+      drawPhoto(g, imgs[i], cx + 206, y + 24, 210, ch - 48, 10, r, T);
+      g.fillStyle = T.muted; g.font = cond(600, 28); g.fillText(r.team + (r.num ? `  #${r.num}` : ''), cx + 446, y + 76);
+      g.fillStyle = T.ink; fitText(g, r.name, s => cond(700, s), 76, cw - 446 - 300); g.fillText(r.name, cx + 446, y + 146);
+      if (r.tyre) { tyreDot(g, cx + 462, y + 196, 16, r.tyre, T); g.fillStyle = T.muted; g.font = bodyF(500, 22); g.fillText(`${RaceEngine.COMPOUNDS[r.tyre].label}s, ${r.age} laps old`, cx + 490, y + 204); }
+      g.fillStyle = T.ink; g.font = cond(700, 66); g.textAlign = 'right'; g.fillText(r.value, cx + cw - 36, y + 150);
+      g.fillStyle = T.muted; g.font = bodyF(500, 20); g.fillText(i === 0 ? (race ? (key === 'result' ? 'Race time' : 'Leading') : 'Fastest') : (race ? 'To the leader' : 'To the fastest'), cx + cw - 36, y + 186); g.textAlign = 'left'; });
+    /* The timing tower. */
+    const tx = W - 56 - 640, ty = 126, th = H - 126 - 48; rr(g, tx, ty, 640, th, 14); g.fillStyle = T.panel; g.fill();
+    const rh = Math.min(42, Math.floor((th - 70) / Math.max(1, rest.length)));
+    g.fillStyle = T.muted; g.font = bodyF(500, 17); g.fillText('Pos', tx + 22, ty + 38); g.fillText('Driver', tx + 104, ty + 38); g.textAlign = 'right'; g.fillText('Gap', tx + 560, ty + 38); g.textAlign = 'left'; if (race) g.fillText('Tyre', tx + 584, ty + 38);
+    rest.forEach((r, k) => { const y = ty + 56 + k * rh;
+      g.fillStyle = T.line; g.fillRect(tx + 22, y + rh - 1, 596, 1);
+      g.fillStyle = T.muted; g.font = cond(700, Math.min(26, rh - 10)); g.fillText(String(r.pos), tx + 22, y + rh - 11);
+      g.fillStyle = r.color; g.fillRect(tx + 76, y + 8, 7, rh - 16);
+      g.fillStyle = T.ink; g.font = cond(700, Math.min(28, rh - 10)); g.fillText(r.code, tx + 104, y + rh - 11);
+      g.fillStyle = T.muted; g.font = bodyF(500, Math.min(19, rh - 14)); const nm = r.team; g.fillText(nm.length > 16 ? nm.slice(0, 15) + '…' : nm, tx + 190, y + rh - 12);
+      g.fillStyle = T.ink; g.font = bodyF(600, Math.min(21, rh - 14)); g.textAlign = 'right'; g.fillText(r.value, tx + 560, y + rh - 12); g.textAlign = 'left';
+      if (r.tyre) tyreDot(g, tx + 600, y + rh / 2, Math.min(13, rh / 3), r.tyre, T); });
+  }
+  return new Promise(ok => cv.toBlob(ok, 'image/png'));
+}
+
+/* ---------------------------------------------------------------- the export drawer */
+ACTIONS['tx-open'] = d => {
+  const w = get('f1_weekends', d.id) || F1.live(); if (!w) return;
+  const st = exportStages(w); if (!st.length) { toast('Nothing to export yet: run a session first.', true); return; }
+  S.ui.tx = { wid: w.id, key: st[st.length - 1][0], format: 'podium', theme: 'dark', url: null, blob: null }; openDrawer('tx'); txRefresh();
+};
+async function txRefresh() {
+  const x = S.ui.tx; if (!x) return; const w = get('f1_weekends', x.wid); if (!w) return;
+  const blob = await drawTiming(w, x.key, x.format, x.theme); if (S.ui.tx !== x) return;
+  if (x.url) URL.revokeObjectURL(x.url); x.blob = blob; x.url = URL.createObjectURL(blob); renderOverlay();
+}
+CHANGES['tx-set'] = (v, d) => { const x = S.ui.tx; if (!x) return; x[d.field] = v; x.url = null; renderOverlay(); txRefresh(); };
+DRAWERS.tx = function () {
+  const x = S.ui.tx || {}, w = get('f1_weekends', x.wid); if (!w) return '';
+  const t = get('f1_tracks', w.trackId) || {}, opt = (field, list2) => `<select id="tx-${field}" data-change="tx-set" data-field="${field}">${list2.map(([k, l]) => `<option value="${k}" ${x[field] === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+  return `<header><div><h2>Export timing</h2><p>${esc(t.name || '')}${w.session === 'sprint' ? ' sprint' : ''}. Download it, or post it to Discord.</p></div><button class="btn ghost" data-act="close-drawer">Close</button></header>
+    <div class="body"><div class="form-grid">
+      <label class="field">Stage${opt('key', exportStages(w))}</label>
+      <label class="field">Format${opt('format', EXPORT_FORMATS)}</label>
+      <label class="field">Look${opt('theme', [['dark', 'Dark'], ['light', 'Light']])}</label></div>
+    ${x.url ? `<img class="card-preview tx-preview" src="${x.url}" alt="The timing sheet image">` : '<p class="muted">Drawing the timing sheet…</p>'}
+    <div class="btn-row"><button class="btn primary" data-act="tx-download" ${x.url ? '' : 'disabled'}>Download</button>${S.isGm ? `<button class="btn" data-act="tx-discord" ${x.url ? '' : 'disabled'}>Post to Discord</button>` : ''}</div></div>`;
+};
+ACTIONS['tx-download'] = () => { const x = S.ui.tx; if (!x || !x.url) return; const w = get('f1_weekends', x.wid), a = document.createElement('a'); a.href = x.url; a.download = `${w.trackId}-${x.key}-${x.format}.png`; document.body.appendChild(a); a.click(); a.remove(); };
+ACTIONS['tx-discord'] = () => { const x = S.ui.tx; if (!x || !x.blob) return; const w = get('f1_weekends', x.wid), t = get('f1_tracks', w.trackId) || {}, stage = (exportStages(w).find(s => s[0] === x.key) || ['', ''])[1];
+  run(async () => { const api = await window.claude.use('discord'); await api.post({ channel: 'results', payload: { content: `**${t.name || ''}${w.session === 'sprint' ? ' sprint' : ''}: ${stage}**` }, file: { blob: x.blob, name: `${w.trackId}-${x.key}.png` } }); await Data.audit('discord.timing', `${t.name}: ${stage} timing posted to Discord`); }, 'Posted to Discord.'); };
+function exportButtonHtml(w) { return w && exportStages(w).length ? `<button class="btn small" data-act="tx-open" data-id="${esc(w.id)}">Export timing</button>` : ''; }
+
+/* The button sits beside the stage strip on every weekend page. */
+const _lvStagesTx = lvStagesHtml;
+lvStagesHtml = function (w) { const h = _lvStagesTx(w), b = exportButtonHtml(w); return b ? `<div class="stages-row">${h}${b}</div>` : h; };
 
 /* =====================================================================
    F1 SIM — Home, Paddock, Race Control desk, accounts and backups.
