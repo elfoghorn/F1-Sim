@@ -25,6 +25,24 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v0.14.0: development points by races, and team development
+
+11 November 2026. Build `f1sim-0.14.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Driver development points | Now earned from races, not results: **1 point for every 4 Grands Prix started** (sprints don't count). |
+| Season cap | Each season of a series has a cap of 1 point per 4 rounds on its calendar: 5 in Formula 1's 23 rounds, 3 in Formula 2's 13. A driver racing in two series earns in each. |
+| Years of experience | Still scale the points: ×1.5 for 1 to 2 years, ×0.75 for 7 years or more. |
+| Unspent points | Carry on to the next season; only the earning is capped. |
+| Driver panel | Shows the points to spend, this season's Grands Prix, how many of the season's points are earned, and how many more races to the next. |
+| Team development points | Each team earns **2 points for every 4 Grands Prix** of the season. The team principal spends them in Team HQ, a point at a time: overall pace +0.3, top speed +0.5, cornering +0.5, reliability +1.5, kindness to tyres +1.5 or pit crew +1.5. Not during a race weekend. |
+| Teams without a player | Put their points into pace by themselves. |
+| Season reset | Team points and what they bought reset each season. How much of the car's development carries over is still the "car development carried over" choice when Race Control starts the new season. |
+| Spec series | Formula 2, Formula 3 and custom series built on their rules have no team development. |
+
+---
+
 ## v0.13.0: Characters
 
 11 November 2026. Build `f1sim-0.13.0`. **No database update.**
