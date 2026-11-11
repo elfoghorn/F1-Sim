@@ -1,0 +1,42 @@
+# Publishes the site/ folder to GitHub Pages whenever it changes.
+# One-time set-up: repository Settings → Pages → Source: GitHub Actions.
+name: Publish site
+
+on:
+  push:
+    branches: [main]
+    paths: ['site/**', '.github/workflows/publish-site.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Check the site is connected to Supabase
+        run: |
+          if grep -q "YOUR-PROJECT-REF\|sb_publishable_YOUR-KEY" site/config.js; then
+            echo "::warning title=Not connected yet::site/config.js still has the placeholder values. The site will publish, but show 'Almost there' until you add your Supabase Project URL and publishable key."
+          fi
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

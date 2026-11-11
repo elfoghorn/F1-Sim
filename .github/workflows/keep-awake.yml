@@ -1,0 +1,24 @@
+# Free Supabase projects pause after 7 days without activity. This pings the database every three days.
+# GitHub switches scheduled workflows off after 60 days without commits to the repository; it emails you
+# first, and one click re-enables it (Actions tab → Keep database awake → Enable workflow).
+name: Keep database awake
+
+on:
+  schedule:
+    - cron: '23 6 */3 * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Ping Supabase
+        run: |
+          URL=$(grep -oE "supabaseUrl: *'[^']+'" site/config.js | sed -E "s/.*'([^']+)'/\1/")
+          KEY=$(grep -oE "publishableKey: *'[^']+'" site/config.js | sed -E "s/.*'([^']+)'/\1/")
+          if echo "$URL" | grep -q YOUR-PROJECT-REF; then echo "site/config.js isn't filled in yet; nothing to ping."; exit 0; fi
+          code=$(curl -sS -o /tmp/out -w '%{http_code}' -X POST "$URL/rest/v1/rpc/keepalive" -H "apikey: $KEY" -H "Content-Type: application/json" -d '{}')
+          echo "Supabase answered $code: $(cat /tmp/out)"
+          [ "$code" = "200" ]

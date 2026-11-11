@@ -1,0 +1,3 @@
+# Private campaign site: not for search engines.
+User-agent: *
+Disallow: /

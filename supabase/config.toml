@@ -1,0 +1,2 @@
+# Supabase CLI settings for this repository. The database itself is configured by supabase/migrations/.
+project_id = "f1-sim"

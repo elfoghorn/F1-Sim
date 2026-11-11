@@ -1,8 +1,9 @@
-.env
-models/
-data/openf1_cache/
-__pycache__/
-*.pkl
-*.pyc
-node_modules/
+# League backups stay off GitHub: they hold your players' characters and stories.
+*.backup.json
+f1-sim-backup-*.json
 .DS_Store
+Thumbs.db
+supabase/.temp/
+supabase/.branches/
+
+.wrangler/

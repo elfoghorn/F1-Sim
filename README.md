@@ -1,159 +1,41 @@
-# F1 SIM 2027
+# F1 SIM
 
-A Formula 1 season simulator for the 2027 calendar. Runs fully in the browser as a single HTML file — no install, no build step, no backend required for basic use.
+A multiplayer Formula 1 league. Today's real grid is the starting point; players' characters take seats as drivers, team principals and race engineers, in place of the real people. Race weekends are simulated lap by lap, and anyone holding a seat can make calls from their pit wall. Media and everyone else write for the Paddock.
 
-**Live features:** Q1/Q2/Q3 qualifying, 6 sprint weekends, championship tracker, driver/team editing, Croft & Brundle style AI commentary, multi-sim statistical analysis, and a pre-season testing mode.
+**To set it up, follow [SETUP.md](SETUP.md).**
 
----
+## What's in it
 
-## Running the app
+- **The Grid**: 11 teams, five seats each (team principal, two drivers, two race engineers). Race Control puts characters into seats or opens seats for applications.
+- **Race Weekend**: practice (teams send set-ups), qualifying, then the race, run by Race Control a lap, five laps or the whole race at a time. Pit walls: driving mode, pit stops and tyres, team orders, and drivers refusing them.
+- **Championship**: drivers' and constructors' standings. Points go to whoever drove the car that weekend.
+- **Paddock**: news and interviews from the media, and paddock life from everyone else, with press notes from the latest race.
+- **Your characters**: players make as many as they like and play one at a time.
+- **Race Control**: seat applications, every character in the league, car tuning and an audit record. The Administrator also manages accounts, the invite code and backups.
 
-**Easiest — open locally:**  
-Double-click `index.html`. No server needed.
-
-**Deploy to GitHub Pages:**
-1. Push `index.html` to any public GitHub repository
-2. Go to **Settings → Pages → Deploy from branch** and select `main / (root)`
-3. Your app is live at `https://YOUR_USERNAME.github.io/REPO_NAME/` within ~2 minutes
-
-The app is also installable as a PWA — look for the install icon in Chrome/Edge/Opera when served over HTTPS.
-
----
-
-## Access PIN
-
-The app opens behind a 4-digit PIN gate.
-
-**Default PIN: `2027`**
-
-To change it, find this constant near the top of the `<script>` block in `index.html` and replace the encoded value:
-
-```js
-const F1_PIN_ENC = '70727075'; // XOR(0x42) of "2027"
-```
-
-Encode a new PIN in the browser console:
-
-```js
-'1234'.split('').map(c => (c.charCodeAt(0) ^ 0x42).toString(16).padStart(2, '0')).join('')
-```
-
----
-
-## AI Commentary
-
-Race and qualifying sessions generate lap-by-lap Croft & Brundle style commentary using the Anthropic API.
-
-1. Get an API key from [console.anthropic.com](https://console.anthropic.com) (starts with `sk-ant-...`)
-2. In the app, go to **Commentary** and paste the key into the field
-3. Click **Save Key** — it is stored in `localStorage` only, never transmitted anywhere except `api.anthropic.com`
-
----
-
-## Community Model (optional)
-
-The simulator optionally blends its built-in Monte Carlo probabilities with a community-trained LightGBM model. When enabled, anonymised simulation results are submitted to a Supabase backend and the model's predicted win/podium weights are pulled down and blended into the next simulation.
-
-Setup instructions are in [COMMUNITY_MODEL_SETUP.md](COMMUNITY_MODEL_SETUP.md).
-
----
-
-## Development
-
-The source for the entire app is [`f1_simulator.jsx`](f1_simulator.jsx). The compiled, minified output is `index.html`. You only need to touch `f1_simulator.jsx` — the build pipeline handles everything else.
-
-**Prerequisites:** Node.js 18+, `npm install` once.
-
-```bash
-make build       # compile JSX → minify → patch into index.html
-make serve       # build + serve locally at http://localhost:8080
-make watch       # rebuild automatically when f1_simulator.jsx changes
-```
-
----
-
-## ML Pipeline
-
-The `f1sim_ml/` Python package trains a three-booster LightGBM model on community simulation data. It predicts win probability, podium probability, and whether the simulator's top-1 pick was correct, per driver per circuit.
-
-**Prerequisites:** Python 3.10+, `make install` once.
-
-```bash
-make install     # pip install f1sim_ml/requirements.txt
-make train       # load from Supabase → feature engineering → train → save model
-make export      # run inference across all 24 circuits → push weights to Supabase
-make check       # print calibration status and drift report
-make all         # train → export → build → deploy (full pipeline)
-```
-
-You can also use the package directly:
-
-```python
-from f1sim_ml import train_pipeline, predict_race, export_to_js
-
-model = train_pipeline()                          # train and save
-preds = predict_race(circuit_id="monaco")         # predict for one circuit
-export_to_js(model)                               # push all predictions to Supabase
-```
-
-Run `python -m f1sim_ml.run_example` for a self-contained demo using synthetic data (no Supabase credentials required).
-
----
-
-## Environment variables
-
-Copy `.env.example` to `.env` and fill in your values. For CI, add these as GitHub Actions secrets under **Settings → Secrets and variables → Actions**.
-
-| Variable | Required | Description |
-|---|---|---|
-| `SUPABASE_URL` | Community model | Your Supabase project URL |
-| `SUPABASE_KEY` | Community model | Anon (publishable) key — safe in browser |
-| `SUPABASE_SECRET` | CI/retrain only | Service role key — never expose client-side |
-| `GITHUB_TOKEN` | Auto-deploy | PAT with `repo` + `pages` scope |
-
----
-
-## CI/CD
-
-| Workflow | Trigger | What it does |
-|---|---|---|
-| `deploy.yml` | Push to `main` | Publishes `index.html` to GitHub Pages |
-| `retrain.yml` | Weekly (Sunday 03:00 UTC), or manually, or on changes to `f1sim_ml/` | Runs the full ML pipeline and pushes updated weights to Supabase |
-
----
-
-## Project structure
+## What's in this repository
 
 ```
-f1_simulator.jsx          Source — edit this
-index.html                Compiled single-file PWA
-scripts/
-  build.js                JSX → esbuild → patch into index.html
-  deploy.sh               Git-push index.html to gh-pages branch
-f1sim_ml/
-  model.py                LightGBM wrapper (win, podium, correct boosters)
-  data.py                 Supabase loader + feature engineering
-  train.py                Training pipeline with GroupKFold validation
-  predict.py              Per-circuit race prediction
-  export.py               Batch inference → push to Supabase
-  calibrate.py            Accuracy tracking + drift detection
-  openf1.py               OpenF1 API client for real-season calibration
-  run_example.py          End-to-end demo (synthetic data, no credentials)
-supabase_schema.sql       Database schema for the three community tables
-Makefile                  Unified entry point for all build/train/deploy tasks
-.env.example              Environment variable template
+site/                     the website (published by Cloudflare: output directory "site")
+  index.html              page and styles
+  app.js                  the app: race engine, Formula Racing V3.0 adapter, the league
+  bridge.js               connects the app to Supabase: sign-in, data, live updates, images, downloads, Discord
+  config.js               YOUR Supabase Project URL and publishable key (the only file you edit)
+  manifest.webmanifest, sw.js, icon-*.png   installable on phones
+  _headers, robots.txt    keep it out of search engines; no referrer leaks
+functions/api/discord.js  Discord relay for posting race results (optional, see SETUP.md)
+wrangler.jsonc, worker/   the same relay when the site runs as a Cloudflare Worker
+supabase/migrations/      database set-up, applied automatically by GitHub Actions
+.github/workflows/        database set-up, keep-awake, optional GitHub Pages
 ```
 
----
+## How it fits together
 
-## Tech
+- **Cloudflare** serves the site from this **private** repository. Free, unlimited bandwidth.
+- **Supabase** holds the database, accounts and uploaded images (free plan: 500 MB database, 1 GB images).
+- **GitHub Actions** sets up the database and keeps it awake, using three repository secrets.
+- **Accounts** are usernames only, with an optional invite code. No email or personal data is collected.
 
-| Layer | Technology |
-|---|---|
-| UI | React 19 (CDN), Babel Standalone (in-browser JSX transpilation) |
-| Commentary | Anthropic API — claude-sonnet-4 |
-| Community backend | Supabase (PostgreSQL + REST API) |
-| ML model | LightGBM, scikit-learn, pandas |
-| Real F1 data | OpenF1 API (for driver stat calibration) |
-| Build | esbuild (minify + mangle), Node.js |
-| Hosting | GitHub Pages |
+## Updating
+
+Replace the changed files, commit and push. Keep your `site/config.js`.
