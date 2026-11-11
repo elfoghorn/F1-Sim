@@ -25,6 +25,20 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v0.20.0: calendar and championship exports
+
+11 November 2026. Build `f1sim-0.20.0`. **No database update.** Optional: two new Discord webhook secrets (SETUP.md, Discord).
+
+| Area | What it does |
+| --- | --- |
+| Calendar export | "Export calendar" on the Calendar page: an image of every round in two columns, with dates, each finished round's winner (in team colour), the next round or the one on now in red, sprint weekends marked, and testing at the top. |
+| Championship exports | "Export standings" on the Championship page. Drivers: the top three as cards with points and the gap to the leader (player portraits included), everyone else below with points. Constructors: each team's points as a bar in team colours, with its engine and wins. Both: a widescreen image with drivers and constructors side by side. |
+| Look | Carbon or light, as for timing exports. |
+| Sharing | Anyone can download the image. Race Control can post it to Discord, choosing a channel or leaving it on automatic. |
+| Discord channels | Two new optional webhooks: `DISCORD_WEBHOOK_CALENDAR` and `DISCORD_WEBHOOK_STANDINGS` (per series too, such as `DISCORD_WEBHOOK_F2_STANDINGS`). Without them, posts go to the default channel. The Race Control page lists them. |
+
+---
+
 ## v0.19.0: engine eras and engine makers
 
 11 November 2026. Build `f1sim-0.19.0`. **No database update.**

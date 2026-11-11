@@ -1,4 +1,4 @@
-/* F1 SIM v0.19.0 (build f1sim-0.19.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v0.20.0 (build f1sim-0.20.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -1593,7 +1593,7 @@ function f1Standings() {
 }
 route('standings', 'Championship', function () {
   const s = f1Standings(), races = F1.weekends().filter(w => w.status === 'finished' && w.session === 'gp').length;
-  const head = `<div class="page-head"><div><h1>Championship</h1><p>${esc(curSeries().name)}, ${esc(curSeason().name)} season. ${races ? `After ${races} Grand Prix${races === 1 ? '' : ' weekends'}${F1.weekends().some(w => w.status === 'finished' && w.session === 'sprint') ? ' and the sprints' : ''}. Points go to whoever drove the car that weekend.` : 'No races yet. Standings appear after the first chequered flag.'}</p></div></div>`;
+  const head = `<div class="page-head"><div><h1>Championship</h1><p>${esc(curSeries().name)}, ${esc(curSeason().name)} season. ${races ? `After ${races} Grand Prix${races === 1 ? '' : ' weekends'}${F1.weekends().some(w => w.status === 'finished' && w.session === 'sprint') ? ' and the sprints' : ''}. Points go to whoever drove the car that weekend.` : 'No races yet. Standings appear after the first chequered flag.'}</p></div>${s.drivers.length ? '<div class="btn-row"><button class="btn" data-act="share-open" data-kind="drivers">Export standings</button></div>' : ''}</div>`;
   if (!s.drivers.length) return head;
   return head + `<div class="cols2" style="align-items:start"><section class="card"><h2>Drivers</h2><div class="scroll-x"><table class="data"><thead><tr><th>Pos</th><th>Driver</th><th>Team</th><th class="num">Wins</th><th class="num">Podiums</th><th class="num">Points</th></tr></thead><tbody>${s.drivers.map((d, i) =>
       `<tr${S.charId && d.charId === S.charId ? ' class="me"' : ''}><td><b>${i + 1}</b></td><td>${careerLink(d.personId, d.name)}${d.charId ? ' <span class="tag player">Player</span>' : ''}</td><td><span class="f1-bar" style="background:${esc(f1Colour(d.teamId))}"></span>${esc(F1.team(d.teamId).name)}</td><td class="num">${d.wins}</td><td class="num">${d.podiums}</td><td class="num"><b>${d.pts}</b></td></tr>`).join('')}</tbody></table></div></section>
@@ -4718,7 +4718,9 @@ const DISCORD_PURPOSES = [
   ['results', 'Race results and result exports', 'DISCORD_WEBHOOK_RESULTS'],
   ['timing', 'Practice, qualifying and live timing exports', 'DISCORD_WEBHOOK_TIMING'],
   ['announcements', 'Race Control announcements', 'DISCORD_WEBHOOK_ANNOUNCEMENTS'],
-  ['cards', 'Driver cards (signings, poles, wins, Driver of the Day)', 'DISCORD_WEBHOOK_CARDS']
+  ['cards', 'Driver cards (signings, poles, wins, Driver of the Day)', 'DISCORD_WEBHOOK_CARDS'],
+  ['calendar', 'The season calendar', 'DISCORD_WEBHOOK_CALENDAR'],
+  ['standings', 'Championship standings', 'DISCORD_WEBHOOK_STANDINGS']
 ];
 async function discordChannels(force) {
   if (S.discordCh && !force) return S.discordCh;
@@ -4852,7 +4854,7 @@ route('calendar', 'Calendar', function () {
       <h2>${esc(t.flag || '')} Pre-season testing</h2><p class="muted small">${esc(t.circuit || t.name || '')}. ${plural(endedSessions(w).length, 'day')} run.</p>
       <div class="btn-row"><button class="btn small ${w.status === 'finished' ? 'primary' : ''}" data-act="cal-open" data-id="${esc(w.id)}">${w.status === 'finished' ? 'See the timesheets' : 'Go to testing'}</button></div></article>`; }).join('');
   return `<div class="page-head"><div><p class="eyebrow">${esc(s.name)}, ${esc(season.name)} season</p><h1>Calendar</h1><p>${done} of ${plural(tracks.length, 'round')} done. Pick a round to see what happened.</p></div>
-      <div class="btn-row"><div class="seg" role="tablist" aria-label="Show">${[['all', 'All rounds'], ['done', 'Done'], ['tocome', 'To come']].map(([k, l]) => `<button role="tab" aria-selected="${filter === k}" data-act="cal-filter" data-f="${k}">${l}</button>`).join('')}</div>
+      <div class="btn-row"><button class="btn" data-act="share-open" data-kind="calendar">Export calendar</button><div class="seg" role="tablist" aria-label="Show">${[['all', 'All rounds'], ['done', 'Done'], ['tocome', 'To come']].map(([k, l]) => `<button role="tab" aria-selected="${filter === k}" data-act="cal-filter" data-f="${k}">${l}</button>`).join('')}</div>
       ${S.isGm ? (edit ? '<button class="btn primary" data-act="cal-dates-save">Save the dates</button><button class="btn" data-act="cal-edit">Cancel</button>' : '<button class="btn" data-act="cal-edit">Set dates</button>') : ''}</div></div>
     <div class="cal-grid">${filter !== 'done' || tests.some(w => w.status === 'finished') ? testCards : ''}${cards || '<div class="empty">Nothing here yet.</div>'}</div>`;
 });
@@ -5086,6 +5088,138 @@ function engineCardHtml() {
     ${rc ? `<details><summary>Move a team to another maker</summary><div class="form-grid">${teams.map(t => `<label class="field small">${esc(t.name)}<select data-bind="ui/form/eng/t/${esc(t.id)}">${makers.concat(['Mercedes', 'Ferrari', 'Honda', 'Red Bull Ford', 'Audi'].filter(x => makers.indexOf(x) === -1 && s.development)).map(n => `<option ${((ef.t[t.id]) || supplierOf(t.id, cfg)) === n ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>`).join('')}</div></details>
       <div class="btn-row"><button class="btn primary" data-act="engine-save">Save the engine rules</button><button class="btn" data-act="engine-reshuffle">Reshuffle the makers</button></div>` : ''}</section>`;
 }
+
+/* =====================================================================
+   F1 SIM — calendar and championship exports.
+   Images for Discord in the Carbon look (or light): the season's
+   calendar (every round, dates, winners, what's next), the drivers'
+   championship (top three as cards, the rest below), the constructors'
+   championship (points as bars in team colours), or both championships
+   side by side (widescreen). Anyone can download; Race Control can post
+   to Discord (DISCORD_WEBHOOK_CALENDAR / DISCORD_WEBHOOK_STANDINGS,
+   falling back to the default channel).
+   ===================================================================== */
+'use strict';
+
+const SHARE_KINDS = [['calendar', 'Calendar'], ['drivers', 'Drivers’ championship'], ['teams', 'Constructors’ championship'], ['both', 'Both championships (widescreen)']];
+const slantBar = (g, x, y, w, h, col) => { g.fillStyle = col; g.beginPath(); g.moveTo(x + h, y); g.lineTo(x + w, y); g.lineTo(x + w - h, y + h); g.lineTo(x, y + h); g.closePath(); g.fill(); };
+const codeOf = d => (F1.person(d.personId) || {}).abbr || initials(d.name);
+function roundsDone() { return F1.weekends().filter(w => w.status === 'finished' && w.session === 'gp').length; }
+function shareHeader(g, W, T, logo, title, sub) {
+  drawMark(g, 60, 56, T, logo);
+  g.font = cond(600, 24); g.fillStyle = T.muted; g.textAlign = 'right'; g.fillText(curSeries().name, W - 60, 80); g.textAlign = 'left';
+  g.fillStyle = T.ink; fitText(g, title, s => cond(700, s), 92, W - 120); g.fillText(title, 58, 200);
+  slantBar(g, 62, 222, 90, 8, '#E10600');
+  g.font = bodyF(500, 24); g.fillStyle = T.muted; g.fillText(sub, 60, 268);
+}
+function drawCalendar(g, W, H, T) {
+  const s = curSeries(), tracks = F1.tracks(), ws = F1.weekends(), dates = s.dates || {};
+  const gpOf = id => ws.find(w => w.trackId === id && w.session === 'gp'), live = id => ws.some(w => w.trackId === id && w.session !== 'test' && w.status !== 'finished');
+  const nextId = (tracks.find(t => !(gpOf(t.id) && gpOf(t.id).status === 'finished') && !live(t.id)) || {}).id;
+  const items = ws.filter(w => w.session === 'test').map(w => ({ test: true, w, t: get('f1_tracks', w.trackId) || {} })).concat(tracks.map(t => ({ t })));
+  const per = Math.ceil(items.length / 2), top = 300, rh = Math.min(92, Math.floor((H - top - 70) / Math.max(1, per))), cw = (W - 120 - 24) / 2;
+  items.forEach((it, i) => {
+    const col = i < per ? 0 : 1, x = 60 + col * (cw + 24), y = top + (i % per) * rh, h = rh - 8, t = it.t;
+    const gp = !it.test && gpOf(t.id), done = it.test ? it.w.status === 'finished' : gp && gp.status === 'finished', isLive = it.test ? it.w.status !== 'finished' : live(t.id), isNext = !it.test && t.id === nextId;
+    const win = done && !it.test ? (gp.results || [])[0] : null;
+    rr(g, x, y, cw, h, 4); g.fillStyle = isNext ? (T.bg === '#E6E9EC' ? '#FDECEC' : '#3A1D20') : T.panel; g.fill();
+    g.fillStyle = win ? f1Colour(win.teamId) : isNext || isLive ? '#E10600' : T.line; g.fillRect(x, y, 6, h);
+    const fs = Math.min(28, Math.round(h * 0.34));
+    g.font = cond(700, Math.round(fs * 0.7)); g.fillStyle = T.muted; g.fillText(it.test ? 'Testing' : `R${t.round}`, x + 20, y + h * 0.42);
+    const nameX = x + 20 + (it.test ? 96 : 52);
+    g.fillStyle = done ? T.muted : T.ink; g.font = cond(700, fs); const nm = `${t.flag || ''} ${it.test ? 'Pre-season testing' : t.name}`; fitText(g, nm, z => cond(700, z), fs, cw - (nameX - x) - 120); g.fillText(nm, nameX, y + h * 0.44);
+    const date = it.test ? '' : dates[t.id] ? fmtDay(dates[t.id]) : '';
+    g.font = bodyF(600, Math.round(fs * 0.62)); g.textAlign = 'right'; g.fillStyle = T.muted; if (date) g.fillText(date, x + cw - 16, y + h * 0.42);
+    let line2 = '', c2 = T.muted;
+    if (win) { line2 = `Winner: ${win.name}`; c2 = T.ink; } else if (isLive) { line2 = 'On now'; c2 = T.bg === '#E6E9EC' ? '#B80500' : '#FF6B63'; } else if (isNext) { line2 = 'Next'; c2 = T.bg === '#E6E9EC' ? '#B80500' : '#FF6B63'; } else if (done && it.test) line2 = 'Done';
+    g.textAlign = 'left'; g.font = bodyF(600, Math.round(fs * 0.62)); g.fillStyle = c2; g.fillText(line2 || (t.circuit || ''), nameX, y + h * 0.8);
+    if (!it.test && t.hasSprint && s.id === 'f1') { g.textAlign = 'right'; g.fillStyle = T.muted; g.font = bodyF(600, Math.round(fs * 0.55)); g.fillText('Sprint', x + cw - 16, y + h * 0.8); g.textAlign = 'left'; }
+  });
+}
+async function drawDrivers(g, W, H, T, rows, top3imgs) {
+  const lead = rows[0] ? rows[0].pts : 0, colW = (W - 120 - 36) / 3, cy = 300, ch = 330;
+  rows.slice(0, 3).forEach((d, i) => { const x = 60 + i * (colW + 18);
+    rr(g, x, cy, colW, ch, 6); g.fillStyle = T.panel; g.fill(); g.fillStyle = f1Colour(d.teamId); g.fillRect(x, cy, colW, 8);
+    drawPhoto(g, top3imgs[i], x + 14, cy + 22, 110, 130, 6, d, T);
+    g.fillStyle = i === 0 ? '#E10600' : T.muted; g.font = cond(700, 96); g.textAlign = 'right'; g.fillText(`P${i + 1}`, x + colW - 14, cy + 112); g.textAlign = 'left';
+    g.fillStyle = T.ink; fitText(g, d.name, z => cond(700, z), 32, colW - 28); g.fillText(d.name, x + 14, cy + 196);
+    g.font = bodyF(500, 18); g.fillStyle = T.muted; g.fillText(F1.team(d.teamId).name || '', x + 14, cy + 224);
+    g.fillStyle = T.ink; g.font = cond(700, 64); g.fillText(String(d.pts), x + 14, cy + 300); const pw = g.measureText(String(d.pts)).width;
+    g.font = bodyF(600, 20); g.fillStyle = T.muted; g.fillText(i ? `pts, −${lead - d.pts}` : 'pts', x + 22 + pw, cy + 300);
+  });
+  const rest = rows.slice(3), per = Math.ceil(rest.length / 2), rh = Math.min(40, Math.floor((H - 690 - 60) / Math.max(1, per))), cw = (W - 120 - 36) / 2;
+  rest.forEach((d, k) => { const col = k < per ? 0 : 1, x = 60 + col * (cw + 36), y = 680 + (k % per) * rh, fs = Math.min(24, rh - 10);
+    g.fillStyle = T.line; g.fillRect(x, y + rh - 1, cw, 1);
+    g.fillStyle = T.muted; g.font = cond(700, fs); g.fillText(String(k + 4), x, y + rh - 11);
+    g.fillStyle = f1Colour(d.teamId); g.fillRect(x + 42, y + 8, 6, rh - 16);
+    g.fillStyle = T.ink; g.font = cond(700, fs); g.fillText(codeOf(d), x + 58, y + rh - 11);
+    g.fillStyle = T.muted; g.font = bodyF(500, Math.min(18, rh - 14)); const nm = d.name.length > 18 ? d.name.slice(0, 17) + '…' : d.name; g.fillText(nm, x + 122, y + rh - 12);
+    g.fillStyle = T.ink; g.font = cond(700, fs); g.textAlign = 'right'; g.fillText(`${d.pts}`, x + cw, y + rh - 11); g.textAlign = 'left'; });
+}
+function drawTeams(g, x0, y0, w, h, T, rows) {
+  const lead = Math.max(1, rows[0] ? rows[0].pts : 1), rh = Math.min(84, Math.floor(h / Math.max(1, rows.length)));
+  rows.forEach((t, i) => { const y = y0 + i * rh, team = F1.team(t.teamId), fs = Math.min(28, Math.round(rh * 0.36));
+    g.fillStyle = i === 0 ? '#E10600' : T.muted; g.font = cond(700, fs + 4); g.fillText(String(i + 1), x0, y + rh * 0.62);
+    const ny = y + rh * 0.36;
+    g.fillStyle = T.ink; g.font = cond(700, fs); g.fillText(team.name || t.teamId, x0 + 52, ny);
+    g.fillStyle = T.muted; g.font = bodyF(500, Math.round(fs * 0.6)); g.fillText(`${engineLabel(t.teamId)}${t.wins ? `, ${plural(t.wins, 'win')}` : ''}`, x0 + 52, ny + fs * 0.8);
+    const bx = x0 + 52, bw = w - 52 - 110, bh = Math.max(6, Math.round(rh * 0.12)), by = ny + fs * 1.15;
+    g.fillStyle = T.line; g.fillRect(bx, by, bw, bh); g.fillStyle = f1Colour(t.teamId); g.fillRect(bx, by, Math.max(2, bw * t.pts / lead), bh);
+    g.fillStyle = T.ink; g.font = cond(700, fs + 6); g.textAlign = 'right'; g.fillText(String(t.pts), x0 + w, y + rh * 0.62); g.textAlign = 'left'; });
+}
+async function drawShare(kind, theme) {
+  const T = EXP_THEMES[theme] || EXP_THEMES.dark, st = f1Standings(), done = roundsDone(), total = F1.tracks().length, season = curSeason();
+  try { await Promise.all(['700 100px "Titillium Web"', '600 30px "Titillium Web"'].map(f => document.fonts.load(f))); } catch (e) { /* fall back */ }
+  const logo = await loadImg(leagueLogo()), wide = kind === 'both', W = wide ? 1920 : 1080, H = wide ? 1080 : 1350, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d'); g.fillStyle = T.bg; g.fillRect(0, 0, W, H);
+  const after = done ? `After ${done} of ${plural(total, 'round')}.` : 'Before the first round.';
+  if (kind === 'calendar') { shareHeader(g, W, T, logo, `${season.name} calendar`, `${plural(total, 'round')}${done ? `, ${done} done` : ''}.`); drawCalendar(g, W, H, T); }
+  else if (kind === 'drivers') { shareHeader(g, W, T, logo, 'Drivers’ championship', `${season.name} season. ${after}`);
+    const imgs = await Promise.all(st.drivers.slice(0, 3).map(d => loadImg(d.charId ? (get('characters', d.charId) || {}).portraitUrl : null))); await drawDrivers(g, W, H, T, st.drivers, imgs); }
+  else if (kind === 'teams') { shareHeader(g, W, T, logo, 'Constructors’ championship', `${season.name} season. ${after}`); drawTeams(g, 60, 310, W - 120, H - 310 - 60, T, st.teams); }
+  else {
+    drawMark(g, 56, 52, T, logo); g.fillStyle = T.ink; g.font = cond(700, 64); g.fillText(`${season.name} championship`, 56, 160); slantBar(g, 60, 180, 90, 8, '#E10600');
+    g.font = bodyF(500, 24); g.fillStyle = T.muted; g.fillText(`${curSeries().name}. ${after}`, 56, 226);
+    const lx = 56, lw = 860, top = 270, rh = Math.min(36, Math.floor((H - top - 50) / Math.max(1, st.drivers.length)));
+    g.font = cond(700, 30); g.fillStyle = T.ink; g.fillText('Drivers', lx, top - 6); g.fillText('Constructors', 1000, top - 6);
+    st.drivers.forEach((d, i) => { const y = top + 8 + i * rh, fs = Math.min(22, rh - 10);
+      g.fillStyle = T.line; g.fillRect(lx, y + rh - 1, lw, 1); g.fillStyle = i === 0 ? '#E10600' : T.muted; g.font = cond(700, fs); g.fillText(String(i + 1), lx, y + rh - 10);
+      g.fillStyle = f1Colour(d.teamId); g.fillRect(lx + 44, y + 7, 6, rh - 14); g.fillStyle = T.ink; g.font = cond(700, fs); g.fillText(d.name, lx + 62, y + rh - 10);
+      g.fillStyle = T.muted; g.font = bodyF(500, Math.min(17, rh - 14)); g.fillText(F1.team(d.teamId).name || '', lx + 420, y + rh - 11);
+      g.fillStyle = T.ink; g.font = cond(700, fs); g.textAlign = 'right'; g.fillText(String(d.pts), lx + lw, y + rh - 10); g.textAlign = 'left'; });
+    drawTeams(g, 1000, top + 10, W - 1000 - 56, H - top - 60, T, st.teams);
+  }
+  g.fillStyle = T.muted; g.font = bodyF(500, 17); g.textAlign = 'right'; g.fillText(`Shared from F1 SIM, ${fmtDate(nowIso())}`, W - 60, H - 30); g.textAlign = 'left';
+  return new Promise(ok => cv.toBlob(ok, 'image/png'));
+}
+
+/* ---------------------------------------------------------------- the export panel */
+ACTIONS['share-open'] = d => {
+  if (d.kind !== 'calendar' && !f1Standings().drivers.length) { toast('No points yet: standings appear after the first race.', true); return; }
+  S.ui.sh = { kind: d.kind, theme: 'dark', url: null, blob: null, channel: '' }; openDrawer('sh'); shRefresh();
+  if (S.isGm) discordChannels().then(() => renderOverlay()).catch(() => {});
+};
+async function shRefresh() {
+  const x = S.ui.sh; if (!x) return; const blob = await drawShare(x.kind, x.theme); if (S.ui.sh !== x) return;
+  if (x.url) URL.revokeObjectURL(x.url); x.blob = blob; x.url = URL.createObjectURL(blob); renderOverlay();
+}
+CHANGES['sh-set'] = (v, d) => { const x = S.ui.sh; if (!x) return; x[d.field] = v; if (d.field === 'channel') { renderOverlay(); return; } x.url = null; x.posted = null; renderOverlay(); shRefresh(); };
+const sharePurpose = k => k === 'calendar' ? 'calendar' : 'standings';
+DRAWERS.sh = function () {
+  const x = S.ui.sh || {}, opt = (field, l) => `<select id="sh-${field}" data-change="sh-set" data-field="${field}">${l.map(([k, t]) => `<option value="${k}" ${x[field] === k ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
+  return `<header><div><h2>Export</h2><p>${esc(curSeries().name)}, ${esc(curSeason().name)} season. Download it, or post it to Discord.</p></div><button class="btn ghost" data-act="close-drawer">Close</button></header>
+    <div class="body"><div class="form-grid"><label class="field">What${opt('kind', SHARE_KINDS)}</label><label class="field">Look${opt('theme', [['dark', 'Carbon'], ['light', 'Light']])}</label>
+      ${S.isGm ? `<label class="field">Discord channel${opt('channel', [['', `Automatic: #${S.discordCh ? pickChannel(sharePurpose(x.kind), curSeriesId(), S.discordCh) : '…'}`]].concat((S.discordCh || []).map(c => [c, '#' + c])))}</label>` : ''}</div>
+    ${x.url ? `<img class="card-preview tx-preview" src="${x.url}" alt="The ${esc((SHARE_KINDS.find(k => k[0] === x.kind) || ['', ''])[1])} image">` : '<p class="muted">Drawing…</p>'}
+    <div class="btn-row"><button class="btn primary" data-act="sh-download" ${x.url ? '' : 'disabled'}>Download</button>${S.isGm ? `<button class="btn" data-act="sh-discord" ${x.url ? '' : 'disabled'}>Post to Discord</button>` : ''}${x.posted ? `<span class="tag player">Posted to #${esc(x.posted)}</span>` : ''}</div></div>`;
+};
+ACTIONS['sh-download'] = () => { const x = S.ui.sh; if (!x || !x.url) return; const a = document.createElement('a'); a.href = x.url; a.download = `${curSeriesId()}-${curSeason().name}-${x.kind}.png`; document.body.appendChild(a); a.click(); a.remove(); };
+ACTIONS['sh-discord'] = () => {
+  const x = S.ui.sh; if (!x || !x.blob) return; const done = roundsDone(), s = curSeries(), sea = curSeason();
+  const text = x.kind === 'calendar' ? `**${s.name}: the ${sea.name} calendar**` : `**${s.name} ${sea.name}: ${x.kind === 'teams' ? 'constructors’' : x.kind === 'drivers' ? 'drivers’' : 'the'} championship${done ? ` after round ${done}` : ''}**`;
+  run(async () => { const ch = await discordSend(sharePurpose(x.kind), { content: text }, { blob: x.blob, name: `${s.id}-${sea.name}-${x.kind}.png` }, x.channel); x.posted = ch;
+    await Data.audit('discord.share', `${text.replace(/\*/g, '')} posted to Discord #${ch}`); }, 'Posted to Discord.');
+};
 
 /* =====================================================================
    F1 SIM — Home, Paddock, Race Control desk, accounts and backups.
