@@ -229,15 +229,48 @@ table.data tr.me td { background: var(--me-row); }
 .linkish { border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
 .linkish:hover { text-decoration-color: var(--ink); }
 .page-head .field select { min-width: 200px; }
+
+/* ---------- live race weekend ---------- */
+:root { --fl: #8E3AC9; --pb: #2F7A4F; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --fl: #C38BF2; --pb: #7CC79A; } }
+:root[data-theme="dark"] { --fl: #C38BF2; --pb: #7CC79A; }
+.stages { list-style: none; display: flex; flex-wrap: wrap; gap: 4px; padding: 0; margin: -6px 0 18px; counter-reset: st; }
+.stages li { counter-increment: st; font: 600 15px var(--cond); color: var(--muted); padding: 5px 12px 5px 8px; border-radius: 4px; background: var(--panel-2); }
+.stages li::before { content: counter(st); display: inline-block; width: 18px; color: var(--line-strong); }
+.stages li.done { color: var(--ink); } .stages li.done::before { content: "✓"; color: var(--ok); }
+.stages li.now { background: var(--ink); color: var(--on-ink); } .stages li.now::before { color: var(--on-ink); opacity: .7; }
+.f1-lap.live small { color: var(--f1-soft); }
+.f1-lap.live small::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--f1-soft); margin-right: 6px; vertical-align: 1px; animation: blink 1.2s infinite; }
+@keyframes blink { 50% { opacity: .25; } }
+.tag.live { background: var(--f1-soft); color: #fff; }
+.card.rc.is-live { box-shadow: inset 4px 0 0 var(--f1-soft); }
+.rc .btn-row select { width: auto; }
+.chips { margin: 8px 0 0 !important; display: flex; gap: 6px; flex-wrap: wrap; }
+table.timing td { padding-top: 5px; padding-bottom: 5px; white-space: nowrap; }
+table.timing tr.picked td { background: var(--me-row); }
+table.timing tr.out td { color: var(--muted); }
+td.fl, span.fl { color: var(--fl); font-weight: 700; } td.pb, span.pb { color: var(--pb); font-weight: 600; }
+.drv-btn { border: 0; background: none; padding: 0; color: inherit; font: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 0; white-space: nowrap; }
+.drv-btn b { font: 700 16px var(--cond); } .drv-btn .full { color: var(--muted); font-size: 13.5px; margin-left: 7px; }
+.drv-btn:hover .full, .drv-btn[aria-pressed="true"] .full { color: var(--ink); text-decoration: underline; }
+@media (max-width: 600px) { .drv-btn .full { display: none; } }
+.legend-line { margin: 10px 0 0; }
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--line); margin: -4px 0 12px; }
+.tab { border: 0; background: none; padding: 8px 12px; font: 600 16px var(--cond); color: var(--muted); cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -1px; }
+.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+.driver-head { border-left: 4px solid var(--team); padding-left: 10px; margin-bottom: 12px; } .driver-head h3 { margin: 0; } .driver-head p { margin: 2px 0 0; }
+.small-metrics .metric b { font-size: 24px; } .small-metrics { margin-bottom: 8px; }
+h4 { font: 700 17px var(--cond); margin: 16px 0 6px; }
+.f1-feed.short { max-height: 220px; }
 </style>
 </head>
 <body>
 <div id="auth-root"><div class="boot"><div class="boot-card"><span class="brand-mark big" aria-hidden="true"></span><h1>F1 SIM</h1><p>Loading…</p></div></div></div>
 <div id="app"></div>
-<script>window.F1SIM_BUILD = 'f1sim0002';</script>
+<script>window.F1SIM_BUILD = 'f1sim0003';</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
-<script src="config.js?v=f1sim0002"></script>
-<script src="bridge.js?v=f1sim0002"></script>
+<script src="config.js?v=f1sim0003"></script>
+<script src="bridge.js?v=f1sim0003"></script>
 <noscript>F1 SIM needs JavaScript switched on.</noscript>
 </body>
 </html>
