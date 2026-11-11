@@ -1,4 +1,4 @@
-/* F1 SIM v0.18.0 (build f1sim-0.18.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v0.19.0 (build f1sim-0.19.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -76,7 +76,10 @@
     scPace: 1.35, vscPace: 1.30, scBunch: 0.8,
     formSd: 0.25,           // weekend-to-weekend swing in a car's pace (s): set-up, track temperature, luck
     failureRate: 0.0025,    // per lap, scaled by (1 - reliability)
-    crashRate: 0.0008, mistakeRate: 0.006
+    crashRate: 0.0008, mistakeRate: 0.006,
+    /* Engine eras. modeEnergy replaces how much each driving mode recharges (or drains) the battery;
+       emptyBattery is the time lost on a lap run with a flat battery; noHybrid removes the battery boost. */
+    modeEnergy: null, emptyBattery: 0, noHybrid: false
   };
 
   /* ------------------------------------------------------------ randomness */
@@ -386,11 +389,17 @@
     var newSc = null;
 
     if (!s.sc.type) applyApproach(s, field);
+    /* An all-electric race: everyone eases off when the battery runs low, unless the pit wall has just made a call. */
+    if (R.modeEnergy && (R.modeEnergy.standard || 0) < 0 && !s.sc.type) field.forEach(function (car) {
+      if (car.modeHold > 0) return;
+      if (car.energy < 12) car.mode = 'manage'; else if (car.mode === 'manage' && car.energy > 50 && car.approach !== 'tyres') car.mode = 'standard';
+    });
     /* raw lap times */
     var raw = {};
     field.forEach(function (car, i) {
       var m = MODES[car.mode], t = basePace(car, circuit, R, track) + m.pace + tyreTime(car.tyre, car, circuit, track)
         + R.fuelEffect * (1 - (s.lap - 1) / s.laps);
+      if (R.emptyBattery && !R.noHybrid && car.energy <= 0) t += R.emptyBattery;
       t += gauss(r) * (0.12 + (100 - car.driver.consistency) * 0.008);
       if (s.lap === 1) t += 4 + gauss(r) * (0.5 + (100 - car.driver.racecraft) * 0.02);
       var risk = m.risk * (1 + track * 1.5) * (1 + ((car.driver.aggression || 50) - 50) / 100) * composure(car.driver) * (s.lap === 1 ? 4 : 1);
@@ -435,7 +444,7 @@
             if (!hold) {
               var adv = raw[ahead.id] - t, ease = circuit.overtaking == null ? 0.7 : circuit.overtaking;
               chance = ease * (R.overtake.base + Math.max(0, adv - 0.1) * R.overtake.pace) + (attack(car.driver) - defend(ahead.driver)) * R.overtake.racecraft;
-              if (car.energy >= R.overtakeMode.cost && (start[car.id] - start[ahead.id]) < R.overtakeMode.gap) { chance += R.overtakeMode.bonus * (0.4 + ease * 0.6); car.energy -= R.overtakeMode.cost; }
+              if (!R.noHybrid && car.energy >= R.overtakeMode.cost && (start[car.id] - start[ahead.id]) < R.overtakeMode.gap) { chance += R.overtakeMode.bonus * (0.4 + ease * 0.6); car.energy -= R.overtakeMode.cost; }
               if (track > 0) chance += (car.driver.wet - ahead.driver.wet) * 0.005;
               chance = clamp(chance, 0.005, 0.85);
             }
@@ -474,7 +483,7 @@
       var m = MODES[car.mode];
       car.tyre.age += 1;
       car.tyre.wear = round3(car.tyre.wear + (s.sc.type ? 0.3 : 1) * m.deg * (circuit.tyreStress || 1) * (1.25 - car.driver.tyreMgmt / 200));
-      car.energy = clamp(car.energy + m.energy, 0, 100);
+      car.energy = R.noHybrid ? 0 : clamp(car.energy + (R.modeEnergy && R.modeEnergy[car.mode] != null ? R.modeEnergy[car.mode] : m.energy), 0, 100);
       if (!s.sc.type && !box0[car.id] && car.lastLap && (!car.bestLap || car.lastLap < car.bestLap)) car.bestLap = car.lastLap;
       if (!s.sc.type && !box0[car.id] && car.lastLap && (!s.fastest || car.lastLap < s.fastest.time)) s.fastest = { id: car.id, time: car.lastLap, lap: s.lap };
       var box = car.pendingBox || (s.lap < s.laps ? aiWantsBox(car, s, track) : null);
@@ -1192,7 +1201,7 @@ function f1TeamCard(t) {
   const arch = FormulaRacingAdapter.ARCHETYPES[t.strategy] || FormulaRacingAdapter.ARCHETYPES.reactive;
   return `<section class="card f1-team" style="--team:${esc(t.color)}" aria-label="${esc(t.name)}">
     ${(b => b.car ? `<img class="grid-car" src="${esc(b.car)}" alt="${esc(t.name)} car">` : '')(teamBrand(t.id))}
-    <header><h2>${(b => b.logo ? `<img class="team-logo" src="${esc(b.logo)}" alt="">` : '')(teamBrand(t.id))}${esc(t.name)}</h2><span class="meta">${esc(t.powerUnit || '')} power unit. AI strategist: ${esc(arch.label.toLowerCase())}.</span>
+    <header><h2>${(b => b.logo ? `<img class="team-logo" src="${esc(b.logo)}" alt="">` : '')(teamBrand(t.id))}${esc(t.name)}</h2><span class="meta">${esc(engineLabel(t.id))}. AI strategist: ${esc(arch.label.toLowerCase())}.</span>
       ${S.isGm ? `<button class="btn small ghost" data-act="car-edit" data-id="${esc(t.id)}">Car</button>` : ''}</header>
     <ul class="f1-seatlist">${F1.seats(t.id).map(s => `<li><span class="role">${esc(seatTitle(s))}</span>${f1OccupantHtml(s)}${f1SeatControls(s)}</li>`).join('')}</ul>
   </section>`;
@@ -1244,7 +1253,9 @@ function f1Weather(w, track) {
 function f1RaceSetup(w, track) {
   const st = raceSettings(w), circuit = FormulaRacingAdapter.toCircuit(track);
   circuit.scChance = circuit.scChance * st.scRate; circuit.sprintLaps = track.sprintLaps;
-  return { circuit, rules: Object.assign({}, F1_RULES, seriesRules(seriesDoc(wSeries(w))), { crashRate: RaceEngine.DEFAULTS.crashRate * st.scRate, failureRate: RaceEngine.DEFAULTS.failureRate * st.failRate }) };
+  const rules = Object.assign({}, F1_RULES, seriesRules(seriesDoc(wSeries(w))), { crashRate: RaceEngine.DEFAULTS.crashRate * st.scRate, failureRate: RaceEngine.DEFAULTS.failureRate * st.failRate });
+  /* The season's engine era: lap times, power, battery and boost, fuel, tyres and reliability. */
+  return engineRaceSetup(w, circuit, rules);
 }
 function f1NextTrack() {
   const done = new Set(F1.weekends().filter(w => w.status === 'finished' && w.session === 'gp').map(w => w.trackId));
@@ -1332,6 +1343,7 @@ ACTIONS['f1-quali'] = () => {
   const entries = FormulaRacingAdapter.toEntries(entrants.map(e => e.v3), teams, track, { setup });
   /* Confidence from practice: up to two tenths a lap. */
   const confidence = {}; entrants.forEach(e => { confidence[e.id] = confidenceAfter(w, e, sessionsOf(w)); const en = entries.find(x => x.id === e.id); if (en) en.paceAdj = (en.paceAdj || 0) - CONF_MAX * confidence[e.id]; });
+  engineEfficiency(entrants, entries, w);
   const penalties = f1PuEffects(w, entrants, entries);
   const quali = RaceEngine.qualify({ circuit, entries, weather, seed: w.seed, rules: rs.rules });
   const puLog = [], startGrid = f1PuGrid(quali.grid, penalties, puLog); quali.log = quali.log.concat(puLog);
@@ -1480,7 +1492,7 @@ function f1PitWallHtml(w) {
       h += `<div class="f1-car" style="--team:${esc(t.color)}"><h3>${esc(e.name)}</h3>
         <p class="muted small" style="margin:0">P${pos}, ${RaceEngine.COMPOUNDS[car.tyre.compound].label.toLowerCase()}s ${car.tyre.age} laps old, ${plural(car.stops, 'stop')}</p>
         <div class="f1-gauges"><div class="f1-gauge">Tyre wear ${wear}%<div class="track"><div class="fill ${wear >= 90 ? 'hot' : ''}" style="width:${wear}%"></div></div></div>
-          <div class="f1-gauge">Battery ${Math.round(car.energy)}%<div class="track"><div class="fill" style="width:${car.energy}%"></div></div></div></div>
+          ${st.rules.noHybrid ? `<div class="f1-gauge">${esc(engineFormula(wSeries(w), wSeason(w)).short)}: no battery</div></div>` : `<div class="f1-gauge">Battery ${Math.round(car.energy)}%<div class="track"><div class="fill" style="width:${car.energy}%"></div></div></div></div>`}
         ${can('mode') ? `<div class="f1-row"><span class="lbl">Mode</span>${['push', 'standard', 'manage'].map(m => `<button class="btn small" data-act="f1-call" data-type="mode" data-car="${esc(e.id)}" data-value="${m}" aria-pressed="${(pm ? pm.value : car.mode) === m}">${RaceEngine.MODES[m].label}</button>`).join('')}</div>` : ''}
         ${can('box') ? `<div class="f1-row"><span class="lbl">Box</span>${['soft', 'medium', 'hard', 'inter', 'wet'].map(k => `<button class="btn small" data-act="f1-call" data-type="box" data-car="${esc(e.id)}" data-value="${k}" aria-pressed="${!!(pb && pb.value === k)}">${f1TyreChip(k)} ${k === 'inter' ? 'Inter' : RaceEngine.COMPOUNDS[k].label}</button>`).join('')}</div>` : ''}
         ${can('refuseOrder') && st.orders[tid] ? `<div class="f1-row"><span class="lbl">Order</span><span class="small">The team says: ${st.orders[tid].value === 'hold' ? 'hold position' : 'swap the cars'}.</span><button class="btn small" data-act="f1-call" data-type="refuseOrder" data-car="${esc(e.id)}" aria-pressed="${!!pend('refuseOrder')}">Refuse the order</button></div>` : ''}
@@ -1763,6 +1775,7 @@ function f1EffectiveTeam(team, n) {
   if (!team) return team;
   n = n == null ? finishedGps().length : n;
   const out = Object.assign({}, team), applied = [];
+  engineApply(team, out);   /* the season's engine maker */
   if (!curSeries().development) { Object.defineProperty(out, 'applied', { value: [], enumerable: false }); return out; }
   teamProjects(team.id).filter(p => projectArrived(p, n)).concat(aiProjects(team.id, n).filter(p => n >= p.lockedAt)).forEach(p => {
     const def = F1_PROJECTS[p.type], works = p.ai ? p.works : projectWorks(p), k = works ? 1 : 0.25;
@@ -1917,7 +1930,7 @@ route('team', 'Team HQ', function () {
     if (!projectArrived(p, n)) return `<span class="tag">Being built</span> On the car after ${plural(p.lockedAt + def.build - n, 'more race')}.`;
     return projectWorks(p) ? `<span class="tag player">On the car</span> It works.` : `<span class="tag flag">On the car</span> It didn’t work as hoped: about a quarter of the gain.`; };
   const drivers = F1.seats(tid).filter(s => s.role === 'driver').map(s => ({ s, o: f1Occupant(s) }));
-  return `<div class="page-head"><div><h1>${esc(team.name)}</h1><p>${esc(team.powerUnit || '')} power unit. Sponsors expect P${money.target} or better at each Grand Prix.</p></div>
+  return `<div class="page-head"><div><h1>${esc(team.name)}</h1><p>${esc(engineLabel(team.id))}. Sponsors expect P${money.target} or better at each Grand Prix.</p></div>
       <label class="field" style="margin:0">Team${sel('team-pick', 'ui/teamId', tid, teams.map(t => [t.id, t.name]))}</label></div>
     <div class="cols2">
       <section class="card" style="--team:${esc(team.color)}"><h2>The car</h2><p class="muted small">For the next race, with ${plural(eff.applied.length, 'upgrade')} fitted.</p>
@@ -2074,7 +2087,7 @@ function lvDriverHtml(w) {
       <div class="metric"><b>${c.status === 'running' && pos > 1 ? '+' + (c.cum - lead.cum).toFixed(1) : c.status === 'running' ? 'Leader' : esc(c.dnf)}</b><span>${c.status === 'running' ? 'To the leader' : 'Retired on lap ' + c.retiredLap}</span></div>
       <div class="metric"><b>${f1Fmt(c.bestLap)}</b><span>Best lap</span></div><div class="metric"><b>${c.stops}</b><span>${c.stops === 1 ? 'Pit stop' : 'Pit stops'}</span></div></div>
     ${c.status === 'running' ? `<div class="f1-gauges"><div class="f1-gauge">${esc(RaceEngine.COMPOUNDS[c.tyre.compound].label)}s, ${c.tyre.age} laps old: wear ${wear}%<div class="track"><div class="fill ${wear >= 90 ? 'hot' : ''}" style="width:${wear}%"></div></div></div>
-      <div class="f1-gauge">Battery ${Math.round(c.energy)}%, ${esc(RaceEngine.MODES[c.mode].label.toLowerCase())} mode<div class="track"><div class="fill" style="width:${c.energy}%"></div></div></div></div>` : ''}
+      <div class="f1-gauge">${w.state.rules.noHybrid ? 'No battery' : `Battery ${Math.round(c.energy)}%`}, ${esc(RaceEngine.MODES[c.mode].label.toLowerCase())} mode<div class="track"><div class="fill" style="width:${c.energy}%"></div></div></div></div>` : ''}
     <h4>Lap times</h4><div class="scroll-x f1-chart">${bars}</div>
     <p class="muted small">Team colour: a racing lap. Green: their best. Yellow: safety car. Grey: a pit stop. Faded: more than 4 seconds off their best.</p>
     <h4>Stints</h4><p>${c.stints.map(s => `${f1TyreChip(s.compound)} laps ${s.from}${s.to ? '–' + s.to : ' onwards'}`).join(' &nbsp; ')}</p>
@@ -2603,7 +2616,7 @@ function f1MomentCardHtml(w) {
     const oppName = opp ? f1Ent(w, opp.id).name : '';
     return `<section class="card moment" aria-live="assertive"><p class="eyebrow">Driver moment, lap ${m.lap}</p><h2>${esc(MOMENT_TITLE[m.kind](oppName))}</h2>
       <p class="muted">${w.live ? `The race waits ${left > 0 ? `${left} more seconds` : 'a moment longer'} for your call; after that your instinct decides.` : 'Choose before Race Control runs the next lap; otherwise your instinct decides.'}</p>
-      <div class="choices">${MOMENT_CHOICES[m.kind].map(([k, l, d]) => { const o = odds(k), pct = Math.round(o.success * 100);
+      <div class="choices">${MOMENT_CHOICES[m.kind].filter(c => c[0] !== 'boost' || !st.rules.noHybrid).map(([k, l, d]) => { const o = odds(k), pct = Math.round(o.success * 100);
         return `<button class="choice" data-act="moment-choose" data-id="${esc(m.id)}" data-choice="${k}" aria-pressed="${!!(call && call.value === k)}"><b>${esc(l)}</b><span>${esc(d)}</span>
           <span class="odds">${['wait', 'concede', 'safe'].indexOf(k) !== -1 ? 'No risk' : `${pct}% ${m.kind === 'defend' ? 'to hold on' : m.kind === 'restart' ? 'to gain time' : 'to make it stick'}${o.contact ? `, ${Math.round(o.contact * 100)}% contact risk` : ''}`}</span></button>`; }).join('')}</div>
       ${call ? `<p class="small">Your call: <b>${esc(MOMENT_CHOICES[m.kind].find(x => x[0] === call.value)[1])}</b>. You can change it until the lap runs.</p>` : ''}</section>`;
@@ -2929,7 +2942,7 @@ function yearsNow(p) {
 'use strict';
 
 const PU_ALLOWANCE_DEFAULT = 4;
-const puAllow = () => curSeries().puAllowance;
+const puAllow = () => curSeries().development ? engineFormula().pu : null;
 const PU_EXTRA_COST = 1;      // £m for each unit beyond the allowance
 const REPAIR_COST = 0.8;      // £m after an accident
 const carKey = (teamId, car) => `${teamId}-${car}`;
@@ -3245,7 +3258,7 @@ function ttCfg() {
 function ttW() {
   const f = ttCfg(), w = S.tt.w;
   return w || { id: 'test-' + f.trackId + '-' + f.session, test: true, trackId: f.trackId, session: f.session, seed: Number(f.seed) || 1, weatherMode: f.weatherMode,
-    settings: { lock: false, scRate: Number(f.scRate), failRate: Number(f.failRate), rainPct: f.rainPct }, status: 'practice', entrants: null, state: null };
+    seriesId: curSeriesId(), seasonId: curSeasonId(), settings: { lock: false, scRate: Number(f.scRate), failRate: Number(f.failRate), rainPct: f.rainPct }, status: 'practice', entrants: null, state: null };
 }
 function ttStop() { clearTimeout(S.tt.timer); S.tt.timer = null; }
 ACTIONS['tt-reset'] = () => { ttStop(); S.tt.w = null; S.tt.calls = []; S.tt.choice = {}; render(); };
@@ -3257,6 +3270,7 @@ ACTIONS['tt-quali'] = () => {
   const setup = {}; entrants.forEach(e => { setup[e.id] = e.id === mine.id ? Math.max(20, Math.min(95, Number(f.setup) || 75)) : f1AiSetup(F1.team(e.teamId)); });
   const rs = f1RaceSetup(w, track), weather = f1Weather(w, track), teams = F1.teams().map(t => f1EffectiveTeam(t));
   const entries = FormulaRacingAdapter.toEntries(entrants.map(e => e.v3), teams, track, { setup });
+  engineEfficiency(entrants, entries, w);
   const quali = RaceEngine.qualify({ circuit: rs.circuit, entries, weather, seed, rules: rs.rules });
   let state = RaceEngine.createRace({ circuit: rs.circuit, entries, grid: quali.grid, weather, seed, sprint: f.session === 'sprint', rules: rs.rules });
   /* Your car runs your plans; other cars in teams with players run their team defaults. */
@@ -3315,7 +3329,7 @@ function ttMomentHtml(w) {
   const mine = ttCfg().car, m = (w.moments || []).find(x => !x.resolved && x.carId === mine && x.lap === w.state.lap + 1); if (!m) return '';
   const st = w.state, car = st.cars.find(c => c.id === m.carId), opp = m.opponent ? st.cars.find(c => c.id === m.opponent) : null, pick = S.tt.choice[m.id];
   return `<section class="card moment"><p class="eyebrow">Driver moment, lap ${m.lap}</p><h2>${esc(MOMENT_TITLE[m.kind](opp ? f1Ent(w, opp.id).name : ''))}</h2>
-    <div class="choices">${MOMENT_CHOICES[m.kind].map(([k, l, dsc]) => { const o = RaceEngine.momentOdds(m.kind, k, car, opp, st.circuit);
+    <div class="choices">${MOMENT_CHOICES[m.kind].filter(c => c[0] !== 'boost' || !st.rules.noHybrid).map(([k, l, dsc]) => { const o = RaceEngine.momentOdds(m.kind, k, car, opp, st.circuit);
       return `<button class="choice" data-act="tt-moment" data-id="${esc(m.id)}" data-choice="${k}" aria-pressed="${pick === k}"><b>${esc(l)}</b><span>${esc(dsc)}</span><span class="odds">${['wait', 'concede', 'safe'].indexOf(k) !== -1 ? 'No risk' : `${Math.round(o.success * 100)}%${o.contact ? `, ${Math.round(o.contact * 100)}% contact risk` : ''}`}</span></button>`; }).join('')}</div></section>`;
 }
 function ttCarHtml(w) {
@@ -3325,7 +3339,7 @@ function ttCarHtml(w) {
   const pend = type => S.tt.calls.find(c => c.type === type);
   return `<section class="card" style="--team:${esc(t.color)}"><h2>Your car: ${esc(e.name)} <span class="sub">P${pos}, ${esc(car.planName || 'no plan')}, ${esc(approachLabel(car.approach).toLowerCase())}</span></h2>
     <div class="f1-gauges"><div class="f1-gauge">${esc(RaceEngine.COMPOUNDS[car.tyre.compound].label)}s, ${car.tyre.age} laps: wear ${wear}%<div class="track"><div class="fill ${wear >= 90 ? 'hot' : ''}" style="width:${wear}%"></div></div></div>
-      <div class="f1-gauge">Battery ${Math.round(car.energy)}%, ${esc(RaceEngine.MODES[car.mode].label.toLowerCase())}<div class="track"><div class="fill" style="width:${car.energy}%"></div></div></div></div>
+      <div class="f1-gauge">${w.state.rules.noHybrid ? 'No battery' : `Battery ${Math.round(car.energy)}%`}, ${esc(RaceEngine.MODES[car.mode].label.toLowerCase())}<div class="track"><div class="fill" style="width:${car.energy}%"></div></div></div></div>
     <div class="f1-row"><span class="lbl">Mode</span>${['push', 'standard', 'manage'].map(m => `<button class="btn small" data-act="tt-call" data-type="mode" data-value="${m}" aria-pressed="${(pend('mode') ? pend('mode').value : car.mode) === m}">${RaceEngine.MODES[m].label}</button>`).join('')}</div>
     <div class="f1-row"><span class="lbl">Box</span>${['soft', 'medium', 'hard', 'inter', 'wet'].map(k => `<button class="btn small" data-act="tt-call" data-type="box" data-value="${k}" aria-pressed="${!!(pend('box') && pend('box').compound === k)}">${f1TyreChip(k)} ${k === 'inter' ? 'Inter' : RaceEngine.COMPOUNDS[k].label}</button>`).join('')}</div>
     ${(car.plans || []).length ? `<div class="f1-row"><span class="lbl">Plan</span>${car.plans.map((p, i) => `<button class="btn small" data-act="tt-call" data-type="plan" data-value="${i}" aria-pressed="${!!(pend('strategy') && pend('strategy').plan === i)}" ${car.planName === PLAN_NAMES[i] ? 'disabled' : ''}>Switch to ${PLAN_NAMES[i]}</button>`).join('')}</div>` : ''}
@@ -3541,7 +3555,9 @@ ACTIONS['season-end'] = () => {
   askConfirm(`Catalogue ${s.name}’s ${season.name} season? Its ${plural(ws.length, 'race')}, standings and champions go into the archive, and no more weekends can be opened until you start the next season.`, 'Catalogue the season', () => run(async () => {
     const snap = { drivers: st.drivers.map(d => ({ personId: d.personId, name: d.name, teamId: d.teamId, teamName: (get('f1_teams', d.teamId) || {}).name || '', charId: d.charId || null, pts: d.pts, wins: d.wins, podiums: d.podiums })),
       teams: st.teams.map(t => ({ teamId: t.teamId, name: t.name, pts: t.pts, wins: t.wins })), races: ws.filter(w => w.session === 'gp').length, sprints: ws.filter(w => w.session === 'sprint').length };
-    await Data.put('f1_seasons', season.id, { seriesId: s.id, name: season.name, status: 'archived', startedAt: season.startedAt || (ws[ws.length - 1] || {}).createdAt || null, endedAt: nowIso(), archive: snap });
+    /* Keep what's already on the season (its engine rules, say). */
+    const was = get('f1_seasons', season.id) ? clone(S.store.f1_seasons[season.id]) : {};
+    await Data.put('f1_seasons', season.id, Object.assign(was, { seriesId: s.id, name: season.name, status: 'archived', startedAt: season.startedAt || (ws[ws.length - 1] || {}).createdAt || null, endedAt: nowIso(), archive: snap }));
     await Data.audit('season.end', `${s.name} ${season.name} catalogued: ${snap.drivers[0] ? snap.drivers[0].name + ' champion' : 'no races'}`);
   }, `${season.name} catalogued. Start the next season when you’re ready.`), true);
 };
@@ -3552,12 +3568,14 @@ ACTIONS['season-start'] = () => {
   run(async () => {
     /* Car development carries over in part: each team's base moves towards where its car finished the season. */
     if (carry > 0 && s.development) for (const t of F1.teams()) {
-      const eff = f1EffectiveTeam(t, finishedGps().length), doc = clone(S.store.f1_teams[t.id]);
-      ['carPace', 'topSpeed', 'cornering', 'reliability', 'tyreLife', 'pitSpeed'].forEach(k => { if (eff[k] != null && t[k] != null) doc[k] = Math.round((t[k] + (eff[k] - t[k]) * carry) * 100) / 100; });
+      /* Only development carries over, not the engine's effect (next season's engine applies on top). */
+      const eff = f1EffectiveTeam(t, finishedGps().length), withEngine = engineApply(t, Object.assign({}, t)), doc = clone(S.store.f1_teams[t.id]);
+      ['carPace', 'topSpeed', 'cornering', 'reliability', 'tyreLife', 'pitSpeed'].forEach(k => { if (eff[k] != null && t[k] != null) { const dev = (eff[k] - ((withEngine[k] || 0) - (t[k] || 0))) - t[k]; doc[k] = Math.round((t[k] + dev * carry) * 100) / 100; } });
       await Data.put('f1_teams', t.id, doc);
     }
     if (!keep) for (const seat of F1.seats().filter(x => x.holderCharId)) await Data.put('f1_seats', seat.id, Object.assign(clone(S.store.f1_seats[seat.id]), { holderCharId: null, holderName: null, holderSince: null }));
-    await Data.put('f1_seasons', id, { seriesId: s.id, name, status: 'active', startedAt: nowIso(), carry, keptSeats: keep });
+    const pe = engineConfig(s.id, prev.id), nf = ENGINE_FORMULAS[f.engine] ? f.engine : pe.formula;
+    await Data.put('f1_seasons', id, { seriesId: s.id, name, status: 'active', startedAt: nowIso(), carry, keptSeats: keep, engine: { formula: nf, teams: pe.teams, ratings: nf === pe.formula ? pe.ratings : {}, seed: 0 } });
     await Data.put('f1_series', s.id, Object.assign(get('f1_series', s.id) ? clone(S.store.f1_series[s.id]) : { template: s.id }, { activeSeason: id }));
     await Data.audit('season.start', `${s.name} ${name} season started`);
     S.ui.form.newSeason = {};
@@ -3586,9 +3604,11 @@ route('seasons', 'Seasons', function () {
   else h += `<section class="card"><h2>Between seasons</h2><p>${esc(season.name)} is catalogued. ${S.isGm ? 'Start the next season to open weekends again.' : 'Race Control will start the next season soon.'}</p>
     ${S.isGm ? `<div class="metrics" style="align-items:end"><label class="field">Season name<input id="ns-name" type="text" data-bind="ui/form/newSeason/name" value="${esc(f.name || String((Number(season.name) || 2026) + 1))}"></label>
       ${s.development ? `<label class="field">Car development carried over${sel('ns-carry', 'ui/form/newSeason/carry', String(f.carry == null ? '0.5' : f.carry), [['0', 'None: back to base'], ['0.5', 'Half of it'], ['1', 'All of it']])}</label>` : ''}</div>
+      <label class="field" style="max-width:420px">Engines${sel('ns-engine', 'ui/form/newSeason/engine', f.engine || engineConfig().formula, ENGINE_ORDER.map(k => [k, ENGINE_FORMULAS[k].label]))}</label>
       <label class="small"><input type="checkbox" data-bind="ui/form/newSeason/keepSeats" ${f.keepSeats !== false ? 'checked' : ''}> Players keep their seats</label>
       <p class="muted small">Budgets, upgrades in progress, power units, sponsors and contracts start fresh. Drivers keep their ratings, development and careers.</p>
       <div class="btn-row"><button class="btn primary" data-act="season-start">Start the new season</button></div>` : ''}</section>`;
+  if (season.status !== 'archived') h += engineCardHtml();
   h += archived.length ? archived.map(archiveHtml).join('') : '<p class="muted">No seasons catalogued yet.</p>';
   return h;
 });
@@ -4955,6 +4975,116 @@ function weekendStoryHtml(w) {
   return `<section class="card"><h2>The rest of the weekend</h2>
     ${done.map(s => `<details><summary><b>${esc(sessionName(w, s.n))}</b>${s.weather ? ` <span class="muted small">${esc(weatherText(s.weather))}</span>` : ''}</summary><div class="scroll-x">${timesheetHtml(w, s)}</div></details>`).join('')}
     ${q.map(([k, label]) => { const rows = exportRows(w, k); return `<details><summary><b>${esc(label)}</b></summary><table class="data compact"><tbody>${rows.map(r => `<tr><td>${r.pos}</td><td><span class="f1-bar" style="background:${esc(r.color)}"></span>${esc(r.name)}</td><td class="num">${esc(r.value)}</td></tr>`).join('')}</tbody></table></details>`; }).join('')}</section>`;
+}
+
+/* =====================================================================
+   F1 SIM — engines: the era for each season, and the makers.
+   Race Control picks a season's engine era: today's 2026 hybrids, the
+   2014 to 2025 hybrids, V8s, V10s, V12s, a non-hybrid V6 turbo (as in F2
+   and F3) or fully electric. The era changes how races run: lap times,
+   how much power matters, the battery and its boost (or none), fuel
+   weight, tyre wear, reliability and the power-unit allowance.
+   Each engine maker has ratings for power, reliability, efficiency and
+   driveability, which feed every car using its engine. A new era
+   reshuffles them; Race Control can set them by hand, and move a team to
+   another maker for the season.
+   ===================================================================== */
+'use strict';
+
+const ENGINE_FORMULAS = {
+  hybrid26: { label: 'V6 turbo hybrid, 2026 rules', short: 'V6 hybrid', blurb: 'Half the power is electric: how the battery is used wins and loses races.', lap: 0, power: 1, fail: 1, fuel: 3.2, tyre: 1, pu: 4, boost: { cost: 35, bonus: 0.07 }, modeEnergy: null, empty: 0, noHybrid: false, eff: 0.012 },
+  hybrid14: { label: 'V6 turbo hybrid, 2014 to 2025', short: 'V6 hybrid', blurb: 'Quicker cars, a smaller electric share, and a cheaper, stronger overtaking boost.', lap: -1.0, power: 1, fail: 1, fuel: 3.0, tyre: 1, pu: 4, boost: { cost: 25, bonus: 0.09 }, modeEnergy: { push: 6, standard: 15, manage: 24 }, empty: 0, noHybrid: false, eff: 0.01 },
+  v8: { label: 'V8, 2.4 litres (2006 to 2013)', short: 'V8', blurb: 'Light, screaming and very reliable, with a small battery boost.', lap: -0.7, power: 1.1, fail: 0.7, fuel: 2.6, tyre: 0.92, pu: 8, boost: { cost: 20, bonus: 0.05 }, modeEnergy: { push: 14, standard: 20, manage: 26 }, empty: 0, noHybrid: false, eff: 0.005 },
+  v10: { label: 'V10, 3.0 litres', short: 'V10', blurb: 'No hybrid and no boost: raw power matters more, they drink fuel, eat tyres and blow up more often.', lap: -1.2, power: 1.3, fail: 1.5, fuel: 3.6, tyre: 1.1, pu: null, boost: null, modeEnergy: null, empty: 0, noHybrid: true, eff: 0.004 },
+  v12: { label: 'V12, 3.5 litres', short: 'V12', blurb: 'Brutal power, thirsty and fragile. No hybrid.', lap: -0.5, power: 1.45, fail: 2.0, fuel: 4.2, tyre: 1.15, pu: null, boost: null, modeEnergy: null, empty: 0, noHybrid: true, eff: 0.006 },
+  v6turbo: { label: 'V6 turbo, no hybrid', short: 'V6 turbo', blurb: 'Simple and robust, as in Formula 2 and Formula 3. No battery or boost.', lap: 0, power: 1, fail: 0.9, fuel: 3.0, tyre: 1, pu: null, boost: null, modeEnergy: null, empty: 0, noHybrid: true, eff: 0.004 },
+  electric: { label: 'Fully electric', short: 'electric', blurb: 'No fuel weight, but the battery drains as you push. Run it flat and you crawl.', lap: 4.0, power: 0.9, fail: 0.8, fuel: 0, tyre: 0.85, pu: 4, boost: { cost: 20, bonus: 0.06 }, modeEnergy: { push: -9, standard: -3, manage: 5 }, empty: 1.2, noHybrid: false, eff: 0.03 }
+};
+const ENGINE_ORDER = ['hybrid26', 'hybrid14', 'v8', 'v10', 'v12', 'v6turbo', 'electric'];
+const ENGINE_STATS = [['power', 'Power'], ['reliability', 'Reliability'], ['efficiency', 'Efficiency'], ['driveability', 'Driveability']];
+const MAKER_2026 = { Mercedes: [90, 88, 88, 86], Ferrari: [89, 85, 86, 87], Honda: [88, 87, 87, 85], 'Red Bull Ford': [87, 83, 88, 86], Audi: [85, 82, 85, 84] };
+
+/* A season's engine set-up: stored on the season, else the series' usual. */
+function engineConfig(seriesId, seasonId) {
+  const sid = seriesId || curSeriesId(), sea = seasonId || curSeasonId(sid), doc = get('f1_seasons', sea), s = seriesDoc(sid);
+  const e = (doc && doc.engine) || {};
+  return { formula: ENGINE_FORMULAS[e.formula] ? e.formula : (s.development ? 'hybrid26' : 'v6turbo'), ratings: e.ratings || {}, teams: e.teams || {}, seed: e.seed || 0 };
+}
+const engineFormula = (sid, sea) => ENGINE_FORMULAS[engineConfig(sid, sea).formula];
+function supplierOf(teamId, cfg) { const c = cfg || engineConfig(((get('f1_teams', teamId) || {}).seriesId) || 'f1'); return c.teams[teamId] || (get('f1_teams', teamId) || {}).powerUnit || 'Customer'; }
+function makersOf(sid) { const ids = new Set(list('f1_teams').filter(t => (t.seriesId || 'f1') === sid).map(t => supplierOf(t.id, engineConfig(sid)))); return [...ids].sort(); }
+/* A maker's ratings: Race Control's, else for the 2026 hybrids today's order, else a fresh order for the era. */
+function makerRatings(name, sid, sea) {
+  const c = engineConfig(sid, sea);
+  if (c.ratings[name]) return Object.assign({ power: 85, reliability: 85, efficiency: 85, driveability: 85 }, c.ratings[name]);
+  if (c.formula === 'hybrid26' && MAKER_2026[name]) { const v = MAKER_2026[name]; return { power: v[0], reliability: v[1], efficiency: v[2], driveability: v[3] }; }
+  const r = RaceEngine.rng(h32('engine', c.formula, name, c.seed, sea || '')), n = () => 80 + Math.floor(r() * 13);
+  return { power: n(), reliability: n(), efficiency: n(), driveability: n() };
+}
+function engineLabel(teamId) {
+  const t = get('f1_teams', teamId) || {}, sid = t.seriesId || 'f1', f = engineFormula(sid), name = supplierOf(teamId, engineConfig(sid));
+  return /spec|\(/i.test(name) ? `${name.replace(/\s*\(spec\)/i, '')} ${f.short}, spec` : `${name} ${f.short}`;
+}
+/* The engine's effect on a car's base numbers (used by every session and Team HQ). */
+function engineApply(team, out) {
+  const sid = team.seriesId || 'f1', f = engineFormula(sid), m = makerRatings(supplierOf(team.id, engineConfig(sid)), sid);
+  out.topSpeed = Math.round(((out.topSpeed || 0) + (m.power - 85) * 0.12 * f.power) * 100) / 100;
+  out.carPace = Math.round(((out.carPace || 0) + (m.power - 85) * 0.06 * f.power) * 100) / 100;
+  out.reliability = Math.round(((out.reliability || 0) + (m.reliability - 85) * 0.6) * 100) / 100;
+  out.tyreLife = Math.round(((out.tyreLife || 0) + (m.driveability - 85) * 0.3) * 100) / 100;
+  return out;
+}
+/* Efficiency: how well the battery and fuel are used, worth more in hybrid and electric eras. */
+function engineEfficiency(entrants, entries, w) {
+  const sid = wSeries(w), sea = wSeason(w), f = engineFormula(sid, sea), cfg = engineConfig(sid, sea);
+  entrants.forEach(e => { const en = entries.find(x => x.id === e.id); if (!en) return; const m = makerRatings(supplierOf(e.teamId, cfg), sid, sea);
+    en.paceAdj = (en.paceAdj || 0) - (m.efficiency - 85) * f.eff; });
+}
+/* The race rules for the era. */
+function engineRaceSetup(w, circuit, rules) {
+  const f = engineFormula(wSeries(w), wSeason(w));
+  circuit.baseLap = (circuit.baseLap || 90) + f.lap;
+  circuit.weights = Object.assign({}, circuit.weights || { power: 1, aero: 1, grip: 1 }); circuit.weights.power = (circuit.weights.power || 0) * f.power;
+  circuit.tyreStress = (circuit.tyreStress || 1) * f.tyre;
+  rules.fuelEffect = f.fuel; rules.failureRate = (rules.failureRate || RaceEngine.DEFAULTS.failureRate) * f.fail;
+  rules.noHybrid = !!f.noHybrid; rules.modeEnergy = f.modeEnergy; rules.emptyBattery = f.empty;
+  if (f.boost) rules.overtakeMode = Object.assign({}, RaceEngine.DEFAULTS.overtakeMode, f.boost);
+  return { circuit, rules };
+}
+
+/* ---------------------------------------------------------------- Race Control: the season's engine rules */
+async function saveEngine(patch, msg) {
+  const sea = curSeasonId(), cur = get('f1_seasons', sea) ? clone(S.store.f1_seasons[sea]) : Object.assign({}, seasonDoc(sea)); delete cur.implicit;
+  cur.engine = Object.assign({}, engineConfig(), cur.engine || {}, patch);
+  return run(async () => { await Data.put('f1_seasons', sea, cur); await Data.audit('season.engine', msg); }, msg);
+}
+CHANGES['engine-formula'] = v => {
+  if (!ENGINE_FORMULAS[v]) return; const done = finishedGps().length;
+  const go2 = () => saveEngine({ formula: v, ratings: {} }, `Engines for ${curSeason().name}: ${ENGINE_FORMULAS[v].label}.`);
+  if (done) askConfirm(`${plural(done, 'Grand Prix', 'Grands Prix')} of this season have been run. Change the engines for the rest of it?`, 'Change the engines', go2, true); else go2();
+};
+ACTIONS['engine-reshuffle'] = () => askConfirm('Give every engine maker a fresh set of ratings for this era?', 'Reshuffle the makers', () => saveEngine({ ratings: {}, seed: (engineConfig().seed || 0) + 1 }, 'Engine makers reshuffled.'));
+ACTIONS['engine-save'] = () => {
+  const f = S.ui.form.eng || {}, ratings = {}, teams = Object.assign({}, engineConfig().teams);
+  Object.keys(f.r || {}).forEach(name => { ratings[name] = Object.assign(makerRatings(name), ...Object.keys(f.r[name]).map(k => ({ [k]: Math.max(50, Math.min(99, Number(f.r[name][k]) || 85)) }))); });
+  Object.keys(f.t || {}).forEach(tid => { if (f.t[tid]) teams[tid] = f.t[tid]; });
+  saveEngine({ ratings: Object.assign({}, engineConfig().ratings, ratings), teams }, 'Engine rules saved.').then(() => { S.ui.form.eng = null; });
+};
+function engineCardHtml() {
+  const s = curSeries(), cfg = engineConfig(), f = ENGINE_FORMULAS[cfg.formula], makers = makersOf(s.id), rc = S.isGm && curSeason().status !== 'archived';
+  const ef = S.ui.form.eng = S.ui.form.eng || { r: {}, t: {} };
+  const teams = F1.teams();
+  return `<section class="card engine-card"><h2>Engines</h2>
+    <p><b>${esc(f.label)}.</b> ${esc(f.blurb)}</p>
+    <p class="muted small">${f.noHybrid ? 'No battery or boost.' : f.modeEnergy && f.modeEnergy.standard < 0 ? 'The battery drains as cars race; a flat battery costs over a second a lap.' : 'Battery boost for overtaking.'} ${f.pu ? `${f.pu} power units per car for the season.` : 'No power-unit limit.'} ${f.lap < 0 ? `Laps about ${Math.abs(f.lap).toFixed(1)}s quicker than today’s cars.` : f.lap > 0 ? `Laps about ${f.lap.toFixed(1)}s slower than today’s cars.` : ''}</p>
+    ${rc ? `<label class="field" style="max-width:420px">Engine era for ${esc(curSeason().name)}<select id="eng-formula" data-change="engine-formula">${ENGINE_ORDER.map(k => `<option value="${k}" ${cfg.formula === k ? 'selected' : ''}>${esc(ENGINE_FORMULAS[k].label)}</option>`).join('')}</select></label>` : ''}
+    <h3>The makers</h3>
+    <div class="scroll-x"><table class="data compact"><thead><tr><th>Maker</th><th>Teams</th>${ENGINE_STATS.map(([, l]) => `<th class="num">${l}</th>`).join('')}</tr></thead><tbody>
+      ${makers.map(name => { const m = makerRatings(name), users = teams.filter(t => supplierOf(t.id, cfg) === name).map(t => t.name).join(', ');
+        return `<tr><td><b>${esc(name)}</b></td><td class="small">${esc(users)}</td>${ENGINE_STATS.map(([k, l]) => `<td class="num">${rc ? `<label class="sr-only" for="eng-${esc(name)}-${k}">${esc(name)} ${l}</label><input id="eng-${esc(name)}-${k}" type="number" min="50" max="99" value="${esc(((ef.r[name] || {})[k]) != null ? ef.r[name][k] : m[k])}" data-bind="ui/form/eng/r/${esc(name)}/${k}" data-type="number" class="eng-num">` : `<b>${m[k]}</b>`}</td>`).join('')}</tr>`; }).join('')}</tbody></table></div>
+    <p class="muted small">Power adds top speed and pace (more so in the V10 and V12 eras); reliability cuts failures; efficiency is worth lap time in hybrid and electric eras; driveability is kinder to tyres.</p>
+    ${rc ? `<details><summary>Move a team to another maker</summary><div class="form-grid">${teams.map(t => `<label class="field small">${esc(t.name)}<select data-bind="ui/form/eng/t/${esc(t.id)}">${makers.concat(['Mercedes', 'Ferrari', 'Honda', 'Red Bull Ford', 'Audi'].filter(x => makers.indexOf(x) === -1 && s.development)).map(n => `<option ${((ef.t[t.id]) || supplierOf(t.id, cfg)) === n ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>`).join('')}</div></details>
+      <div class="btn-row"><button class="btn primary" data-act="engine-save">Save the engine rules</button><button class="btn" data-act="engine-reshuffle">Reshuffle the makers</button></div>` : ''}</section>`;
 }
 
 /* =====================================================================

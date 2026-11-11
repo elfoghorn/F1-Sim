@@ -25,6 +25,25 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v0.19.0: engine eras and engine makers
+
+11 November 2026. Build `f1sim-0.19.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Engine eras | Each season has an engine era, chosen by Race Control on the Seasons page (or when starting a new season): V6 turbo hybrid (2026 rules), V6 turbo hybrid (2014 to 2025), V8, V10, V12, V6 turbo without hybrid, or fully electric. Formula 1 starts on the 2026 hybrids; Formula 2 and Formula 3 on the V6 turbo. |
+| How eras race | Hybrids: the battery recharges by driving mode and pays for the overtaking boost (the 2014 to 2025 cars are quicker, with a cheaper, stronger boost). V8: quicker, a small battery boost, very reliable. V10: about a second quicker over a lap, no battery or boost, power matters more, thirstier, harder on tyres, more failures. V12: the most power, the most fuel, the most failures. Electric: no fuel weight, but the battery drains as cars push; a flat battery costs over a second a lap, so everyone manages it. |
+| What changes | Lap times, how much power counts at each circuit, the battery and boost, fuel weight, tyre wear, the failure rate, and the power-unit allowance (4 for the hybrids and electric, 8 for V8s, no limit for V10, V12 and V6 turbo). |
+| Engine makers | Every maker (Mercedes, Ferrari, Honda, Red Bull Ford, Audi, and the spec engines in F2 and F3) has ratings for power, reliability, efficiency and driveability. Power adds top speed and pace; reliability cuts failures; efficiency is worth lap time in hybrid and electric eras; driveability is kinder to tyres. |
+| A new era | Reshuffles the makers' ratings, so the order can change. The 2026 hybrids start from today's order. Race Control can reshuffle again or set any rating by hand. |
+| Moving teams | Race Control can move a team to another maker for the season. Moves and ratings carry into the next season. |
+| Labels | The Grid and Team HQ show each team's engine, such as "Mercedes V10" or "Honda electric". |
+| No-hybrid eras | The pit wall shows "no battery", and driver moments drop the boost option. |
+| Car development | Carrying development into a new season no longer carries the engine's effect with it. |
+| Fix | Cataloguing a season kept only its results and lost anything else stored on it; it now keeps everything. |
+
+---
+
 ## v0.18.0: the Carbon look
 
 11 November 2026. Build `f1sim-0.18.0`. **No database update.**
