@@ -1,4 +1,4 @@
-/* F1 SIM v0.17.0 (build f1sim-0.17.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v0.18.0 (build f1sim-0.18.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -2820,8 +2820,8 @@ async function drawCard(personId, kind, where) {
   const c = p.charId ? get('characters', p.charId) : null, seat = c ? F1.seats().find(s => s.holderCharId === c.id) : F1.seats().find(s => s.defaultPersonId === p.id);
   const team = F1.team(seat ? seat.teamId : p.teamId), col = team.color || '#E10600', rec = f1Record(p.id);
   const W = 1080, H = 1350, cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d');
-  try { await Promise.all(['700 200px "Barlow Condensed"', '600 40px "Barlow"'].map(f => document.fonts.load(f))); } catch (e) { /* fall back */ }
-  const cond = (wt, px) => `${wt} ${px}px "Barlow Condensed", "Arial Narrow", sans-serif`, body = (wt, px) => `${wt} ${px}px "Barlow", system-ui, sans-serif`;
+  try { await Promise.all(['700 200px "Titillium Web"', '600 40px "Titillium Web"'].map(f => document.fonts.load(f))); } catch (e) { /* fall back */ }
+  const cond = (wt, px) => `${wt} ${px}px "Titillium Web", "Arial Narrow", sans-serif`, body = (wt, px) => `${wt} ${px}px "Titillium Web", system-ui, sans-serif`;
   g.fillStyle = '#14181C'; g.fillRect(0, 0, W, H);
   const grad = g.createLinearGradient(0, 0, W, H); grad.addColorStop(0, col); grad.addColorStop(0.62, '#14181C'); g.globalAlpha = 0.9; g.fillStyle = grad; g.fillRect(0, 0, W, H); g.globalAlpha = 1;
   g.font = cond(700, 760); g.fillStyle = 'rgba(255,255,255,0.07)'; g.textAlign = 'right'; g.fillText(String(p.num || p.abbr || ''), W - 20, 820);
@@ -4524,10 +4524,10 @@ function exportRows(w, key) {
 
 /* ---------------------------------------------------------------- drawing */
 const EXP_THEMES = {
-  dark: { bg: '#11161B', panel: '#1B2229', ink: '#EEF2F5', muted: '#A3AEB8', line: '#2C353E', photo: '#262E36', photoInk: '#56626C', step: '#EEF2F5', stepInk: '#11161B' },
+  dark: { bg: '#1C1D22', panel: '#25272D', ink: '#FFFFFF', muted: '#A7ABB3', line: '#3A3D45', photo: '#2E3037', photoInk: '#565A63', step: '#E10600', stepInk: '#FFFFFF' },
   light: { bg: '#E6E9EC', panel: '#FFFFFF', ink: '#142130', muted: '#56636F', line: '#CDD3D8', photo: '#D3D9DE', photoInk: '#9AA6B0', step: '#142130', stepInk: '#F7F8F9' }
 };
-const cond = (wt, px) => `${wt} ${px}px "Barlow Condensed", "Arial Narrow", sans-serif`, bodyF = (wt, px) => `${wt} ${px}px "Barlow", system-ui, sans-serif`;
+const cond = (wt, px) => `${wt} ${px}px "Titillium Web", "Arial Narrow", sans-serif`, bodyF = (wt, px) => `${wt} ${px}px "Titillium Web", system-ui, sans-serif`;
 function rr(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
 function fitText(g, text, font, size, max) { let s = size; g.font = font(s); while (g.measureText(text).width > max && s > 10) { s -= 2; g.font = font(s); } return s; }
 const initials = n => String(n || '').split(/\s+/).map(x => x[0]).join('').slice(0, 2).toUpperCase();
@@ -4550,7 +4550,7 @@ function tyreDot(g, x, y, r, compound, T) { g.beginPath(); g.arc(x, y, r, 0, Mat
 async function drawTiming(w, key, format, theme) {
   const T = EXP_THEMES[theme] || EXP_THEMES.dark, rows = exportRows(w, key), stage = (exportStages(w).find(s => s[0] === key) || ['', ''])[1];
   const t = get('f1_tracks', w.trackId) || {}, race = key === 'race' || key === 'result', top = rows.slice(0, 3), rest = rows.slice(3), isTest = w.session === 'test';
-  try { await Promise.all(['700 100px "Barlow Condensed"', '600 30px "Barlow"'].map(f => document.fonts.load(f))); } catch (e) { /* fall back */ }
+  try { await Promise.all(['700 100px "Titillium Web"', '900 100px "Titillium Web"', '600 30px "Titillium Web"'].map(f => document.fonts.load(f))); } catch (e) { /* fall back */ }
   const imgs = await Promise.all(top.map(r => loadImg(r.portrait))), logo = await loadImg(leagueLogo());
   const wide = format === 'broadcast', W = wide ? 1920 : 1080, H = wide ? 1080 : 1350, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   const g = cv.getContext('2d'); g.fillStyle = T.bg; g.fillRect(0, 0, W, H);
@@ -4558,6 +4558,7 @@ async function drawTiming(w, key, format, theme) {
   if (!wide) {
     drawMark(g, 60, 56, T, logo); g.font = cond(600, 24); g.fillStyle = T.muted; g.textAlign = 'right'; g.fillText(`Round ${t.round || ''}, ${t.circuit || ''}`.trim(), W - 60, 80); g.textAlign = 'left';
     g.font = cond(600, 32); g.fillText(title, 60, 150); fitText(g, stage, s => cond(700, s), 116, W - 120); g.fillStyle = T.ink; g.fillText(stage, 58, 252);
+    g.fillStyle = '#E10600'; g.beginPath(); g.moveTo(68, 284); g.lineTo(150, 284); g.lineTo(144, 292); g.lineTo(62, 292); g.closePath(); g.fill();
     /* Podium: P2, P1, P3. */
     const colW = (W - 120 - 36) / 3, baseY = 860, cardH = [450, 400, 370], stepH = [110, 72, 44];
     [1, 0, 2].forEach((i, slot) => { const r = top[i]; if (!r) return; const x = 60 + slot * (colW + 18), y = baseY - stepH[i] - cardH[i];
@@ -4631,7 +4632,7 @@ DRAWERS.tx = function () {
     <div class="body"><div class="form-grid">
       <label class="field">Stage${opt('key', exportStages(w))}</label>
       <label class="field">Format${opt('format', EXPORT_FORMATS)}</label>
-      <label class="field">Look${opt('theme', [['dark', 'Dark'], ['light', 'Light']])}</label></div>
+      <label class="field">Look${opt('theme', [['dark', 'Carbon'], ['light', 'Light']])}</label></div>
     ${x.url ? `<img class="card-preview tx-preview" src="${x.url}" alt="The timing sheet image">` : '<p class="muted">Drawing the timing sheet…</p>'}
     ${S.isGm ? `<label class="field" style="max-width:360px">Discord channel${opt('channel', [['', `Automatic: #${S.discordCh ? pickChannel(x.key === 'result' ? 'results' : 'timing', wSeries(w), S.discordCh) : '…'}`]].concat((S.discordCh || []).map(c => [c, '#' + c])))}</label>` : ''}
     <div class="btn-row"><button class="btn primary" data-act="tx-download" ${x.url ? '' : 'disabled'}>Download</button>${S.isGm ? `<button class="btn" data-act="tx-discord" ${x.url ? '' : 'disabled'}>Post to Discord</button>` : ''}${x.posted ? `<span class="tag player">Posted to #${esc(x.posted)}</span>` : ''}</div></div>`;

@@ -25,6 +25,21 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v0.18.0: the Carbon look
+
+11 November 2026. Build `f1sim-0.18.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Carbon | The whole site has a new look: dark graphite, white type, and F1 red for what matters most. It's the same for everyone, whatever their device's light or dark setting. |
+| Type | Titillium Web throughout, with italic headings and a red slanted underline under page titles. |
+| Slanted shapes | The active menu item, the current stage, selected tabs and filters, the main buttons and the Race Weekend page's section labels are red and slanted. |
+| Details | Square corners, a red line under the top bar, red highlights for the next round on the calendar, the current session and the stat that matters now, and red-tinted rows for your own cars in timing. |
+| Exports and cards | Timing exports default to Carbon (red podium steps, a red slant under the stage title, Titillium Web); the light option is still there. Driver cards use Titillium Web. |
+| Phones | The browser bar and installed app use the Carbon colour. |
+
+---
+
 ## v0.17.0: calendar, pre-season testing and race reports
 
 11 November 2026. Build `f1sim-0.17.0`. **No database update.**
