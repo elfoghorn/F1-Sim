@@ -281,15 +281,46 @@ table.stops { max-width: 520px; } table.stops select { width: auto; min-height: 
 .plan-look { margin: 10px 0 4px; }
 .warn-note { color: var(--bad); margin: 2px 0; }
 .strategy .f1-car .tabs { margin-top: 8px; }
+
+/* ---------- moments, notifications, profiles, awards, team depth ---------- */
+.moment { border: 2px solid var(--f1-soft); box-shadow: 0 0 0 4px color-mix(in srgb, var(--f1-soft) 18%, transparent); }
+.moment h2 { font-size: 28px; }
+.choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 10px; }
+.choice { display: flex; flex-direction: column; gap: 4px; text-align: left; background: var(--panel-2); border: 2px solid var(--line); border-radius: 8px; padding: 12px; cursor: pointer; color: var(--ink); font: inherit; }
+.choice b { font: 700 20px var(--cond); } .choice span { font-size: 13.5px; color: var(--muted); } .choice .odds { color: var(--ink); font-weight: 600; margin-top: auto; }
+.choice[aria-pressed="true"] { border-color: var(--ink); background: var(--panel); box-shadow: inset 0 0 0 1px var(--ink); }
+.bell { position: relative; border: 0; background: none; color: var(--ink); cursor: pointer; padding: 6px; display: inline-flex; }
+.bell .count { position: absolute; top: -2px; right: -4px; margin: 0; }
+.feed-list { list-style: none; margin: 0; padding: 0; } .feed-list li { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); align-items: baseline; }
+.feed-list li.new .linkish { font-weight: 600; } .feed-list li.urgent { background: color-mix(in srgb, var(--f1-soft) 10%, transparent); padding-left: 8px; }
+.feed-list .muted { white-space: nowrap; } .notice-item + .notice-item { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
+.profile-head { display: flex; gap: 20px; align-items: flex-end; margin-bottom: 20px; flex-wrap: wrap; }
+.profile-head > div { flex: 1 1 280px; } .profile-head h1 { margin-bottom: 2px; }
+.portrait { border-radius: 10px; object-fit: cover; border-bottom: 5px solid var(--team, var(--line)); background: var(--panel-2); flex: none; }
+.portrait.none { display: inline-grid; place-items: center; font: 700 40px var(--cond); color: var(--muted); }
+.timeline { list-style: none; padding: 0; margin: 0; } .timeline li { padding: 6px 0 6px 14px; border-left: 2px solid var(--line); }
+.timeline li .muted { display: block; }
+.rels { list-style: none; padding: 0; margin: 0; } .rels li { padding: 6px 0; border-bottom: 1px solid var(--line); } .rels p { margin: 2px 0 0; }
+.tag.rival { background: var(--bad-soft); color: var(--bad); } .tag.friend { background: var(--ok-soft); color: var(--ok); } .tag.mentor, .tag.history { background: var(--you); color: var(--accent); }
+.tag.trophy { background: var(--f1-medium); color: #2a2200; }
+.diary + .diary { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; } .diary h3 { margin: 2px 0 6px; }
+.vote-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.vote { position: relative; text-align: left; display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-left: 4px solid var(--team); border-radius: 6px; background: var(--panel); color: var(--ink); cursor: pointer; font: inherit; }
+.vote b { font: 700 17px var(--cond); } .vote span { font-size: 13px; color: var(--muted); } .vote .votes { position: absolute; right: 10px; top: 10px; font: 700 18px var(--cond); color: var(--ink); }
+.vote.on { box-shadow: inset 0 0 0 2px var(--ink); }
+.awards { list-style: none; padding: 0; margin: 0; } .awards li { padding: 4px 0; }
+.card-preview { width: 100%; max-width: 420px; border-radius: 8px; display: block; margin: 8px 0; }
+.offer { border-left: 4px solid var(--team); padding-left: 12px; margin-bottom: 12px; }
+.f1-feed li.moment { border-left-color: var(--f1-soft); } .f1-feed li.penalty { border-left-color: var(--bad); }
 </style>
 </head>
 <body>
 <div id="auth-root"><div class="boot"><div class="boot-card"><span class="brand-mark big" aria-hidden="true"></span><h1>F1 SIM</h1><p>Loading…</p></div></div></div>
 <div id="app"></div>
-<script>window.F1SIM_BUILD = 'f1sim0005';</script>
+<script>window.F1SIM_BUILD = 'f1sim0006';</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
-<script src="config.js?v=f1sim0005"></script>
-<script src="bridge.js?v=f1sim0005"></script>
+<script src="config.js?v=f1sim0006"></script>
+<script src="bridge.js?v=f1sim0006"></script>
 <noscript>F1 SIM needs JavaScript switched on.</noscript>
 </body>
 </html>
