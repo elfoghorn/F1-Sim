@@ -262,15 +262,25 @@ td.fl, span.fl { color: var(--fl); font-weight: 700; } td.pb, span.pb { color: v
 .small-metrics .metric b { font-size: 24px; } .small-metrics { margin-bottom: 8px; }
 h4 { font: 700 17px var(--cond); margin: 16px 0 6px; }
 .f1-feed.short { max-height: 220px; }
+
+/* ---------- view as, applications ---------- */
+.view-as { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--flag); color: var(--flag-ink); border-radius: 8px; padding: 8px 12px; margin-bottom: 16px; }
+.view-as .btn { margin-left: auto; }
+.brackets { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.bracket { text-align: left; display: flex; flex-direction: column; gap: 4px; cursor: pointer; font: inherit; color: inherit; margin: 0; }
+.bracket b { font: 700 19px var(--cond); } .bracket.on { box-shadow: inset 0 0 0 2px var(--ink); } .bracket:disabled { cursor: default; }
+table.arrange td { vertical-align: middle; } table.arrange .btn.small { min-height: 30px; padding: 3px 9px; }
+.journey { padding-left: 20px; margin: 0 0 14px; } .journey li { margin-bottom: 8px; max-width: 75ch; }
+.notice.warn { border-left: 4px solid var(--bad); }
 </style>
 </head>
 <body>
 <div id="auth-root"><div class="boot"><div class="boot-card"><span class="brand-mark big" aria-hidden="true"></span><h1>F1 SIM</h1><p>Loading…</p></div></div></div>
 <div id="app"></div>
-<script>window.F1SIM_BUILD = 'f1sim0003';</script>
+<script>window.F1SIM_BUILD = 'f1sim0004';</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
-<script src="config.js?v=f1sim0003"></script>
-<script src="bridge.js?v=f1sim0003"></script>
+<script src="config.js?v=f1sim0004"></script>
+<script src="bridge.js?v=f1sim0004"></script>
 <noscript>F1 SIM needs JavaScript switched on.</noscript>
 </body>
 </html>
