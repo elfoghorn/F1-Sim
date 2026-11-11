@@ -1,4 +1,4 @@
-/* F1 SIM f1sim0004: a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM f1sim0005: a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -19,6 +19,7 @@
      { entry, type: 'box', compound }            pit at the end of this lap
      { entry, type: 'mode', value }              push | standard | manage
      { entry, type: 'plan', stops: [{ lap, compound }] }
+     { entry, type: 'strategy', name, stops, wetCall, dryCall, useSC }   switch to another plan
      { entry, type: 'manual', value: true }      AI stops making pit calls for this car
      { team,  type: 'order', value }             hold | swap | none
      { entry, type: 'refuseOrder' }              the driver ignores the current team order
@@ -29,6 +30,9 @@
      car.pitSpeed / car.tyreLife          crew speed and how kind the car is to its tyres
      paceAdj / qualiAdj                   seconds per lap, e.g. a driver's good or bad tracks
      ai: { stretch, scPit, undercut }     the AI strategist's personality for this car
+     planned, plan, ai.wetCall/dryCall    a team's own plan: stops on set laps, and when to
+                                          go to wet tyres (early | normal | late) and back
+     ai.useSC                             pit under a safety car if a planned stop is near
      startMode                            driving mode at the start
    ===================================================================== */
 (function (root) {
@@ -185,7 +189,7 @@
         grid: i + 1, status: 'running', dnf: null, cum: i * 0.25, lastLap: null, bestLap: null,
         tyre: { compound: comp, wear: 0, age: 0 }, stints: [{ compound: comp, from: 1, to: null }],
         paceAdj: e.paceAdj || 0, form: weekendForm(opts.seed, id, rules), ai: e.ai || {},
-        used: [comp], stops: 0, mode: MODES[e.startMode] ? e.startMode : 'standard', energy: 60, plan: (e.plan || []).slice(), manual: !!e.manual,
+        used: [comp], stops: 0, mode: MODES[e.startMode] ? e.startMode : 'standard', energy: 60, plan: (e.plan || []).slice().sort(function (a, b) { return a.lap - b.lap; }), planned: !!e.planned, manual: !!e.manual,
         pendingBox: null, refuse: false, positions: [], lapTimes: []
       };
     });
@@ -204,7 +208,13 @@
       if (!car || car.status !== 'running') return;
       if (c.type === 'box') car.pendingBox = c.compound || 'auto';
       else if (c.type === 'mode' && MODES[c.value]) car.mode = c.value;
-      else if (c.type === 'plan') car.plan = (c.stops || []).slice();
+      else if (c.type === 'plan') { car.plan = (c.stops || []).filter(function (p) { return p.lap > s.lap; }).sort(function (a, b) { return a.lap - b.lap; }); car.planned = true; }
+      else if (c.type === 'strategy') {
+        car.plan = (c.stops || []).filter(function (p) { return p.lap > s.lap; }).sort(function (a, b) { return a.lap - b.lap; });
+        car.planned = true; car.planName = c.name || null;
+        car.ai = merge(car.ai || {}, { wetCall: c.wetCall || 'normal', dryCall: c.dryCall || 'normal', useSC: c.useSC !== false });
+        log.push({ kind: 'order', ids: [car.id], text: car.driver.code + ' switches to ' + (c.name || 'a new plan') });
+      }
       else if (c.type === 'manual') car.manual = !!c.value;
       else if (c.type === 'refuseOrder') { car.refuse = true; log.push({ kind: 'order', ids: [car.id], text: car.driver.code + ' refuses the team order' }); }
     });
@@ -223,28 +233,40 @@
     }
     return needNew === 'hard' ? 'medium' : 'hard';
   }
+  /* How many laps in a row, up to this one, the track has been wet (or dry). */
+  function streak(s, wet) { var n = 0; for (var i = s.lap - 1; i >= 0; i--) { if ((s.track[i] > 0) === wet) n++; else break; } return n; }
   function aiWantsBox(car, s, track) {
-    var left = s.laps - s.lap, c = COMPOUNDS[car.tyre.compound], life = tyreLife(car.tyre.compound, car, s.circuit);
-    var planned = car.plan.filter(function (p) { return p.lap === s.lap; })[0];
-    if (planned) return planned.compound || 'auto';
-    if (track === 0 && c.wet && car.tyre.age >= 1) return 'auto';
-    if (track > 0 && !c.wet) return 'auto';
+    var left = s.laps - s.lap, c = COMPOUNDS[car.tyre.compound], life = tyreLife(car.tyre.compound, car, s.circuit), ai = car.ai || {};
+    /* Weather first: the team's call decides how soon to react. Late means staying on slicks through the damp. */
+    if (track > 0 && !c.wet) { var w = streak(s, true), wc = ai.wetCall || 'normal';
+      if (wc === 'early' ? w >= 1 : wc === 'late' ? (track === 2 || w >= 4) : w >= 2) return 'auto'; return car.planned ? null : null; }
+    if (track === 0 && c.wet) { var d = streak(s, false), dc = ai.dryCall || 'normal';
+      if (dc === 'early' ? d >= 1 : dc === 'late' ? d >= 4 : d >= 2) return 'auto'; return null; }
     if (track === 1 && car.tyre.compound === 'wet' && s.track[s.lap - 2] === 1) return 'auto';
     if (track === 2 && car.tyre.compound === 'inter' && s.track[s.lap - 2] === 2) return 'auto';
+    if (c.wet) return null;
+    var dry = car.used.filter(function (x) { return !COMPOUNDS[x].wet; });
+    var wetRace = s.track.some(function (t) { return t > 0; });
+    var mustSecond = s.rules.mandatoryCompounds !== false && !wetRace && dry.length < 2 && left <= 3 && left > 1;
+    if (car.planned) {
+      /* The team's plan: stop on the planned lap, early under a safety car if it says so, or if the tyre is finished. */
+      var next = car.plan[0];
+      if (next && next.lap <= s.lap && left > 1) return next.compound || 'auto';
+      if (next && s.sc.type && ai.useSC !== false && next.lap - s.lap <= 10 && left > 3) return next.compound || 'auto';
+      if (car.tyre.wear > life * 1.15 && left > 2) return (next && next.compound) || 'auto';
+      return mustSecond ? 'auto' : null;
+    }
     if (car.manual) return car.tyre.wear > life * 1.3 ? 'auto' : null;
     if (left <= 1) return null;
-    var ai = car.ai || {}, stretch = ai.stretch || 1;
+    var stretch = ai.stretch || 1;
     if (car.tyre.wear >= life * 0.92 * stretch && left > 3) return 'auto';
     if (s.sc.type && car.tyre.wear > life * (ai.scPit || 0.45) && left > 8) return 'auto';
     if (ai.undercut && !s.sc.type && car.tyre.wear >= life * 0.7 && left > 8) {
       /* Undercut: stop early when stuck within a second and a half of the car ahead. */
-      var ahead = order(s).filter(function (c) { return c.cum < car.cum; }).pop();
+      var ahead = order(s).filter(function (x) { return x.cum < car.cum; }).pop();
       if (ahead && car.cum - ahead.cum < 1.5 && ahead.tyre.age >= car.tyre.age - 2) return 'auto';
     }
-    var dry = car.used.filter(function (x) { return !COMPOUNDS[x].wet; });
-    var wetRace = s.track.some(function (t) { return t > 0; });
-    if (s.rules.mandatoryCompounds !== false && !wetRace && dry.length < 2 && left <= 3) return 'auto';
-    return null;
+    return mustSecond ? 'auto' : null;
   }
 
   /* ------------------------------------------------------------ one lap */
@@ -352,7 +374,11 @@
       if (!s.sc.type && !box0[car.id] && car.lastLap && (!s.fastest || car.lastLap < s.fastest.time)) s.fastest = { id: car.id, time: car.lastLap, lap: s.lap };
       var box = car.pendingBox || (s.lap < s.laps ? aiWantsBox(car, s, track) : null);
       if (box && s.lap < s.laps) {
-        var comp = box === 'auto' || !COMPOUNDS[box] ? chooseCompound(car, s, s.track[s.lap] != null ? s.track[s.lap] : track) : box;
+        var nextTrack = s.track[s.lap] != null ? s.track[s.lap] : track;
+        var comp = box === 'auto' || !COMPOUNDS[box] ? chooseCompound(car, s, nextTrack) : box;
+        /* Back onto slicks after rain: that stop is the next planned one, on its tyre. */
+        var offWets = COMPOUNDS[car.tyre.compound].wet && !COMPOUNDS[comp].wet;
+        if (offWets && car.planned && car.plan.length && nextTrack === 0 && (box === 'auto' || !COMPOUNDS[box])) comp = car.plan[0].compound || comp;
         var crew = car.car.pitSpeed == null ? 85 : car.car.pitSpeed;
         var stop = Math.max(1.9, R.pitStop.mean - (crew - 85) * 0.03 + gauss(r) * R.pitStop.sd);
         var slow = r() < R.pitStop.slowChance * (1 + (85 - crew) / 30); if (slow) stop += 2 + r() * 6;
@@ -362,7 +388,10 @@
         car.stints.push({ compound: comp, from: s.lap + 1, to: null });
         car.tyre = { compound: comp, wear: 0, age: 0 }; car.stops += 1; car.pendingBox = null;
         if (car.used.indexOf(comp) < 0) car.used.push(comp);
-        car.plan = car.plan.filter(function (p) { return p.lap > s.lap; });
+        /* A dry stop uses up the next planned stop (even if it came early); weather stops don't. Stops planned for the next few laps are dropped. */
+        var weatherStop = COMPOUNDS[comp].wet;
+        if (!weatherStop && car.plan.length) car.plan.shift();
+        car.plan = car.plan.filter(function (p) { return p.lap > s.lap + 3; });
         log.push({ kind: 'pit', ids: [car.id], text: car.driver.code + ' pits for ' + COMPOUNDS[comp].label + 's (' + stop.toFixed(1) + 's' + (slow ? ', slow stop' : '') + ')' });
       }
     });
@@ -558,7 +587,7 @@
 'use strict';
 
 const COLLECTIONS = ['characters', 'f1_teams', 'f1_people', 'f1_seats', 'f1_tracks', 'f1_weekends', 'f1_calls',
-  'f1_applications', 'f1_posts', 'f1_settings', 'f1_runs', 'f1_projects', 'f1_dev', 'audit'];
+  'f1_applications', 'f1_posts', 'f1_settings', 'f1_runs', 'f1_projects', 'f1_dev', 'f1_plans', 'audit'];
 
 const S = {
   phase: 'boot', store: {}, delivered: new Set(), db: null, uid: null, isGm: false, isOwner: false,
@@ -1105,6 +1134,7 @@ function f1CallAllowed(c, w) {
     case 'setup': return f1CanRun(w, ent, c.charId);
     case 'box': case 'mode': return tp || own('engineer') || own('driver');
     case 'refuseOrder': return own('driver');
+    case 'strategy': return tp || own('engineer') || own('driver');
     default: return false;
   }
 }
@@ -1115,6 +1145,7 @@ function f1CallText(c, w) {
   if (c.type === 'mode') return `${who}: ${RaceEngine.MODES[c.value].label.toLowerCase()} mode`;
   if (c.type === 'order') return `${who}: team order, ${c.value === 'none' ? 'free to race' : c.value === 'hold' ? 'hold positions' : 'swap the cars'}`;
   if (c.type === 'refuseOrder') return `${who}: refuses the team order`;
+  if (c.type === 'strategy') return `${who}: switch to ${PLAN_NAMES[Number(c.value) || 0]}`;
   if (c.type === 'setup') return `${who}: set-up locked in (${typeof c.value === 'object' ? dialText(c.value) : c.value})`;
   return who;
 }
@@ -1182,11 +1213,13 @@ async function f1Advance(laps) {
     const ent = (w.entrants || []).find(e => e.id === c.carId);
     if (c.type === 'order') engineCalls.push({ team: c.teamId, type: 'order', value: c.value });
     else if (c.type === 'box') engineCalls.push({ entry: c.carId, type: 'box', compound: c.value });
+    else if (c.type === 'strategy') { const sc = f1StrategyCall(w, c); if (!sc) return; engineCalls.push(sc); }
     else engineCalls.push({ entry: c.carId, type: c.type, value: c.value });
     notes.push({ kind: 'call', ids: ent ? [ent.id] : [], text: 'Pit wall, ' + f1CallText(c, w) });
   });
   const stopSc = (S.ui.form.f1stopSc !== false);
-  let st = w.state, log = [];
+  /* At the start, every car with saved plans takes its starting tyre and follows its plan. */
+  let st = w.state.lap === 0 ? f1ApplyPlans(w, w.state) : w.state, log = [];
   for (let i = 0; i < laps && !st.finished; i++) {
     const out = RaceEngine.stepLap(st, i === 0 ? engineCalls : []);
     if (i === 0 && notes.length) { notes.forEach(n => { n.lap = out.state.lap; }); out.state.events = out.state.events.slice(0, out.state.events.length - out.log.length).concat(notes, out.log); }
@@ -1894,7 +1927,7 @@ route('weekend', 'Race Weekend', function () {
   if (view) h += `<div class="btn-row" style="margin-bottom:12px"><button class="btn" data-act="f1-view">Back to the current weekend</button></div>`;
   if (S.isGm && !view) h += lvControlHtml(w) || '';
   if (S.isGm && !view && w.status === 'finished') h += `<section class="card"><h2>Race Control</h2><p>This weekend is finished and counts towards the championship.</p><div class="btn-row"><button class="btn" data-act="f1-discord" data-id="${esc(w.id)}">Post the result to Discord</button></div></section>` + f1OpenFormHtml();
-  if (!view && w.status !== 'finished') h += f1PitWallHtml(w);
+  if (!view && w.status !== 'finished') h += f1PitWallHtml(w) + f1StrategyCardHtml(w);
 
   if (!st) {
     const ents = f1Entrants();
@@ -2080,6 +2113,171 @@ route('character', 'Character', function () {
   if (driver) h += weekendGuideHtml();
   return h;
 });
+
+/* =====================================================================
+   F1 SIM — race strategy.
+   For every car, its team principal, race engineer and driver can build
+   three plans: the starting tyre, up to three stops (lap and tyre), when
+   to go onto wet tyres if it rains and back onto slicks as it dries, and
+   whether to take a cheap stop under a safety car. One plan is chosen for
+   the start; any of them can be switched to during the race from the
+   pit wall. Whoever saved last decides, and everyone in the team sees who.
+   ===================================================================== */
+'use strict';
+
+const PLAN_NAMES = ['Plan A', 'Plan B', 'Plan C'];
+const WET_CALLS = [['early', 'Straight away, at the first spots'], ['normal', 'After a lap of rain'], ['late', 'Gamble: stay on slicks until it’s properly wet']];
+const DRY_CALLS = [['early', 'Straight away, on the first dry lap'], ['normal', 'After a dry lap'], ['late', 'Carefully: after a few dry laps']];
+const DRY_TYRES = [['soft', 'Softs'], ['medium', 'Mediums'], ['hard', 'Hards']];
+
+/* Who may plan a car: the team principal, the car's race engineer, the car's driver. */
+function canPlan(w, ent, charId) {
+  if (!ent || !charId) return false;
+  const seats = F1.seats(ent.teamId).filter(s => s.holderCharId === charId);
+  return seats.some(s => s.role === 'principal' || ((s.role === 'engineer' || s.role === 'driver') && s.car === ent.car));
+}
+const raceLaps = w => { const t = F1.track(w.trackId) || {}; return w.state ? w.state.laps : (w.session === 'sprint' ? Math.ceil((t.laps || 50) / 3) : (t.laps || 50)); };
+function cleanPlan(p, laps) {
+  p = p || {};
+  const dryOk = k => ['soft', 'medium', 'hard'].indexOf(k) !== -1;
+  const stops = (p.stops || []).map(s => ({ lap: Math.round(Number(s.lap)), compound: dryOk(s.compound) ? s.compound : 'medium' }))
+    .filter(s => s.lap >= 2 && s.lap <= laps - 1).sort((a, b) => a.lap - b.lap).slice(0, 3);
+  return { start: dryOk(p.start) ? p.start : 'medium', stops,
+    wetCall: ['early', 'normal', 'late'].indexOf(p.wetCall) !== -1 ? p.wetCall : 'normal',
+    dryCall: ['early', 'normal', 'late'].indexOf(p.dryCall) !== -1 ? p.dryCall : 'normal', useSC: p.useSC !== false };
+}
+/* The plans that count for a car: the latest saved by someone allowed to plan it. */
+function f1Plan(w, ent) {
+  return list('f1_plans').filter(p => p.weekendId === w.id && p.carId === ent.id && canPlan(w, ent, p.charId))
+    .sort((a, b) => String(b.at).localeCompare(String(a.at)))[0] || null;
+}
+function weekendEnt(w, carId) { return (w.entrants || f1Entrants()).find(e => e.id === carId) || null; }
+
+/* Tyre life the team knows about: measured on long runs in practice, or a rough guide from the circuit. */
+function tyreKnowledge(w, ent) {
+  const track = F1.track(w.trackId), circuit = FormulaRacingAdapter.toCircuit(track), out = {};
+  const full = Object.assign({}, ent, { v3: ent.v3 || (f1Entrants().find(x => x.id === ent.id) || {}).v3 });
+  f1Runs(w, ent.id).filter(r => r.kind === 'long').forEach(r => { const x = f1RunResult(w, full, r); out[x.compound] = { laps: x.life, measured: true }; });
+  ['soft', 'medium', 'hard'].forEach(k => { if (!out[k]) out[k] = { laps: Math.round(RaceEngine.COMPOUNDS[k].life / (circuit.tyreStress || 1)), measured: false }; });
+  return out;
+}
+function suggestPlans(w, ent) {
+  const N = raceLaps(w), L = tyreKnowledge(w, ent), clampLap = x => Math.max(2, Math.min(N - 2, Math.round(x)));
+  const one = clampLap(Math.min(L.medium.laps * 0.95, Math.max(N * 0.35, N - L.hard.laps * 0.9)));
+  return [
+    { start: 'medium', stops: [{ lap: one, compound: 'hard' }], wetCall: 'normal', dryCall: 'normal', useSC: true },
+    { start: 'soft', stops: [{ lap: clampLap(Math.min(L.soft.laps * 0.9, N * 0.3)), compound: 'medium' }, { lap: clampLap(N * 0.64), compound: 'medium' }], wetCall: 'early', dryCall: 'early', useSC: true },
+    { start: 'hard', stops: [{ lap: clampLap(Math.min(L.hard.laps * 0.95, N * 0.6)), compound: 'medium' }], wetCall: 'late', dryCall: 'normal', useSC: false }
+  ];
+}
+/* What a plan looks like, and what's wrong with it. */
+function planNotes(p, N, L) {
+  const stints = [], notes = []; let from = 1, tyre = p.start;
+  p.stops.concat([{ lap: N, compound: null }]).forEach(s => { stints.push({ tyre, from, to: s.lap }); from = s.lap + 1; tyre = s.compound; });
+  stints.forEach(s => { const len = s.to - s.from + 1, life = L[s.tyre] ? L[s.tyre].laps : 99;
+    if (len > life * 1.1) notes.push(`${len} laps on ${s.tyre}s is longer than they last here (about ${life}). Expect a forced early stop.`); });
+  if (new Set(stints.map(s => s.tyre)).size < 2) notes.push('Only one dry tyre: the rules need two, so the car will be made to stop near the end.');
+  return { stints, notes };
+}
+function forecastText(w) {
+  const t = F1.track(w.trackId) || {};
+  if (w.weatherMode === 'dry') return 'Dry all race.';
+  if (w.weatherMode === 'mid') return 'Rain is expected during the race.';
+  if (w.weatherMode === 'wet') return 'A wet start, drying out.';
+  return `${Math.round((t.wr || 0) * 0.6)}% chance of rain during the race.`;
+}
+
+/* ---------------------------------------------------------------- editing */
+function stratForm(w, ent) {
+  const f = S.ui.form.strat = S.ui.form.strat || {};
+  if (!f[ent.id] || f[ent.id].weekendId !== w.id) {
+    const doc = f1Plan(w, ent);
+    f[ent.id] = { weekendId: w.id, plans: doc ? clone(doc.plans) : suggestPlans(w, ent), active: doc ? String(doc.active || 0) : '0', tab: 0 };
+  }
+  return f[ent.id];
+}
+ACTIONS['strat-tab'] = d => { S.ui.form.strat[d.car].tab = Number(d.i); render(); };
+ACTIONS['strat-add'] = d => { const p = S.ui.form.strat[d.car].plans[d.i]; if (p.stops.length >= 3) return;
+  const last = p.stops.length ? p.stops[p.stops.length - 1].lap : 0; p.stops.push({ lap: Math.min(raceLaps(F1.live()) - 2, last + 15), compound: 'medium' }); render(); };
+ACTIONS['strat-del'] = d => { S.ui.form.strat[d.car].plans[d.i].stops.splice(Number(d.j), 1); render(); };
+ACTIONS['strat-suggest'] = d => { const w = F1.live(), ent = weekendEnt(w, d.car); S.ui.form.strat[d.car].plans = suggestPlans(w, ent); toast('Plans filled in from what the team knows about the tyres. Adjust, then save.'); render(); };
+ACTIONS['strat-save'] = d => {
+  const w = F1.live(), c = currentChar(), ent = w && weekendEnt(w, d.car); if (!w || !c || !ent) return;
+  if (!canPlan(w, ent, c.id)) { toast('Only the team principal, this car’s engineer or its driver plan its race.', true); return; }
+  if (w.state && w.state.lap > 0) { toast('The race has started: switch plans from the pit wall instead.', true); return; }
+  const f = S.ui.form.strat[d.car], N = raceLaps(w);
+  run(async () => { await Data.put('f1_plans', `${w.id}-${d.car}-${c.id}`, { userId: asOwner(), charId: c.id, weekendId: w.id, carId: d.car,
+    plans: f.plans.map(p => cleanPlan(p, N)), active: Math.max(0, Math.min(2, Number(f.active) || 0)), at: nowIso() }); },
+    `Plans saved. ${PLAN_NAMES[Number(f.active) || 0]} is set for the start.`);
+};
+ACTIONS['strat-switch'] = d => f1SendCall({ type: 'strategy', carId: d.car, value: Number(d.i) });
+
+/* At the start: every car with a saved plan starts on its tyre and follows it. */
+function f1ApplyPlans(w, state) {
+  const st = clone(state);
+  st.cars.forEach(car => {
+    const ent = (w.entrants || []).find(e => e.id === car.id), doc = ent && f1Plan(w, ent); if (!doc) return;
+    const i = Number(doc.active) || 0, p = cleanPlan(doc.plans[i], st.laps), wet = st.track[0];
+    const start = wet === 2 ? 'wet' : wet === 1 ? 'inter' : p.start;
+    car.tyre = { compound: start, wear: 0, age: 0 }; car.stints = [{ compound: start, from: 1, to: null }]; car.used = [start];
+    car.plan = p.stops.map(s => ({ lap: s.lap, compound: s.compound })); car.planned = true; car.planName = PLAN_NAMES[i];
+    car.ai = Object.assign({}, car.ai, { wetCall: p.wetCall, dryCall: p.dryCall, useSC: p.useSC });
+  });
+  return st;
+}
+function f1StrategyCall(w, c) {
+  const ent = weekendEnt(w, c.carId), doc = ent && f1Plan(w, ent); if (!doc) return null;
+  const i = Number(c.value) || 0, p = cleanPlan(doc.plans[i], w.state.laps);
+  return { entry: c.carId, type: 'strategy', name: PLAN_NAMES[i], stops: p.stops, wetCall: p.wetCall, dryCall: p.dryCall, useSC: p.useSC };
+}
+
+/* ---------------------------------------------------------------- the strategy card */
+function stintsHtml(stints) { return stints.map(s => `${f1TyreChip(s.tyre)} <span class="small">${s.from}–${s.to}</span>`).join(' &nbsp;'); }
+function planEditorHtml(w, ent, f, i, N, L) {
+  const p = f.plans[i], base = `ui/form/strat/${ent.id}/plans/${i}`, sel2 = (id, path, val, opts) => sel(id, path, val, opts);
+  const look = planNotes(cleanPlan(p, N), N, L);
+  return `<div class="plan">
+    <div class="plan-grid"><label class="field">Start on${sel2(`sp-${ent.id}-${i}-start`, base + '/start', p.start, DRY_TYRES)}</label>
+      <label class="field">If it rains, go onto wet tyres${sel2(`sp-${ent.id}-${i}-wet`, base + '/wetCall', p.wetCall, WET_CALLS)}</label>
+      <label class="field">As it dries, back onto slicks${sel2(`sp-${ent.id}-${i}-dry`, base + '/dryCall', p.dryCall, DRY_CALLS)}</label></div>
+    <table class="data compact stops"><thead><tr><th>Stop</th><th>Lap</th><th>New tyres</th><th></th></tr></thead><tbody>
+      ${p.stops.map((s, j) => `<tr><td>${j + 1}</td><td><label class="sr-only" for="sp-${ent.id}-${i}-${j}-lap">Lap for stop ${j + 1}</label><input id="sp-${ent.id}-${i}-${j}-lap" type="number" min="2" max="${N - 1}" value="${esc(s.lap)}" data-bind="${base}/stops/${j}/lap" data-type="number" style="max-width:90px"></td>
+        <td><label class="sr-only" for="sp-${ent.id}-${i}-${j}-c">Tyre for stop ${j + 1}</label>${sel2(`sp-${ent.id}-${i}-${j}-c`, `${base}/stops/${j}/compound`, s.compound, DRY_TYRES)}</td>
+        <td><button class="btn small" data-act="strat-del" data-car="${esc(ent.id)}" data-i="${i}" data-j="${j}">Remove</button></td></tr>`).join('') || '<tr><td colspan="4" class="muted">No stops: start to finish on one set (risky, and against the rules in a dry race).</td></tr>'}</tbody></table>
+    <div class="btn-row">${p.stops.length < 3 ? `<button class="btn small" data-act="strat-add" data-car="${esc(ent.id)}" data-i="${i}">Add a stop</button>` : ''}
+      <label class="small"><input type="checkbox" data-bind="${base}/useSC" ${p.useSC !== false ? 'checked' : ''}> Take a stop under a safety car if one is due within 10 laps</label></div>
+    <p class="plan-look">${stintsHtml(look.stints)}</p>${look.notes.map(n => `<p class="small warn-note">${esc(n)}</p>`).join('')}</div>`;
+}
+function f1StrategyCardHtml(w) {
+  if (!w || w.status === 'finished') return '';
+  const c = currentChar(); if (!c) return '';
+  const cars = (w.entrants || f1Entrants()).filter(e => canPlan(w, e, c.id)); if (!cars.length) return '';
+  const N = raceLaps(w), started = !!(w.state && w.state.lap > 0);
+  const body = cars.map(ent => {
+    const t = F1.team(ent.teamId), doc = f1Plan(w, ent), by = doc ? get('characters', doc.charId) : null;
+    if (started) {
+      const car = w.state.cars.find(x => x.id === ent.id); if (!car || car.status !== 'running') return '';
+      const pend = f1Calls(w).find(x => x.type === 'strategy' && x.carId === ent.id), plans = doc ? doc.plans : [];
+      const next = (car.plan || [])[0];
+      return `<div class="f1-car" style="--team:${esc(t.color)}"><h3>${esc(ent.name)}</h3>
+        <p>${car.planned ? `On <b>${esc(car.planName || 'the team’s plan')}</b>. ${next ? `Next stop: lap ${next.lap}, ${esc(RaceEngine.COMPOUNDS[next.compound].label.toLowerCase())}s.` : 'No more stops planned.'}` : 'No plan saved: the AI strategist is running this car.'}</p>
+        ${plans.length ? `<div class="btn-row">${plans.map((p, i) => `<button class="btn small" data-act="strat-switch" data-car="${esc(ent.id)}" data-i="${i}" aria-pressed="${!!(pend && Number(pend.value) === i)}" ${car.planName === PLAN_NAMES[i] && !pend ? 'disabled' : ''}>Switch to ${PLAN_NAMES[i]}</button>`).join('')}</div>
+          <p class="muted small">Switching keeps the stops still ahead in that plan, and its weather calls.</p>` : ''}</div>`;
+    }
+    const f = stratForm(w, ent), L = tyreKnowledge(w, ent), tab = f.tab || 0;
+    return `<div class="f1-car" style="--team:${esc(t.color)}"><h3>${esc(ent.name)}</h3>
+      <p class="muted small">Tyre life here: ${['soft', 'medium', 'hard'].map(k => `${f1TyreChip(k)} about ${L[k].laps} laps${L[k].measured ? '' : ' (rough guide)'}`).join(' &nbsp; ')}. ${Object.values(L).some(x => !x.measured) ? 'Long runs in practice measure them properly.' : 'Measured in practice.'}</p>
+      ${doc ? `<p class="small">Saved by ${esc(by ? by.name : 'the team')} ${esc(fmtWhen(doc.at))}. ${esc(PLAN_NAMES[doc.active || 0])} is set for the start.</p>` : '<p class="small">Not saved yet: without saved plans, the AI strategist runs this car.</p>'}
+      <div class="tabs" role="tablist">${PLAN_NAMES.map((n, i) => `<button role="tab" class="tab" data-act="strat-tab" data-car="${esc(ent.id)}" data-i="${i}" aria-selected="${tab === i}">${n}</button>`).join('')}</div>
+      ${planEditorHtml(w, ent, f, tab, N, L)}
+      <div class="btn-row"><label class="field" style="margin:0">Start the race on${sel(`sp-${ent.id}-active`, `ui/form/strat/${ent.id}/active`, f.active, PLAN_NAMES.map((n, i) => [String(i), n]))}</label>
+        <button class="btn primary" data-act="strat-save" data-car="${esc(ent.id)}">Save all three plans</button>
+        <button class="btn" data-act="strat-suggest" data-car="${esc(ent.id)}">Suggest plans</button></div></div>`;
+  }).join('');
+  if (!body.trim()) return '';
+  return `<section class="card strategy"><h2>Race strategy <span class="sub">${esc(raceLaps(w))} laps. ${esc(forecastText(w))}</span></h2>
+    ${!started ? '<p class="muted small">The team principal, the car’s engineer and its driver can all plan; the last plans saved are the ones the car uses. Plans can be changed until the race starts, then switched between from here.</p>' : ''}${body}</section>`;
+}
 
 /* =====================================================================
    F1 SIM — Home, Paddock, Race Control desk, accounts and backups.
