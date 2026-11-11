@@ -60,15 +60,25 @@ In a private window:
 2. Send players the site address and the code. They create an account, then a character.
 3. To give someone Race Control, change their role on **Accounts and backups**. Only the Administrator changes roles.
 
-## Optional: post race results to Discord (about 10 minutes)
+## Optional: post to Discord (about 10 minutes)
 
-Race Control can post a finished race's result to Discord from **Race Weekend**. Discord doesn't accept posts straight from a web page, so the site uses a small relay, `functions/api/discord.js`, which Cloudflare runs alongside the site. It keeps the webhook as an encrypted secret and only accepts posts from Race Control.
+Race Control can post race results, timing exports, announcements and driver cards to Discord. Discord doesn't accept posts straight from a web page, so the site uses a small relay, `functions/api/discord.js`, which Cloudflare runs alongside the site. It keeps every webhook as an encrypted secret and only accepts posts from Race Control.
 
-1. In Discord: **Server Settings → Integrations → Webhooks → New Webhook**, pick the channel, name it `F1 SIM`, **Copy Webhook URL**.
-2. In Cloudflare: **Workers & Pages → your project → Settings → Variables and Secrets → Add**: type **Secret**, name `DISCORD_WEBHOOK`, value the webhook URL. To use a separate results channel, name it `DISCORD_WEBHOOK_RESULTS` instead; the site prefers a channel called *results*.
-3. **Redeploy** (push any change, or **Retry deployment**), then post a result to test it.
+1. In Discord, for each channel you want to post to: **Server Settings → Integrations → Webhooks → New Webhook**, pick the channel, name it `F1 SIM`, **Copy Webhook URL**.
+2. In Cloudflare: **Workers & Pages → your project → Settings → Variables and Secrets → Add**, type **Secret**, with a name from the table below and the webhook URL as the value.
+3. **Redeploy** (push any change, or **Retry deployment**). On the **Race Control** page, **Discord channels → Check the channels** shows which are set up and where each kind of post goes.
 
-Treat the webhook URL like a password. If it leaks, delete it in Discord and make a new one.
+| Secret name | What posts there |
+| --- | --- |
+| `DISCORD_WEBHOOK` | Required. Everything that doesn't have its own channel. |
+| `DISCORD_WEBHOOK_RESULTS` | Race results, and result exports. |
+| `DISCORD_WEBHOOK_TIMING` | Practice, qualifying and live timing exports. |
+| `DISCORD_WEBHOOK_ANNOUNCEMENTS` | Race Control announcements. |
+| `DISCORD_WEBHOOK_CARDS` | Driver cards: signings, poles, wins, Driver of the Day. |
+
+For a separate channel per series, put the series code first: `DISCORD_WEBHOOK_F2_RESULTS`, `DISCORD_WEBHOOK_F3_TIMING`. A post tries the series channel, then the general one, then `DISCORD_WEBHOOK`. When exporting timing, Race Control can also pick any channel by hand.
+
+Treat webhook URLs like passwords. If one leaks, delete it in Discord and make a new one.
 
 ## Phones
 
@@ -91,7 +101,7 @@ The free plan has no automatic backups. Every few race weekends, download one fr
 | A player forgot their password | **Accounts and backups → Reset password**. |
 | **"Project paused"** in Supabase | Resume it, then **Actions → Keep database awake → Enable workflow**. |
 | The site shows an old version | Hard-refresh: **Ctrl + Shift + R**. On a phone, close the app fully and reopen it. |
-| *"No Discord webhook is set up yet"* | The secret must be named `DISCORD_WEBHOOK` (or `DISCORD_WEBHOOK_…`) and applies from the next deployment. |
+| *"No Discord webhook is set up yet"* | The secrets must be named `DISCORD_WEBHOOK` (or `DISCORD_WEBHOOK_…`, see the table in the Discord section) and apply from the next deployment. |
 
 ## What the database enforces
 

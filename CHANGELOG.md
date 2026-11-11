@@ -25,6 +25,38 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v0.17.0: calendar, pre-season testing and race reports
+
+11 November 2026. Build `f1sim-0.17.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Calendar | A new page in the menu with every round of the season for the series being shown. Each card says whether the round is done (with the podium, pole and Driver of the Day), on now, next or still to come (circuit type, chance of rain, and who won there last season). Filter by all rounds, done or to come. |
+| What happened | Clicking a finished round opens that weekend: the classification, awards, Driver of the Day, the race (timing, race log, lap chart, tyres, each driver's race) and, new, the rest of the weekend: every practice session with its conditions and timesheet, and qualifying session by session. Sprints have their own button. |
+| Dates | Race Control can give each round a date (Set dates); the cards show it. |
+| Pre-season testing | A new kind of weekend Race Control can open at any circuit ("Pre-season testing" in the session list). Three test days, each with 6 runs per car, running like full practice sessions: weather, red flags, crashes, failures, timesheets and debriefs. Race Control runs each day, then finishes testing. |
+| What testing counts for | Not the championship, prize money, power units or development points. It does count towards engineer and driver rapport. Crashes in testing still cost repairs. |
+| Testing pages | The stage strip shows the three days. A finished test shows the fastest time of the whole test for each driver and each day's timesheet. Timing exports work for each test day. Testing appears first on the calendar. |
+| Race report | A "Race report" button beside Export timing, for any weekend with something to report. Three downloads: **.txt** (a readable account, stage by stage and lap by lap), **.json** (the complete data) and **.csv** (one row per car per lap, plus events). |
+| What's in the report | Each practice or test session: conditions, incidents, timesheet, and the players' runs with their dials, tyres, lap times, tyre life and the driver's feedback. Qualifying session by session, penalties and the grid. The race lap by lap: each car's position, gap to the leader, lap time, tyre and its age, pit stops and retirements, the weather, and every event (passes, mistakes, stops, safety cars, triggers, driver moments). Then the result. |
+
+---
+
+## v0.16.0: league logo and Discord channels
+
+11 November 2026. Build `f1sim-0.16.0`. **No database update.** Optional: new Discord webhook secrets (SETUP.md, Discord).
+
+| Area | What it does |
+| --- | --- |
+| League logo | Race Control uploads the league's logo on the Race Control page. Plain background around it is trimmed off automatically, so a wallpaper with the logo in the middle works. It shows in the top bar, on timing exports and on driver cards. |
+| Discord channels | Each kind of post has its own optional webhook: `DISCORD_WEBHOOK_RESULTS`, `DISCORD_WEBHOOK_TIMING`, `DISCORD_WEBHOOK_ANNOUNCEMENTS` and `DISCORD_WEBHOOK_CARDS`, with `DISCORD_WEBHOOK` for everything else. A series code makes one for a single series, such as `DISCORD_WEBHOOK_F2_RESULTS`. Each post tries the series channel, then the general one, then the default. |
+| Channel check | The Race Control page shows which channels are set up and where each kind of post will go. |
+| Choosing a channel | When exporting timing, Race Control can pick any channel, or leave it on automatic. The panel says where it was posted. |
+| Fix | Timing exports were sent to a channel called "results" whether or not one existed; without `DISCORD_WEBHOOK_RESULTS` the post failed. They now fall back to the default channel. |
+| Setup guide | SETUP.md lists every webhook secret the site uses. |
+
+---
+
 ## v0.15.0: timing sheet export
 
 11 November 2026. Build `f1sim-0.15.0`. **No database update.**

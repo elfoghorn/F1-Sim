@@ -1,4 +1,4 @@
-/* F1 SIM v0.15.0 (build f1sim-0.15.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v0.17.0 (build f1sim-0.17.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -729,6 +729,7 @@ const ICONS = {
   users: 'M16 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 20v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8',
   news: 'M4 4h13v16H6a2 2 0 0 1-2-2zM17 8h3v10a2 2 0 0 1-2 2M8 8h5M8 12h5M8 16h3', shield: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',
   server: 'M4 4h16v7H4zM4 13h16v7H4zM8 7.5h.01M8 16.5h.01', logout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9',
+  calendar: 'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2',
   users: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8',
   flask: 'M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3M7.5 15h9',
   bell: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0',
@@ -802,7 +803,7 @@ function closeDrawer() { S.ui.drawer = null; renderOverlay(); }
 function go(r) { if (!ROUTES[r]) r = 'home'; S.route = r; S.navOpen = false; S.ui.drawer = null; if (location.hash.slice(1) !== r) history.replaceState(null, '', '#' + r); render(); window.scrollTo(0, 0); }
 
 const NAV = [
-  ['home', 'home', 'Home'], ['notices', 'bell', 'Notifications'], ['grid', 'flag', 'The Grid'], ['team', 'wrench', 'Team HQ'], ['weekend', 'radio', 'Race Weekend'], ['test', 'flask', 'Test Track'], ['standings', 'star', 'Championship'], ['seasons', 'star', 'Seasons'], ['people', 'users', 'Characters'],
+  ['home', 'home', 'Home'], ['notices', 'bell', 'Notifications'], ['grid', 'flag', 'The Grid'], ['team', 'wrench', 'Team HQ'], ['weekend', 'radio', 'Race Weekend'], ['calendar', 'calendar', 'Calendar'], ['test', 'flask', 'Test Track'], ['standings', 'star', 'Championship'], ['seasons', 'star', 'Seasons'], ['people', 'users', 'Characters'],
   ['paddock', 'news', 'Paddock'], ['characters', 'user', 'Your characters']
 ];
 const NAV_RC = [['control', 'shield', 'Race Control'], ['admin', 'server', 'Accounts and backups']];
@@ -825,7 +826,7 @@ function topbarHtml() {
     : mine.length > 1 ? `<label class="who"><span class="sr-only">Playing as</span><select id="char-switch" data-change="char-switch">${mine.map(x => `<option value="${esc(x.id)}" ${x.id === S.charId ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>`
     : c ? `<span class="who">${esc(c.name)}</span>` : '';
   return `<button class="menu-btn" data-act="nav-toggle" aria-label="${S.navOpen ? 'Close' : 'Open'} the menu" aria-expanded="${S.navOpen}">${icon(S.navOpen ? 'x' : 'menu', 22)}</button>
-    <button class="brand" data-act="nav" data-route="home"><span class="brand-mark" aria-hidden="true"></span>F1 SIM</button>
+    <button class="brand" data-act="nav" data-route="home">${typeof leagueLogo === 'function' && leagueLogo() ? `<img class="league-logo" src="${esc(leagueLogo())}" alt="">` : '<span class="brand-mark" aria-hidden="true"></span>'}F1 SIM</button>
     <div class="top-right">${typeof seriesSwitchHtml === 'function' ? seriesSwitchHtml() : ''}${S.isGm ? '<span class="rc-badge">Race Control</span>' : ''}${(() => { const n = typeof unreadCount === 'function' ? unreadCount() : 0; return `<button class="bell" data-act="nav" data-route="notices" aria-label="Notifications${n ? ', ' + n + ' new' : ''}">${icon('bell', 20)}${n ? `<span class="count">${n}</span>` : ''}</button>`; })()}${who}
       ${a ? `<button class="btn ghost small" data-act="sign-out" title="Signed in as ${esc(a.username)}">${icon('logout', 16)}<span class="hide-s">Sign out</span></button>` : ''}</div>`;
 }
@@ -1300,7 +1301,7 @@ ACTIONS['f1-open'] = () => {
   if (!track) { toast('Load the grid first.', true); return; }
   if (F1.live()) { toast('A weekend is already open. Finish or cancel it first.', true); return; }
   if (seasonClosed()) { toast('This season is catalogued. Start the next season on the Seasons page first.', true); return; }
-  const session = f.session === 'sprint' && track.hasSprint ? 'sprint' : 'gp', id = newId('f1w');
+  const session = f.session === 'test' ? 'test' : f.session === 'sprint' && track.hasSprint ? 'sprint' : 'gp', id = newId('f1w');
   const seed = Math.max(1, parseInt(f.seed, 10) || (1 + Math.floor(Math.random() * 999999)));
   run(async () => {
     await Data.put('f1_weekends', id, { seriesId: curSeriesId(), seasonId: curSeasonId(), trackId: track.id, round: track.round, session, seed, weatherMode: f.weatherMode || 'track', status: 'practice', createdAt: nowIso(),
@@ -1505,7 +1506,7 @@ function f1OpenFormHtml() {
   return `<section class="card"><h2>Open the next weekend</h2>
     <div class="metrics" style="align-items:end">
       <label class="field">Circuit${sel('f1w-track', 'ui/form/f1w/trackId', f.trackId, tracks.map(x => [x.id, `Round ${x.round}: ${x.name}`]))}</label>
-      <label class="field">Session${sel('f1w-session', 'ui/form/f1w/session', f.session, [['gp', 'Grand Prix']].concat(t.hasSprint ? [['sprint', 'Sprint']] : []))}</label>
+      <label class="field">Session${sel('f1w-session', 'ui/form/f1w/session', f.session, [['gp', 'Grand Prix']].concat(t.hasSprint ? [['sprint', 'Sprint']] : [], [['test', 'Pre-season testing']]))}</label>
       <label class="field">Weather${sel('f1w-weather', 'ui/form/f1w/weatherMode', f.weatherMode, F1_WEATHER)}</label>
       <label class="field">Seed (optional)<input id="f1w-seed" type="number" min="1" data-bind="ui/form/f1w/seed" value="${esc(f.seed || '')}" placeholder="Random"></label>
     </div>
@@ -2091,7 +2092,7 @@ function lvControlHtml(w) {
   const runs = list('f1_runs').filter(r => r.weekendId === w.id).length;
   if (w.status === 'practice') { const done = endedSessions(w).length, n = curSession(w), all = done >= sessionsOf(w), single = seriesDoc(wSeries(w)).quali === 'single';
     return `<section class="card rc"><h2>Race Control <span class="sub">${all ? 'Practice is over' : esc(sessionName(w, n)) + ' is running'}</span></h2><p>${plural(runs, 'practice run')} done, ${plural(setups, 'set-up')} locked in. Cars without a locked set-up run a standard one. ${fullPractice(w) ? `Full sessions: teams plan their runs, then running the session plays them out with its own weather, red flags, crashes and failures. ${esc(practiceForecastText(w))}` : 'Quick practice: runs report straight away; ending a session posts its timesheet.'} Each player car gets a debrief.</p>
-    <div class="btn-row">${all ? '' : `<button class="btn ${all ? '' : 'primary'}" data-act="fp-end">${fullPractice(w) ? 'Run' : 'End'} ${esc(sessionName(w, n))}</button>`}<button class="btn ${all ? 'primary' : ''}" data-act="f1-quali">${single ? 'Run qualifying' : 'Run Q1'}${all ? '' : ' now'}</button><button class="btn" data-act="f1-cancel">Cancel the weekend</button></div></section>`; }
+    <div class="btn-row">${all ? '' : `<button class="btn ${all ? '' : 'primary'}" data-act="fp-end">${fullPractice(w) ? 'Run' : 'End'} ${esc(sessionName(w, n))}</button>`}${w.session === 'test' ? `<button class="btn ${all ? 'primary' : ''}" data-act="test-finish">Finish testing</button>` : `<button class="btn ${all ? 'primary' : ''}" data-act="f1-quali">${single ? 'Run qualifying' : 'Run Q1'}${all ? '' : ' now'}</button>`}<button class="btn" data-act="f1-cancel">Cancel the weekend</button></div></section>`; }
   if (w.status === 'quali') return `<section class="card rc"><h2>Race Control</h2><p>Q${w.qualiStage || 1} is done.</p>
     <div class="btn-row"><button class="btn primary" data-act="f1-quali-next">Run Q${(w.qualiStage || 1) + 1}</button><button class="btn" data-act="f1-cancel">Cancel the weekend</button></div></section>`;
   if (w.status === 'finished') return '';
@@ -2112,7 +2113,7 @@ function lvControlHtml(w) {
 route('weekend', 'Race Weekend', function () {
   const head = (k, t, p, right) => `<div class="page-head"><div>${k ? `<p class="eyebrow">${k}</p>` : ''}<h1>${t}</h1>${p ? `<p>${p}</p>` : ''}</div>${right || ''}</div>`;
   if (!F1.teams().length) return head('', 'Race Weekend', 'The grid isn’t set up yet.') + (S.isGm ? '<div class="card"><p>Load today’s grid on The Grid first.</p><button class="btn primary" data-act="nav" data-route="grid">Go to The Grid</button></div>' : '');
-  const past = F1.weekends().filter(w => w.status === 'finished');
+  const past = F1.weekends().filter(w => w.status === 'finished' && w.session !== 'test');
   const view = S.ui.f1view ? get('f1_weekends', S.ui.f1view) : null;
   const w = view || F1.live() || past[0] || null;
   const pastHtml = past.length ? `<section class="card" style="margin-top:16px"><h2>Results so far</h2><div class="scroll-x"><table class="data"><thead><tr><th>Round</th><th>Session</th><th>Winner</th><th></th></tr></thead><tbody>${past.map(x => { const t = F1.track(x.trackId) || {}, win = (x.results || [])[0] || {};
@@ -2121,11 +2122,11 @@ route('weekend', 'Race Weekend', function () {
 
   const t = F1.track(w.trackId) || { name: w.trackId, laps: 0 }, st = w.state, sprint = w.session === 'sprint';
   const laps = st ? st.laps : (sprint ? (t.sprintLaps || Math.ceil(t.laps / 3)) : t.laps);
-  const lapLbl = w.status === 'practice' ? 'Practice' : w.status === 'quali' ? 'Qualifying' : st.finished ? 'Chequered flag' : st.lap === 0 ? 'Grid set' : (w.live ? 'Live, lap' : 'Lap');
+  const lapLbl = w.status === 'practice' ? 'Practice' : w.status === 'quali' ? 'Qualifying' : !st ? (w.session === 'test' ? 'Testing' : '') : st.finished ? 'Chequered flag' : st.lap === 0 ? 'Grid set' : (w.live ? 'Live, lap' : 'Lap');
   const right = `<div class="f1-lap ${w.live ? 'live' : ''}" aria-live="polite"><small>${lapLbl}</small>${st && w.status !== 'quali' ? `${st.lap}<span class="of">/${laps}</span>` : w.status === 'quali' ? `Q${w.qualiStage || 1}` : ''}</div>`;
   const track = st ? st.track[Math.max(0, st.lap - 1)] : 0;
   const chips = st && st.lap ? `<p class="chips"><span class="tag ${track === 2 ? 'wet' : track === 1 ? 'damp' : ''}">${['Dry', 'Damp', 'Wet'][track]} track</span>${st.sc.type ? ` <span class="tag flag">${st.sc.type === 'sc' ? 'Safety car' : 'Virtual safety car'}</span>` : ''}${st.fastest ? ` <span class="tag">Fastest lap ${esc(st.fastest.id)} ${f1Fmt(st.fastest.time)}</span>` : ''}</p>` : '';
-  let h = head(`Round ${esc(t.round || '')}${sprint ? ', sprint' : ''}`, `${esc(t.flag || '')} ${esc(t.name)}${sprint ? ' Sprint' : ''}`, `${esc(t.circuit || '')}, ${laps} laps.` + chips, right);
+  let h = head(`${w.session === 'test' ? 'Pre-season testing' : `Round ${esc(t.round || '')}${sprint ? ', sprint' : ''}`}`, `${esc(t.flag || '')} ${esc(t.name)}${sprint ? ' Sprint' : w.session === 'test' ? ' testing' : ''}`, `${esc(t.circuit || '')}, ${laps} laps.` + chips, right);
   h += lvStagesHtml(w);
   if (view) h += `<div class="btn-row" style="margin-bottom:12px"><button class="btn" data-act="f1-view">Back to the current weekend</button></div>`;
   if (S.isGm && !view) h += lvControlHtml(w) || '';
@@ -2134,6 +2135,7 @@ route('weekend', 'Race Weekend', function () {
   if (S.isGm && !view && w.status === 'finished') h += `<section class="card"><h2>Race Control</h2><p>This weekend is finished and counts towards the championship.</p><div class="btn-row"><button class="btn" data-act="f1-discord" data-id="${esc(w.id)}">Post the result to Discord</button></div></section>` + f1OpenFormHtml();
   if (!view && w.status !== 'finished') h += f1MomentCardHtml(w) + f1PitWallHtml(w) + f1StrategyCardHtml(w);
 
+  if (w.session === 'test' && w.status === 'finished') return h + testingSummaryHtml(w) + (view ? '' : pastHtml);
   if (!st) {
     const ents = f1Entrants();
     h += `<section class="card"><h2>Entry list</h2><div class="scroll-x"><table class="data"><thead><tr><th>Car</th><th>Driver</th><th>Team</th></tr></thead><tbody>${ents.map(e => `<tr><td><b>${esc(e.id)}</b></td><td>${careerLink(e.personId, e.name)}${e.charId ? ' <span class="tag player">Player</span>' : ''}</td><td><span class="f1-bar" style="background:${esc(f1Colour(e.teamId))}"></span>${esc(F1.team(e.teamId).name)}</td></tr>`).join('')}</tbody></table></div>
@@ -2143,7 +2145,7 @@ route('weekend', 'Race Weekend', function () {
   if (w.status === 'finished') {
     const aw = weekendAwards(w), where = `${t.name}${sprint ? ' sprint' : ''}`;
     h += `<section class="card"><h2>Classification</h2><div class="scroll-x">${f1ResultsHtml(w)}</div>
-      ${aw.length ? `<h4>Awards</h4><ul class="awards">${aw.map(a => `<li><span class="tag trophy">${esc(a.label)}</span> ${careerLink(a.personId, (F1.person(a.personId) || {}).name || '')}${['pole', 'win', 'dotd'].indexOf(a.key) !== -1 ? ` <button class="btn small ghost" data-act="card-open" data-id="${esc(a.personId)}" data-kind="${a.key}" data-where="${esc(where)}">Card</button>` : ''}</li>`).join('')}</ul>` : ''}</section>` + dotdHtml(w);
+      ${aw.length ? `<h4>Awards</h4><ul class="awards">${aw.map(a => `<li><span class="tag trophy">${esc(a.label)}</span> ${careerLink(a.personId, (F1.person(a.personId) || {}).name || '')}${['pole', 'win', 'dotd'].indexOf(a.key) !== -1 ? ` <button class="btn small ghost" data-act="card-open" data-id="${esc(a.personId)}" data-kind="${a.key}" data-where="${esc(where)}">Card</button>` : ''}</li>`).join('')}</ul>` : ''}</section>` + dotdHtml(w) + weekendStoryHtml(w);
   }
   const racing = st.lap > 0, tab = S.ui.f1tab && (racing || S.ui.f1tab === 'feed') ? S.ui.f1tab : 'feed';
   const tabs = [['feed', 'Race log'], ['lapchart', 'Lap chart'], ['tyres', 'Tyre strategy'], ['driver', S.ui.f1pick ? `Driver: ${S.ui.f1pick}` : 'Driver']].filter(x => racing || x[0] === 'feed');
@@ -2661,7 +2663,7 @@ ACTIONS['notice-post'] = () => {
   if (!title || !body) { toast('Give the announcement a title and some words.', true); return; }
   run(async () => {
     await Data.put('f1_notices', newId('note'), { title, body, at: nowIso(), by: actorLabel() });
-    if (f.discord) { const api = await window.claude.use('discord'); await api.post({ channel: 'default', payload: { embeds: [{ title, description: body.slice(0, 3900), color: 0xE10600, footer: { text: 'F1 SIM, Race Control' } }] } }); }
+    if (f.discord) await discordSend('announcements', { embeds: [{ title, description: body.slice(0, 3900), color: 0xE10600, footer: { text: 'F1 SIM, Race Control' } }] });
     await Data.audit('notice.post', `Announcement: ${title}`);
     S.ui.form.notice = {};
   }, f.discord ? 'Announcement posted, here and on Discord.' : 'Announcement posted.');
@@ -2827,8 +2829,10 @@ async function drawCard(personId, kind, where) {
     const s = Math.max(760 / img.width, 860 / img.height), w = img.width * s, h = img.height * s; g.save(); g.beginPath(); g.rect(160, 120, 760, 860); g.clip(); g.drawImage(img, 160 + (760 - w) / 2, 120 + (860 - h) / 2, w, h); g.restore();
     const fade = g.createLinearGradient(0, 700, 0, 990); fade.addColorStop(0, 'rgba(20,24,28,0)'); fade.addColorStop(1, 'rgba(20,24,28,1)'); g.fillStyle = fade; g.fillRect(160, 700, 760, 290); } catch (e) { /* no portrait */ } }
   g.textAlign = 'left'; g.fillStyle = '#fff';
-  for (let r = 0; r < 2; r++) for (let q = 0; q < 2; q++) { g.fillStyle = (r + q) % 2 ? 'rgba(255,255,255,0.15)' : '#fff'; g.fillRect(64 + q * 18, 64 + r * 18, 18, 18); }
-  g.fillStyle = '#fff'; g.font = cond(700, 44); g.fillText('F1 SIM', 120, 98);
+  const lg = typeof leagueLogo === 'function' ? await loadImg(leagueLogo()) : null;
+  if (lg) { const h = 48, lw = Math.min(220, lg.width / lg.height * h); g.drawImage(lg, 64, 62, lw, h); g.fillStyle = '#fff'; g.font = cond(700, 44); g.fillText('F1 SIM', 64 + lw + 16, 100); }
+  else { for (let r = 0; r < 2; r++) for (let q = 0; q < 2; q++) { g.fillStyle = (r + q) % 2 ? 'rgba(255,255,255,0.15)' : '#fff'; g.fillRect(64 + q * 18, 64 + r * 18, 18, 18); }
+    g.fillStyle = '#fff'; g.font = cond(700, 44); g.fillText('F1 SIM', 120, 98); }
   const label = (CARD_KINDS.find(k => k[0] === kind) || CARD_KINDS[0])[1];
   g.font = cond(700, 56); g.fillStyle = col; g.fillRect(64, 150, g.measureText(label).width + 40, 76); g.fillStyle = '#fff'; g.fillText(label, 84, 208);
   const parts = String(p.name).split(' '), last = parts.pop(), first = parts.join(' ');
@@ -2863,7 +2867,7 @@ DRAWERS.card = function () {
 };
 ACTIONS['card-download'] = () => { const c = S.ui.card; if (!c || !c.url) return; const a = document.createElement('a'); a.href = c.url; a.download = `${(F1.person(c.personId) || {}).abbr || 'driver'}-${c.kind}.png`; document.body.appendChild(a); a.click(); a.remove(); };
 ACTIONS['card-discord'] = () => { const c = S.ui.card; if (!c || !c.blob) return; const p = F1.person(c.personId), label = (CARD_KINDS.find(k => k[0] === c.kind) || CARD_KINDS[0])[1];
-  run(async () => { const api = await window.claude.use('discord'); await api.post({ channel: 'default', payload: { content: `**${label}:** ${p.name}${c.where ? `, ${c.where}` : ''}` }, file: { blob: c.blob, name: `${p.abbr || 'driver'}-${c.kind}.png` } }); await Data.audit('discord.card', `${label} card for ${p.name} posted to Discord`); }, 'Posted to Discord.'); };
+  run(async () => { await discordSend('cards', { content: `**${label}:** ${p.name}${c.where ? `, ${c.where}` : ''}` }, { blob: c.blob, name: `${p.abbr || 'driver'}-${c.kind}.png` }); await Data.audit('discord.card', `${label} card for ${p.name} posted to Discord`); }, 'Posted to Discord.'); };
 
 /* ---------------------------------------------------------------- the profile page */
 route('career', 'Driver profile', function () {
@@ -2929,7 +2933,7 @@ const puAllow = () => curSeries().puAllowance;
 const PU_EXTRA_COST = 1;      // £m for each unit beyond the allowance
 const REPAIR_COST = 0.8;      // £m after an accident
 const carKey = (teamId, car) => `${teamId}-${car}`;
-const seasonWeekends = () => F1.weekends().filter(w => w.status !== 'practice' || w.state).sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+const seasonWeekends = () => F1.weekends().filter(w => w.session !== 'test' && (w.status !== 'practice' || w.state)).sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
 
 /* ---------------------------------------------------------------- power units */
 /* Fits ordered for a car at a weekend: by the team principal or that car's engineer. */
@@ -3661,10 +3665,10 @@ function f1IdealFor(w, ent) {
 }
 
 /* ---------------------------------------------------------------- sessions */
-const sessionsOf = w => w.session === 'sprint' || seriesDoc(wSeries(w)).quali === 'single' ? 1 : 3;
-const runsPerSession = w => sessionsOf(w) === 1 ? 4 : 2;
+const sessionsOf = w => w.session === 'test' ? 3 : w.session === 'sprint' || seriesDoc(wSeries(w)).quali === 'single' ? 1 : 3;
+const runsPerSession = w => w.session === 'test' ? 6 : sessionsOf(w) === 1 ? 4 : 2;
 const curSession = w => Math.min(sessionsOf(w), ((w.practice && w.practice.session) || 1));
-const sessionName = (w, n) => sessionsOf(w) === 1 ? 'Practice' : `FP${n}`;
+const sessionName = (w, n) => w.session === 'test' ? `Day ${n}` : sessionsOf(w) === 1 ? 'Practice' : `FP${n}`;
 const endedSessions = w => (w.practice && w.practice.done) || [];
 const runsIn = (w, carId, n) => f1Runs(w, carId).filter(r => (r.session || 1) === n);
 /* Can a player work on this car? Otherwise it runs a normal programme. */
@@ -4012,7 +4016,7 @@ ROUTES.weekend.view = function () {
   const right = `<div class="f1-lap ${w.live ? 'live' : ''}" aria-live="polite"><small>${w.status === 'practice' ? 'Practice' : lapLbl}</small>${st && w.status !== 'quali' ? `${st.lap}<span class="of">/${laps}</span>` : w.status === 'quali' ? `Q${w.qualiStage || 1}` : esc(lapLbl)}</div>`;
   const track = st ? st.track[Math.max(0, st.lap - 1)] : 0;
   const chips = st && st.lap ? `<p class="chips"><span class="tag ${track === 2 ? 'wet' : track === 1 ? 'damp' : ''}">${['Dry', 'Damp', 'Wet'][track]} track</span>${st.sc.type ? ` <span class="tag flag">${st.sc.type === 'sc' ? 'Safety car' : 'Virtual safety car'}</span>` : ''}</p>` : '';
-  let h = `<div class="page-head"><div><p class="eyebrow">Round ${esc(t.round || '')}${sprint ? ', sprint' : ''}</p><h1>${esc(t.flag || '')} ${esc(t.name)}${sprint ? ' Sprint' : ''}</h1><p>${esc(t.circuit || '')}, ${laps} laps. ${esc(forecastText(w))}</p>${chips}</div>${right}</div>`;
+  let h = `<div class="page-head"><div><p class="eyebrow">${w.session === 'test' ? 'Pre-season testing' : `Round ${esc(t.round || '')}${sprint ? ', sprint' : ''}`}</p><h1>${esc(t.flag || '')} ${esc(t.name)}${sprint ? ' Sprint' : w.session === 'test' ? ' testing' : ''}</h1><p>${esc(t.circuit || '')}, ${laps} laps. ${esc(forecastText(w))}</p>${chips}</div>${right}</div>`;
   h += lvStagesHtml(w);
   if (S.isGm) h += lvControlHtml(w) || '';
   const cars = myWeekendCars(w);
@@ -4059,6 +4063,7 @@ function railSessionsHtml(w, ent) {
     rows.push({ label: sessionName(w, n), status: s ? (pos ? `Done, P${pos}` : 'Done') : n === cur ? (fullPractice(w) ? 'Plan now' : 'Running') : w.status === 'practice' ? `${runsPerSession(w)} runs` : 'Skipped', now: n === cur });
   }
   const single = seriesDoc(wSeries(w)).quali === 'single', g = ent ? gridPos(w, ent.id) : 0;
+  if (w.session === 'test') return `<ol class="rail-sessions">${rows.map(r => `<li class="${r.now ? 'now' : ''}"><span>${esc(r.label)}</span><span>${esc(r.status)}</span></li>`).join('')}</ol>`;
   rows.push({ label: single ? 'Qualifying' : 'Qualifying', status: w.status === 'practice' ? (single ? 'One session' : 'Q1 to Q3') : w.status === 'quali' ? `Q${w.qualiStage || 1} done` : g ? `Grid P${g}` : 'Done', now: w.status === 'quali' });
   const car = ent && st ? st.cars.find(c => c.id === ent.id) : null, pos = car ? f1Order(st).indexOf(car) + 1 : 0;
   rows.push({ label: 'Race', status: !st || st.lap === 0 ? (raceSettings(w).lock !== false ? 'Official' : 'Live calls') : st.finished ? (car && car.status === 'running' ? `P${pos}` : 'Done') : `Lap ${st.lap}, P${pos || '–'}`, now: !!(st && st.lap > 0) || (w.status === 'grid') });
@@ -4069,7 +4074,7 @@ function statStripHtml(w, ent) {
   const st = w.state, cells = [];
   if (w.status === 'practice') {
     const all = endedSessions(w).length >= sessionsOf(w);
-    cells.push(['Next', all ? (seriesDoc(wSeries(w)).quali === 'single' ? 'Quali' : 'Q1') : sessionName(w, curSession(w)), true], ['Rain chance', `${pctRain(w)}%`]);
+    cells.push(['Next', all ? (w.session === 'test' ? 'Done' : seriesDoc(wSeries(w)).quali === 'single' ? 'Quali' : 'Q1') : sessionName(w, curSession(w)), true], ['Rain chance', `${pctRain(w)}%`]);
     if (ent) cells.push(['Runs to plan', all ? '0' : String(runsPerSession(w) - runsIn(w, ent.id, curSession(w)).length)], ['Confidence', `${Math.round(confidenceNow(w, ent) * 100)}%`]);
   } else if (!st || st.lap === 0) {
     cells.push(['Stage', w.status === 'quali' ? `Q${w.qualiStage || 1}` : 'Grid set', true]);
@@ -4113,8 +4118,8 @@ ROUTES.weekend.view = function () {
   const v = S.ui.wkView && S.ui.wkViewFor === stage && views.some(x => x[0] === S.ui.wkView) ? S.ui.wkView : views[0][0];
   const mine = cars.map(e => e.id);
 
-  let h = `<div class="wk-head" style="--team:${esc(team.color)}"><div class="wk-title"><p class="muted">Round ${esc(t.round || '')}, ${esc(t.circuit || t.name)}, ${st ? st.laps : raceLaps(w)} laps${sprint ? ', sprint' : ''}</p>
-    <h1>${esc(t.flag || '')} ${esc(t.name)}${sprint ? ' Sprint' : ''}</h1>${exportButtonHtml(w) ? `<div class="wk-actions">${exportButtonHtml(w)}</div>` : ''}${racing ? `<p class="chips"><span class="tag ${st.track[Math.max(0, st.lap - 1)] === 2 ? 'wet' : st.track[Math.max(0, st.lap - 1)] === 1 ? 'damp' : ''}">${['Dry', 'Damp', 'Wet'][st.track[Math.max(0, st.lap - 1)]]} track</span>${st.sc.type ? ` <span class="tag flag">${st.sc.type === 'sc' ? 'Safety car' : 'Virtual safety car'}</span>` : ''}</p>` : ''}</div>
+  let h = `<div class="wk-head" style="--team:${esc(team.color)}"><div class="wk-title"><p class="muted">${w.session === 'test' ? `Pre-season testing, ${esc(t.circuit || t.name)}` : `Round ${esc(t.round || '')}, ${esc(t.circuit || t.name)}, ${st ? st.laps : raceLaps(w)} laps${sprint ? ', sprint' : ''}`}</p>
+    <h1>${esc(t.flag || '')} ${esc(t.name)}${sprint ? ' Sprint' : w.session === 'test' ? ' testing' : ''}</h1>${exportButtonHtml(w) ? `<div class="wk-actions">${exportButtonHtml(w)}</div>` : ''}${racing ? `<p class="chips"><span class="tag ${st.track[Math.max(0, st.lap - 1)] === 2 ? 'wet' : st.track[Math.max(0, st.lap - 1)] === 1 ? 'damp' : ''}">${['Dry', 'Damp', 'Wet'][st.track[Math.max(0, st.lap - 1)]]} track</span>${st.sc.type ? ` <span class="tag flag">${st.sc.type === 'sc' ? 'Safety car' : 'Virtual safety car'}</span>` : ''}</p>` : ''}</div>
     ${statStripHtml(w, ent)}</div>`;
   if (S.isGm) h += lvControlHtml(w) || '';
 
@@ -4481,13 +4486,13 @@ const TYRE_COL = { soft: '#E10600', medium: '#F5C400', hard: '#F2F2F2', inter: '
 /* The stages that have timing to export. */
 function exportStages(w) {
   const out = [];
-  endedSessions(w).forEach(s => out.push([`fp${s.n}`, sessionName(w, s.n) === 'Practice' ? 'Practice' : `Practice ${s.n}`]));
+  endedSessions(w).forEach(s => out.push([`fp${s.n}`, w.session === 'test' ? `Testing, day ${s.n}` : sessionName(w, s.n) === 'Practice' ? 'Practice' : `Practice ${s.n}`]));
   if (w.quali && w.quali.results) {
     const single = w.state && w.state.rules.qualifying && w.state.rules.qualifying.q2 >= 99, upto = w.status === 'quali' ? (w.qualiStage || 1) : 3;
     if (single) out.push(['q3', 'Qualifying']); else for (let k = 1; k <= upto; k++) out.push([`q${k}`, `Q${k}`]);
   }
   if (w.state && w.state.lap > 0 && !w.state.finished) out.push(['race', `Lap ${w.state.lap} of ${w.state.laps}`]);
-  if (w.status === 'finished') out.push(['result', w.session === 'sprint' ? 'Sprint result' : 'Race result']);
+  if (w.status === 'finished' && w.session !== 'test') out.push(['result', w.session === 'sprint' ? 'Sprint result' : 'Race result']);
   return out;
 }
 const fmtRaceTime = s => { const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = (s % 60).toFixed(1).padStart(4, '0'); return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`; };
@@ -4533,19 +4538,25 @@ function drawPhoto(g, img, x, y, w, h, r, row, T) {
   else { g.fillStyle = T.photoInk; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = cond(700, Math.round(Math.min(w, h) * 0.38)); g.fillText(initials(row.name), x + w / 2, y + h / 2); }
   g.restore(); g.textAlign = 'left'; g.textBaseline = 'alphabetic';
 }
-function drawMark(g, x, y, T) { [[0, 0, T.ink], [13, 13, T.ink], [13, 0, T.line], [0, 13, T.line]].forEach(([dx, dy, c]) => { g.fillStyle = c; g.fillRect(x + dx, y + dy, 13, 13); }); g.fillStyle = T.ink; g.font = cond(700, 30); g.fillText('F1 SIM', x + 38, y + 24); }
+/* The league logo (when Race Control has uploaded one) or the F1 SIM mark, then the name. Returns where it ends. */
+function drawMark(g, x, y, T, logo) {
+  let tx = x + 38;
+  if (logo) { const h = 34, w = Math.min(160, logo.width / logo.height * h); g.drawImage(logo, x, y - 4, w, h); tx = x + w + 12; }
+  else [[0, 0, T.ink], [13, 13, T.ink], [13, 0, T.line], [0, 13, T.line]].forEach(([dx, dy, c]) => { g.fillStyle = c; g.fillRect(x + dx, y + dy, 13, 13); });
+  g.fillStyle = T.ink; g.font = cond(700, 30); g.fillText('F1 SIM', tx, y + 24); return tx + g.measureText('F1 SIM').width;
+}
 function tyreDot(g, x, y, r, compound, T) { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.lineWidth = Math.max(3, r / 3); g.strokeStyle = TYRE_COL[compound] || T.muted; g.stroke(); g.fillStyle = T.ink; g.font = cond(700, Math.round(r * 1.1)); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText((compound || '').charAt(0).toUpperCase(), x, y + 1); g.textAlign = 'left'; g.textBaseline = 'alphabetic'; }
 
 async function drawTiming(w, key, format, theme) {
   const T = EXP_THEMES[theme] || EXP_THEMES.dark, rows = exportRows(w, key), stage = (exportStages(w).find(s => s[0] === key) || ['', ''])[1];
-  const t = get('f1_tracks', w.trackId) || {}, race = key === 'race' || key === 'result', top = rows.slice(0, 3), rest = rows.slice(3);
+  const t = get('f1_tracks', w.trackId) || {}, race = key === 'race' || key === 'result', top = rows.slice(0, 3), rest = rows.slice(3), isTest = w.session === 'test';
   try { await Promise.all(['700 100px "Barlow Condensed"', '600 30px "Barlow"'].map(f => document.fonts.load(f))); } catch (e) { /* fall back */ }
-  const imgs = await Promise.all(top.map(r => loadImg(r.portrait)));
+  const imgs = await Promise.all(top.map(r => loadImg(r.portrait))), logo = await loadImg(leagueLogo());
   const wide = format === 'broadcast', W = wide ? 1920 : 1080, H = wide ? 1080 : 1350, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   const g = cv.getContext('2d'); g.fillStyle = T.bg; g.fillRect(0, 0, W, H);
-  const title = `${t.name || ''}${w.session === 'sprint' ? ' Sprint' : ''}`, sub = race ? 'Gaps to the leader' : 'Best laps';
+  const title = isTest ? `Pre-season testing, ${t.circuit || t.name || ''}` : `${t.name || ''}${w.session === 'sprint' ? ' Sprint' : ''}`, sub = race ? 'Gaps to the leader' : 'Best laps';
   if (!wide) {
-    drawMark(g, 60, 56, T); g.font = cond(600, 24); g.fillStyle = T.muted; g.textAlign = 'right'; g.fillText(`Round ${t.round || ''}, ${t.circuit || ''}`.trim(), W - 60, 80); g.textAlign = 'left';
+    drawMark(g, 60, 56, T, logo); g.font = cond(600, 24); g.fillStyle = T.muted; g.textAlign = 'right'; g.fillText(`Round ${t.round || ''}, ${t.circuit || ''}`.trim(), W - 60, 80); g.textAlign = 'left';
     g.font = cond(600, 32); g.fillText(title, 60, 150); fitText(g, stage, s => cond(700, s), 116, W - 120); g.fillStyle = T.ink; g.fillText(stage, 58, 252);
     /* Podium: P2, P1, P3. */
     const colW = (W - 120 - 36) / 3, baseY = 860, cardH = [450, 400, 370], stepH = [110, 72, 44];
@@ -4568,7 +4579,7 @@ async function drawTiming(w, key, format, theme) {
       g.fillStyle = T.ink; g.font = bodyF(600, Math.min(19, rh - 12)); g.textAlign = 'right'; g.fillText(r.value, x + cw, y + rh - 11); g.textAlign = 'left'; });
     g.fillStyle = T.muted; g.font = bodyF(500, 17); g.fillText(sub, 60, H - 40); g.textAlign = 'right'; g.fillText(fmtDate(nowIso()), W - 60, H - 40); g.textAlign = 'left';
   } else {
-    drawMark(g, 56, 52, T); g.fillStyle = T.line; g.fillRect(240, 50, 2, 34); g.fillStyle = T.ink; g.font = cond(700, 44); g.fillText(title, 262, 84);
+    const me = drawMark(g, 56, 52, T, logo); g.fillStyle = T.line; g.fillRect(me + 20, 50, 2, 34); g.fillStyle = T.ink; g.font = cond(700, 44); g.fillText(title, me + 42, 84);
     g.font = cond(700, 34); const sw = g.measureText(stage).width + (key === 'race' ? 64 : 40); rr(g, W - 56 - sw, 44, sw, 52, 26); g.fillStyle = T.panel; g.fill();
     if (key === 'race') { g.beginPath(); g.arc(W - 56 - sw + 28, 70, 8, 0, Math.PI * 2); g.fillStyle = '#E10600'; g.fill(); }
     g.fillStyle = T.ink; g.fillText(stage, W - 56 - sw + (key === 'race' ? 46 : 20), 82);
@@ -4604,14 +4615,15 @@ async function drawTiming(w, key, format, theme) {
 ACTIONS['tx-open'] = d => {
   const w = get('f1_weekends', d.id) || F1.live(); if (!w) return;
   const st = exportStages(w); if (!st.length) { toast('Nothing to export yet: run a session first.', true); return; }
-  S.ui.tx = { wid: w.id, key: st[st.length - 1][0], format: 'podium', theme: 'dark', url: null, blob: null }; openDrawer('tx'); txRefresh();
+  S.ui.tx = { wid: w.id, key: st[st.length - 1][0], format: 'podium', theme: 'dark', url: null, blob: null, channel: '' }; openDrawer('tx'); txRefresh();
+  if (S.isGm) discordChannels().then(() => renderOverlay()).catch(() => {});
 };
 async function txRefresh() {
   const x = S.ui.tx; if (!x) return; const w = get('f1_weekends', x.wid); if (!w) return;
   const blob = await drawTiming(w, x.key, x.format, x.theme); if (S.ui.tx !== x) return;
   if (x.url) URL.revokeObjectURL(x.url); x.blob = blob; x.url = URL.createObjectURL(blob); renderOverlay();
 }
-CHANGES['tx-set'] = (v, d) => { const x = S.ui.tx; if (!x) return; x[d.field] = v; x.url = null; renderOverlay(); txRefresh(); };
+CHANGES['tx-set'] = (v, d) => { const x = S.ui.tx; if (!x) return; x[d.field] = v; if (d.field === 'channel') { renderOverlay(); return; } x.url = null; renderOverlay(); txRefresh(); };
 DRAWERS.tx = function () {
   const x = S.ui.tx || {}, w = get('f1_weekends', x.wid); if (!w) return '';
   const t = get('f1_tracks', w.trackId) || {}, opt = (field, list2) => `<select id="tx-${field}" data-change="tx-set" data-field="${field}">${list2.map(([k, l]) => `<option value="${k}" ${x[field] === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
@@ -4621,16 +4633,328 @@ DRAWERS.tx = function () {
       <label class="field">Format${opt('format', EXPORT_FORMATS)}</label>
       <label class="field">Look${opt('theme', [['dark', 'Dark'], ['light', 'Light']])}</label></div>
     ${x.url ? `<img class="card-preview tx-preview" src="${x.url}" alt="The timing sheet image">` : '<p class="muted">Drawing the timing sheet…</p>'}
-    <div class="btn-row"><button class="btn primary" data-act="tx-download" ${x.url ? '' : 'disabled'}>Download</button>${S.isGm ? `<button class="btn" data-act="tx-discord" ${x.url ? '' : 'disabled'}>Post to Discord</button>` : ''}</div></div>`;
+    ${S.isGm ? `<label class="field" style="max-width:360px">Discord channel${opt('channel', [['', `Automatic: #${S.discordCh ? pickChannel(x.key === 'result' ? 'results' : 'timing', wSeries(w), S.discordCh) : '…'}`]].concat((S.discordCh || []).map(c => [c, '#' + c])))}</label>` : ''}
+    <div class="btn-row"><button class="btn primary" data-act="tx-download" ${x.url ? '' : 'disabled'}>Download</button>${S.isGm ? `<button class="btn" data-act="tx-discord" ${x.url ? '' : 'disabled'}>Post to Discord</button>` : ''}${x.posted ? `<span class="tag player">Posted to #${esc(x.posted)}</span>` : ''}</div></div>`;
 };
 ACTIONS['tx-download'] = () => { const x = S.ui.tx; if (!x || !x.url) return; const w = get('f1_weekends', x.wid), a = document.createElement('a'); a.href = x.url; a.download = `${w.trackId}-${x.key}-${x.format}.png`; document.body.appendChild(a); a.click(); a.remove(); };
 ACTIONS['tx-discord'] = () => { const x = S.ui.tx; if (!x || !x.blob) return; const w = get('f1_weekends', x.wid), t = get('f1_tracks', w.trackId) || {}, stage = (exportStages(w).find(s => s[0] === x.key) || ['', ''])[1];
-  run(async () => { const api = await window.claude.use('discord'); await api.post({ channel: 'results', payload: { content: `**${t.name || ''}${w.session === 'sprint' ? ' sprint' : ''}: ${stage}**` }, file: { blob: x.blob, name: `${w.trackId}-${x.key}.png` } }); await Data.audit('discord.timing', `${t.name}: ${stage} timing posted to Discord`); }, 'Posted to Discord.'); };
+  run(async () => { const ch = await discordSend(x.key === 'result' ? 'results' : 'timing', { content: `**${t.name || ''}${w.session === 'sprint' ? ' sprint' : ''}: ${stage}**` }, { blob: x.blob, name: `${w.trackId}-${x.key}.png` }, x.channel);
+    x.posted = ch; await Data.audit('discord.timing', `${t.name}: ${stage} timing posted to Discord #${ch}`); }, 'Posted to Discord.'); };
 function exportButtonHtml(w) { return w && exportStages(w).length ? `<button class="btn small" data-act="tx-open" data-id="${esc(w.id)}">Export timing</button>` : ''; }
 
 /* The button sits beside the stage strip on every weekend page. */
 const _lvStagesTx = lvStagesHtml;
 lvStagesHtml = function (w) { const h = _lvStagesTx(w), b = exportButtonHtml(w); return b ? `<div class="stages-row">${h}${b}</div>` : h; };
+
+/* =====================================================================
+   F1 SIM — league logo and Discord channels.
+   Race Control uploads the league's logo; plain background around it is
+   trimmed off automatically. It shows in the top bar, on timing exports
+   and on driver cards.
+   Discord posts go through webhooks kept as Cloudflare secrets (the
+   relay in functions/api/discord.js). Each kind of post has its own
+   optional channel, then falls back: for a Formula 2 timing export it
+   tries f2-timing, then timing, then default. Race Control can also pick
+   a channel by hand when exporting.
+   ===================================================================== */
+'use strict';
+
+const leagueLogo = () => (get('f1_settings', 'league') || {}).logoUrl || null;
+/* Cut away the plain border around a logo (a wallpaper with the logo in the middle, say). */
+async function trimImage(file) {
+  const url = URL.createObjectURL(file), img = new Image();
+  await new Promise((ok, bad) => { img.onload = ok; img.onerror = bad; img.src = url; });
+  const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+  const d = g.getImageData(0, 0, c.width, c.height).data, bg = [d[0], d[1], d[2], d[3]];
+  let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+  for (let y = 0; y < c.height; y += 2) for (let x = 0; x < c.width; x += 2) {
+    const i = (y * c.width + x) * 4;
+    if (Math.abs(d[i] - bg[0]) > 40 || Math.abs(d[i + 1] - bg[1]) > 40 || Math.abs(d[i + 2] - bg[2]) > 40 || Math.abs(d[i + 3] - bg[3]) > 40) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  }
+  URL.revokeObjectURL(url);
+  if (x1 < 0) return file;
+  const pad = Math.round(Math.max(x1 - x0, y1 - y0) * 0.04), sx = Math.max(0, x0 - pad), sy = Math.max(0, y0 - pad), sw = Math.min(c.width, x1 + pad) - sx, sh = Math.min(c.height, y1 + pad) - sy;
+  const k = Math.min(1, 900 / Math.max(sw, sh)), o = document.createElement('canvas'); o.width = Math.round(sw * k); o.height = Math.round(sh * k);
+  o.getContext('2d').drawImage(c, sx, sy, sw, sh, 0, 0, o.width, o.height);
+  return new Promise(ok => o.toBlob(ok, 'image/png'));
+}
+CHANGES['league-logo'] = (v, d, el) => {
+  const file = el.files && el.files[0]; if (!file || !S.isGm) return;
+  if (!/^image\//.test(file.type)) { toast('Choose a picture: a PNG, JPEG or WebP.', true); return; }
+  run(async () => {
+    const blob = await trimImage(file), assets = await window.claude.use('assets'), up = await assets.upload(blob, { type: 'image/png' });
+    await Data.put('f1_settings', 'league', Object.assign({}, get('f1_settings', 'league') ? clone(S.store.f1_settings.league) : {}, { logoUrl: up.url, logoAt: nowIso() }));
+    await Data.audit('league.logo', 'New league logo');
+  }, 'League logo saved.');
+  el.value = '';
+};
+ACTIONS['league-logo-remove'] = () => askConfirm('Remove the league logo?', 'Remove', () => run(async () => {
+  await Data.put('f1_settings', 'league', Object.assign({}, clone(S.store.f1_settings.league || {}), { logoUrl: null }));
+}, 'League logo removed.'), true);
+
+/* ---------------------------------------------------------------- Discord channels */
+const DISCORD_PURPOSES = [
+  ['results', 'Race results and result exports', 'DISCORD_WEBHOOK_RESULTS'],
+  ['timing', 'Practice, qualifying and live timing exports', 'DISCORD_WEBHOOK_TIMING'],
+  ['announcements', 'Race Control announcements', 'DISCORD_WEBHOOK_ANNOUNCEMENTS'],
+  ['cards', 'Driver cards (signings, poles, wins, Driver of the Day)', 'DISCORD_WEBHOOK_CARDS']
+];
+async function discordChannels(force) {
+  if (S.discordCh && !force) return S.discordCh;
+  const api = await window.claude.use('discord'); S.discordCh = await api.channels(); return S.discordCh;
+}
+function pickChannel(purpose, seriesId, list) { return [`${seriesId}-${purpose}`, purpose, 'default'].find(c => list.indexOf(c) !== -1) || list[0] || 'default'; }
+/* Post to the right channel for this kind of post (or the one chosen by hand). Says which channel it went to. */
+async function discordSend(purpose, payload, file, chosen) {
+  const api = await window.claude.use('discord'), list = await discordChannels().catch(() => ['default']);
+  const ch = chosen && list.indexOf(chosen) !== -1 ? chosen : pickChannel(purpose, curSeriesId(), list);
+  await api.post(Object.assign({ channel: ch, payload }, file ? { file } : {}));
+  return ch;
+}
+ACTIONS['discord-check'] = () => { S.ui.dcErr = null; discordChannels(true).then(() => render()).catch(e => { S.ui.dcErr = e.message || String(e); render(); }); };
+function leaguePanelHtml() {
+  const logo = leagueLogo(), list = S.discordCh;
+  const rows = DISCORD_PURPOSES.map(([k, l, env]) => { const ch = list ? pickChannel(k, curSeriesId(), list) : null;
+    return `<tr><td>${esc(l)}</td><td><code>${esc(env)}</code></td><td>${!list ? '<span class="muted">Not checked</span>' : list.indexOf(k) !== -1 || list.indexOf(`${curSeriesId()}-${k}`) !== -1 ? `<span class="tag player">#${esc(ch)}</span>` : `<span class="muted">Falls back to #${esc(ch)}</span>`}</td></tr>`; }).join('');
+  return `<section class="card"><h2>League logo</h2><p class="muted small">Shown in the top bar, on timing exports and on driver cards. Plain background around the logo is trimmed off when you upload it.</p>
+      <div class="league-logo-row"><div class="brand-preview">${logo ? `<img src="${esc(logo)}" alt="League logo">` : '<span class="muted small">No logo yet</span>'}</div>
+      <div class="btn-row"><label class="btn small file-btn">${logo ? 'Replace' : 'Upload a logo'}<input type="file" accept="image/*" class="sr-only" data-change="league-logo"></label>${logo ? '<button class="btn small ghost" data-act="league-logo-remove">Remove</button>' : ''}</div></div></section>
+    <section class="card"><h2>Discord channels</h2><p class="muted small">Each kind of post can have its own Discord webhook, added in Cloudflare as a secret with the name shown (SETUP.md, Discord). Anything without its own goes to <code>DISCORD_WEBHOOK</code>. For a separate channel per series, put the series code in the name: <code>DISCORD_WEBHOOK_F2_RESULTS</code>.</p>
+      <div class="scroll-x"><table class="data compact"><thead><tr><th>Posts</th><th>Webhook secret</th><th>Goes to</th></tr></thead><tbody>${rows}</tbody></table></div>
+      ${list ? `<p class="small">Channels set up: ${list.map(c => `<span class="tag">#${esc(c)}</span>`).join(' ') || 'none'}.</p>` : ''}${S.ui.dcErr ? `<p class="small warn-note">${esc(S.ui.dcErr)}</p>` : ''}
+      <div class="btn-row"><button class="btn small" data-act="discord-check">${list ? 'Check again' : 'Check the channels'}</button></div></section>`;
+}
+
+/* =====================================================================
+   F1 SIM — pre-season testing.
+   Race Control opens testing at any circuit, like a weekend with three
+   test days and no qualifying or race. Each day has 6 runs per car and
+   runs like a full practice session: weather, red flags, crashes,
+   failures, timesheets and debriefs. Testing doesn't count for the
+   championship, money, power units or development points, but the
+   engineer and driver working together builds their rapport.
+   ===================================================================== */
+'use strict';
+
+ACTIONS['test-finish'] = () => {
+  const w = F1.live(); if (!w || w.session !== 'test') return;
+  const done = endedSessions(w).length;
+  askConfirm(done < sessionsOf(w) ? `Finish testing after ${plural(done, 'day')}? The days not run are skipped.` : 'Finish testing? The timesheets stay in the weekend’s record.', 'Finish testing', () => run(async () => {
+    const doc = clone(S.store.f1_weekends[w.id]), ents = f1Entrants().map(e => { const o = Object.assign({}, e); delete o.v3; return o; });
+    /* The engineer (or whoever ran the car) and the driver worked together: it counts towards their rapport. */
+    const setupBy = {}; ents.forEach(e => { const r = lastSetupRun(w, e.id); if (r) setupBy[e.id] = r.charId; });
+    Object.assign(doc, { status: 'finished', finishedAt: nowIso(), entrants: ents, results: [], setupBy });
+    await Data.put('f1_weekends', w.id, doc);
+    await Data.audit('f1.testing', `Testing at ${(F1.track(w.trackId) || {}).name || w.trackId} finished`);
+  }, 'Testing finished.'));
+};
+/* Every day's timesheet, and each car's best across the whole test. */
+function testingSummaryHtml(w) {
+  const days = endedSessions(w), best = {};
+  days.forEach(s => Object.keys(s.times || {}).forEach(id => { const t = s.times[id]; if (t && (!best[id] || t < best[id].t)) best[id] = { t, day: s.n }; }));
+  const ents = w.entrants || f1Entrants(), ids = Object.keys(best).sort((a, b) => best[a].t - best[b].t), top = ids.length ? best[ids[0]].t : 0;
+  return `<section class="card"><h2>Fastest of the test</h2>${ids.length ? `<div class="scroll-x"><table class="data compact timing"><thead><tr><th>P</th><th>Driver</th><th class="num">Best</th><th class="num">Gap</th><th class="num">Day</th></tr></thead><tbody>${ids.map((id, i) => { const e = ents.find(x => x.id === id) || {};
+      return `<tr class="${e.charId ? 'me' : ''}"><td>${i + 1}</td><td><span class="f1-bar" style="background:${esc(f1Colour(e.teamId))}"></span>${esc(e.name || id)}${e.charId ? ' <span class="tag player">Player</span>' : ''}</td><td class="num">${f1Fmt(best[id].t)}</td><td class="num">${i ? '+' + (best[id].t - top).toFixed(3) : ''}</td><td class="num">${best[id].day}</td></tr>`; }).join('')}</tbody></table></div>` : '<p class="muted">No days were run.</p>'}
+      <p class="muted small">Testing doesn’t count for the championship. Times depend on fuel, tyres and programme, so read them with care.</p></section>
+    ${days.slice().reverse().map(s => `<details class="card"><summary><b>${esc(sessionName(w, s.n))}</b></summary><div class="scroll-x">${timesheetHtml(w, s)}</div></details>`).join('')}`;
+}
+/* The stage strip for testing: the three days, then done. */
+const _lvStagesTest = lvStagesHtml;
+lvStagesHtml = function (w) {
+  if (w.session !== 'test') return _lvStagesTest(w);
+  const done = endedSessions(w).length, cur = w.status === 'finished' ? sessionsOf(w) + 1 : done + 1;
+  const items = [...Array(sessionsOf(w)).keys()].map(i => `Day ${i + 1}`).concat(['Done']);
+  const strip = `<ol class="stages" aria-label="Testing">${items.map((l, i) => `<li class="${i + 1 < cur ? 'done' : i + 1 === cur ? 'now' : ''}">${esc(l)}</li>`).join('')}</ol>`;
+  const b = exportButtonHtml(w); return b ? `<div class="stages-row">${strip}${b}</div>` : strip;
+};
+
+/* =====================================================================
+   F1 SIM — the calendar.
+   Every round of the season for the series being shown, with testing
+   first: done (podium, pole, Driver of the Day), happening now, next, or
+   still to come (the circuit, and who won there last time). Clicking a
+   round that has happened opens that weekend in full. Race Control can
+   give each round a date.
+   ===================================================================== */
+'use strict';
+
+const roundDate = (s, trackId) => ((s.dates || {})[trackId]) || '';
+const fmtDay = d => { try { return new Date(d + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }); } catch (e) { return d; } };
+ACTIONS['cal-open'] = d => { const w = get('f1_weekends', d.id); if (!w) return; S.ui.f1view = w.status === 'finished' ? w.id : null; go('weekend'); };
+ACTIONS['cal-filter'] = d => { S.ui.calFilter = d.f; render(); };
+ACTIONS['cal-dates-save'] = () => {
+  const s = curSeries(), f = S.ui.form.calDates || {}, dates = Object.assign({}, s.dates || {});
+  Object.keys(f).forEach(k => { if (f[k]) dates[k] = f[k]; else delete dates[k]; });
+  run(async () => { await Data.put('f1_series', s.id, Object.assign(get('f1_series', s.id) ? clone(S.store.f1_series[s.id]) : { template: s.id, activeSeason: curSeasonId() }, { dates })); S.ui.form.calDates = null; S.ui.calEdit = false; }, 'Dates saved.');
+};
+ACTIONS['cal-edit'] = () => { S.ui.calEdit = !S.ui.calEdit; render(); };
+
+function podiumLine(w) {
+  const rs = (w.results || []).filter(r => r.position && r.position <= 3).sort((a, b) => a.position - b.position);
+  return rs.map(r => `<li><span class="cal-pos">${r.position}</span><span class="f1-bar" style="background:${esc(f1Colour(r.teamId))}"></span>${esc(r.name)}${r.charId ? ' <span class="tag player">Player</span>' : ''}</li>`).join('');
+}
+function lastTimeHere(s, trackId) {
+  const w = list('f1_weekends').filter(x => wSeries(x) === s.id && x.trackId === trackId && x.session === 'gp' && x.status === 'finished' && wSeason(x) !== curSeasonId())
+    .sort((a, b) => String(b.finishedAt).localeCompare(String(a.finishedAt)))[0];
+  if (!w) return '';
+  const win = (w.results || [])[0], season = seasonDoc(wSeason(w));
+  return win ? `Last time here (${esc(season.name)}): ${esc(win.name)} won.` : '';
+}
+route('calendar', 'Calendar', function () {
+  const s = curSeries(), season = curSeason(), tracks = F1.tracks(), ws = F1.weekends(), filter = S.ui.calFilter || 'all';
+  if (!tracks.length) return `<div class="page-head"><div><h1>Calendar</h1><p>${esc(s.name)} has no circuits yet.</p></div></div>`;
+  const byTrack = id => ws.filter(w => w.trackId === id && w.session !== 'test').sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+  const doneGp = id => byTrack(id).find(w => w.session === 'gp' && w.status === 'finished');
+  const nextId = (tracks.find(t => !doneGp(t.id) && !byTrack(t.id).some(w => w.status !== 'finished')) || {}).id;
+  const tests = ws.filter(w => w.session === 'test').sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+  const edit = S.isGm && S.ui.calEdit, df = S.ui.form.calDates = S.ui.form.calDates || {};
+  const done = tracks.filter(t => doneGp(t.id)).length;
+  const cards = tracks.map(t => {
+    const wk = byTrack(t.id), gp = wk.find(w => w.session === 'gp'), sprint = wk.find(w => w.session === 'sprint'), live = wk.find(w => w.status !== 'finished');
+    const state = live ? 'live' : gp && gp.status === 'finished' ? 'done' : t.id === nextId ? 'next' : 'later';
+    if (filter === 'done' && state !== 'done') return ''; if (filter === 'tocome' && state === 'done') return '';
+    const pole = gp && gp.quali && gp.quali.grid ? (gp.entrants || []).find(e => e.id === gp.quali.grid[0]) : null, dotd = gp ? dotdWinner(gp) : null;
+    const date = roundDate(s, t.id);
+    return `<article class="cal-card ${state}" style="--team:${esc(state === 'done' ? f1Colour(((gp.results || [])[0] || {}).teamId) : 'var(--line)')}">
+      <header><span class="cal-round">Round ${esc(t.round)}</span>${state === 'live' ? '<span class="tag live">On now</span>' : state === 'next' ? '<span class="tag open">Next</span>' : state === 'done' ? '<span class="tag">Done</span>' : ''}</header>
+      <h2>${esc(t.flag || '')} ${esc(t.name)}</h2>
+      <p class="muted small">${esc(t.circuit || '')}. ${t.laps} laps${t.hasSprint ? ', with a sprint' : ''}.${date ? ` ${esc(fmtDay(date))}.` : ''}</p>
+      ${edit ? `<label class="field small">Date<input type="date" data-bind="ui/form/calDates/${esc(t.id)}" value="${esc(df[t.id] != null ? df[t.id] : date)}"></label>` : ''}
+      ${state === 'done' ? `<ol class="cal-podium">${podiumLine(gp)}</ol><p class="small muted">${pole ? `Pole: ${esc(pole.name)}. ` : ''}${dotd && !votingOpen(gp) ? `Driver of the Day: ${esc((F1.person(dotd.personId) || {}).name || '')}.` : ''}</p>` : ''}
+      ${state === 'live' ? `<p class="small">${live.status === 'practice' ? 'Practice is running.' : live.status === 'quali' ? 'Qualifying is running.' : live.state && live.state.lap ? `Race: lap ${live.state.lap} of ${live.state.laps}.` : 'The grid is set.'}</p>` : ''}
+      ${state === 'next' || state === 'later' ? `<p class="small muted">${esc(String(t.type || '').replace('-', ' ').replace(/^./, c => c.toUpperCase()))} circuit, ${Math.round((t.wr || 0) * 0.6)}% chance of rain. ${lastTimeHere(s, t.id)}</p>` : ''}
+      <div class="btn-row">${sprint ? `<button class="btn small" data-act="cal-open" data-id="${esc(sprint.id)}">Sprint</button>` : ''}${gp ? `<button class="btn small ${state === 'done' ? 'primary' : ''}" data-act="cal-open" data-id="${esc(gp.id)}">${gp.status === 'finished' ? 'What happened' : 'Go to the weekend'}</button>` : ''}</div>
+    </article>`;
+  }).join('');
+  const testCards = tests.map(w => { const t = get('f1_tracks', w.trackId) || {};
+    return `<article class="cal-card test ${w.status === 'finished' ? 'done' : 'live'}"><header><span class="cal-round">Testing</span>${w.status === 'finished' ? '<span class="tag">Done</span>' : '<span class="tag live">On now</span>'}</header>
+      <h2>${esc(t.flag || '')} Pre-season testing</h2><p class="muted small">${esc(t.circuit || t.name || '')}. ${plural(endedSessions(w).length, 'day')} run.</p>
+      <div class="btn-row"><button class="btn small ${w.status === 'finished' ? 'primary' : ''}" data-act="cal-open" data-id="${esc(w.id)}">${w.status === 'finished' ? 'See the timesheets' : 'Go to testing'}</button></div></article>`; }).join('');
+  return `<div class="page-head"><div><p class="eyebrow">${esc(s.name)}, ${esc(season.name)} season</p><h1>Calendar</h1><p>${done} of ${plural(tracks.length, 'round')} done. Pick a round to see what happened.</p></div>
+      <div class="btn-row"><div class="seg" role="tablist" aria-label="Show">${[['all', 'All rounds'], ['done', 'Done'], ['tocome', 'To come']].map(([k, l]) => `<button role="tab" aria-selected="${filter === k}" data-act="cal-filter" data-f="${k}">${l}</button>`).join('')}</div>
+      ${S.isGm ? (edit ? '<button class="btn primary" data-act="cal-dates-save">Save the dates</button><button class="btn" data-act="cal-edit">Cancel</button>' : '<button class="btn" data-act="cal-edit">Set dates</button>') : ''}</div></div>
+    <div class="cal-grid">${filter !== 'done' || tests.some(w => w.status === 'finished') ? testCards : ''}${cards || '<div class="empty">Nothing here yet.</div>'}</div>`;
+});
+
+/* =====================================================================
+   F1 SIM — the race report.
+   Everything that happened in a weekend, for writing it up: each
+   practice (or testing) session with its conditions, incidents,
+   timesheet and the players' runs; qualifying session by session; and
+   the race lap by lap, with every car's position, gap, lap time, tyre and
+   stops, the weather and every event. Three formats: .txt (readable),
+   .json (complete data) and .csv (one row per car per lap, plus events).
+   ===================================================================== */
+'use strict';
+
+const TRACK_WORD = ['dry', 'damp', 'wet'];
+function entInfo(w) { const ents = w.entrants || f1Entrants(); return id => { const e = ents.find(x => x.id === id) || { id, name: id }; return { code: id, name: e.name || id, team: (get('f1_teams', e.teamId) || {}).name || '', player: !!e.charId }; }; }
+function buildReport(w) {
+  const t = get('f1_tracks', w.trackId) || {}, s = seriesDoc(wSeries(w)), who = entInfo(w), st = w.state;
+  const rep = { league: 'F1 SIM', series: s.name, season: seasonDoc(wSeason(w)).name, round: (F1.track(w.trackId) || {}).round || null, event: t.name || w.trackId, circuit: t.circuit || '',
+    session: w.session === 'test' ? 'Pre-season testing' : w.session === 'sprint' ? 'Sprint' : 'Grand Prix', official: raceSettings(w).lock !== false, practice: [], qualifying: null, race: null };
+  /* Practice or testing. */
+  endedSessions(w).forEach(sess => {
+    const rows = exportRows(w, `fp${sess.n}`);
+    const runs = list('f1_runs').filter(r => r.weekendId === w.id && (r.session || 1) === sess.n).sort((a, b) => String(a.at).localeCompare(String(b.at))).map(r => {
+      const e = (w.entrants || f1Entrants()).find(x => x.id === r.carId), x = e ? f1RunResult(w, Object.assign({}, e, { v3: (f1Entrants().find(z => z.id === e.id) || {}).v3 }), r) : {};
+      return { car: r.carId, by: (get('characters', r.charId) || {}).name || '', kind: r.kind === 'setup' ? 'Set-up run' : r.kind === 'long' ? 'Long run' : 'Qualifying simulation',
+        dials: r.kind === 'setup' ? r.dials : undefined, tyre: r.kind === 'long' ? r.compound : undefined, lost: x.lost || undefined, conditions: x.cond || undefined,
+        lap: x.lap ? f1Fmt(x.lap) : undefined, tyreLife: x.life || undefined, feedback: x.notes || undefined };
+    });
+    rep.practice.push({ name: sessionName(w, sess.n), conditions: sess.weather ? weatherText(sess.weather) : 'Dry throughout.', incidents: (sess.events || []).map(e => e.text),
+      timesheet: rows.map(r => ({ pos: r.pos, code: r.code, driver: r.name, team: r.team, time: r.value })), runs });
+  });
+  /* Qualifying. */
+  if (w.quali && w.quali.results) {
+    const stages = exportStages(w).filter(x => /^q/.test(x[0]));
+    rep.qualifying = { stages: stages.map(([k, label]) => ({ name: label, results: exportRows(w, k).map(r => ({ pos: r.pos, code: r.code, driver: r.name, team: r.team, time: r.value })) })),
+      penalties: Object.keys(w.penalties || {}).map(id => `${id}: ${w.penalties[id].places}-place grid penalty, ${w.penalties[id].reason}`),
+      grid: (w.quali.grid || []).map((id, i) => Object.assign({ pos: i + 1 }, who(id))) };
+  }
+  /* The race, lap by lap. */
+  if (st && st.lap > 0) {
+    const cars = st.cars, cum = {}, laps = [];
+    cars.forEach(c => { cum[c.id] = ((c.grid || 1) - 1) * 0.25; });   /* the grid stagger the race starts from */
+    const tyreAt = (c, L) => (c.stints || []).find(x => x.from <= L && (x.to == null || x.to >= L)) || {};
+    for (let L = 1; L <= st.lap; L++) {
+      cars.forEach(c => { if (c.lapTimes[L - 1] != null && (c.status === 'running' || (c.retiredLap || 999) >= L)) cum[c.id] += c.lapTimes[L - 1]; });
+      const running = cars.filter(c => c.positions[L - 1] != null).sort((a, b) => a.positions[L - 1] - b.positions[L - 1]), lead = running[0];
+      laps.push({ lap: L, track: TRACK_WORD[st.track[L - 1] || 0], events: st.events.filter(e => e.lap === L).map(e => e.text),
+        order: running.map(c => { const out = c.status !== 'running' && c.retiredLap != null && c.retiredLap < L, ty = tyreAt(c, L), stint = (c.stints || []).indexOf(ty);
+          return { pos: c.positions[L - 1], code: c.id, driver: who(c.id).name, team: who(c.id).team, status: out ? 'out' : 'running',
+            lapTime: out ? null : (c.lapTimes[L - 1] != null ? f1Fmt(c.lapTimes[L - 1]) : null), gap: out ? null : c === lead ? 0 : Math.round((cum[c.id] - cum[lead.id]) * 10) / 10,
+            tyre: ty.compound || null, tyreAge: ty.from ? L - ty.from + 1 : null, pitted: !!(ty.to === L && stint < c.stints.length - 1) }; }) });
+    }
+    rep.race = { laps: st.laps, lapsRun: st.lap, finished: !!st.finished, lapsByLap: laps,
+      result: (w.results || []).map(r => ({ pos: r.position || null, code: r.id, driver: r.name, team: (get('f1_teams', r.teamId) || {}).name || '', grid: r.grid, stops: r.stops, time: r.position === 1 ? fmtRaceTime(r.time || 0) : (r.gap || ''), points: r.points || 0, status: r.position ? 'finished' : (r.gap || 'out') })) };
+  }
+  return rep;
+}
+function reportTxt(rep) {
+  const L = [], line = (s = '') => L.push(s), hr = () => line('-'.repeat(72));
+  line(`${rep.league}: ${rep.series}, ${rep.season} season`); line(`${rep.round ? `Round ${rep.round}: ` : ''}${rep.event}${rep.session === 'Grand Prix' ? '' : ', ' + rep.session.toLowerCase()}`); line(rep.circuit); hr();
+  rep.practice.forEach(p => { line(); line(p.name.toUpperCase() === p.name ? p.name : p.name); line(`Conditions: ${p.conditions}`);
+    if (p.incidents.length) { line('Incidents:'); p.incidents.forEach(i => line(`  - ${i}`)); }
+    line('Timesheet:'); p.timesheet.forEach(r => line(`  ${String(r.pos).padStart(2)}. ${r.code.padEnd(4)} ${r.driver.padEnd(22)} ${r.team.padEnd(16)} ${r.time}`));
+    if (p.runs.length) { line('Players’ runs:'); p.runs.forEach(r => { line(`  ${r.car} (${r.by}): ${r.kind}${r.dials ? ` with downforce ${r.dials.wing}, suspension ${r.dials.susp}, differential ${r.dials.diff}` : ''}${r.tyre ? ` on ${r.tyre}s` : ''}.${r.lost ? ' Lost: ' + r.lost : ''}${r.lap ? ` ${r.lap}` : ''}${r.tyreLife ? `, tyres last about ${r.tyreLife} laps` : ''}${r.conditions && r.conditions !== 'dry' ? ` (${r.conditions} track)` : ''}`); (r.feedback || []).forEach(f => line(`      ${f}`)); }); }
+    hr(); });
+  if (rep.qualifying) { line(); line('QUALIFYING'); rep.qualifying.stages.forEach(q => { line(q.name + ':'); q.results.forEach(r => line(`  ${String(r.pos).padStart(2)}. ${r.code.padEnd(4)} ${r.driver.padEnd(22)} ${r.team.padEnd(16)} ${r.time}`)); });
+    if (rep.qualifying.penalties.length) { line('Penalties:'); rep.qualifying.penalties.forEach(p => line(`  - ${p}`)); }
+    line('Starting grid: ' + rep.qualifying.grid.map(g => `${g.pos} ${g.code}`).join(', ')); hr(); }
+  if (rep.race) { line(); line(`THE RACE: ${rep.race.lapsRun} of ${rep.race.laps} laps${rep.race.finished ? '' : ' (still running)'}`);
+    rep.race.lapsByLap.forEach(l => { line(); line(`Lap ${l.lap} (${l.track} track)`);
+      l.events.forEach(e => line(`  * ${e}`));
+      line('  ' + l.order.map(o => o.status === 'out' ? `${o.code} out` : `${o.pos}. ${o.code}${o.pos === 1 ? '' : ' +' + o.gap}${o.pitted ? ' (pitted)' : ''}`).join(' | '));
+      line('  Laps and tyres: ' + l.order.filter(o => o.status !== 'out').map(o => `${o.code} ${o.lapTime || ''} ${o.tyre ? o.tyre.charAt(0).toUpperCase() + o.tyreAge : ''}`).join(', ')); });
+    if (rep.race.result.length) { hr(); line('RESULT'); rep.race.result.forEach(r => line(`  ${r.pos ? String(r.pos).padStart(2) + '.' : 'Out'} ${r.code.padEnd(4)} ${r.driver.padEnd(22)} ${r.team.padEnd(16)} ${r.time.padEnd(12)} from P${r.grid}, ${plural(r.stops || 0, 'stop')}${r.points ? `, ${r.points} pts` : ''}`)); } }
+  return L.join('\n') + '\n';
+}
+const csvCell = v => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+function reportCsv(rep) {
+  const rows = [['stage', 'session', 'lap', 'position', 'code', 'driver', 'team', 'time', 'gap_to_leader', 'tyre', 'tyre_age', 'pitted', 'status', 'note']];
+  rep.practice.forEach(p => { p.timesheet.forEach(r => rows.push(['practice', p.name, '', r.pos, r.code, r.driver, r.team, r.time, '', '', '', '', '', ''])); p.incidents.forEach(i => rows.push(['practice', p.name, '', '', '', '', '', '', '', '', '', '', '', i]));
+    p.runs.forEach(r => rows.push(['practice run', p.name, '', '', r.car, r.by, '', r.lap || '', '', r.tyre || '', '', '', r.lost ? 'lost' : '', `${r.kind}${r.dials ? ` ${r.dials.wing}/${r.dials.susp}/${r.dials.diff}` : ''}${r.lost ? ': ' + r.lost : ''}${r.tyreLife ? `: tyres about ${r.tyreLife} laps` : ''}`])); });
+  if (rep.qualifying) rep.qualifying.stages.forEach(q => q.results.forEach(r => rows.push(['qualifying', q.name, '', r.pos, r.code, r.driver, r.team, r.time, '', '', '', '', '', ''])));
+  if (rep.race) { rep.race.lapsByLap.forEach(l => { l.order.forEach(o => rows.push(['race', '', l.lap, o.pos, o.code, o.driver, o.team, o.lapTime || '', o.gap == null ? '' : o.gap, o.tyre || '', o.tyreAge || '', o.pitted ? 'yes' : '', o.status, l.track]));
+      l.events.forEach(e => rows.push(['race event', '', l.lap, '', '', '', '', '', '', '', '', '', '', e])); });
+    rep.race.result.forEach(r => rows.push(['result', '', '', r.pos || '', r.code, r.driver, r.team, r.time, '', '', '', '', r.status, `from P${r.grid}, ${r.stops} stops, ${r.points} pts`])); }
+  return rows.map(r => r.map(csvCell).join(',')).join('\n') + '\n';
+}
+ACTIONS['rep-download'] = d => {
+  const w = get('f1_weekends', d.id); if (!w) return;
+  const rep = buildReport(w), fmt = d.fmt, base = `${w.trackId}-${w.session}-${seasonDoc(wSeason(w)).name}-report`;
+  const body = fmt === 'json' ? JSON.stringify(rep, null, 2) : fmt === 'csv' ? reportCsv(rep) : reportTxt(rep);
+  const blob = new Blob([body], { type: fmt === 'json' ? 'application/json' : fmt === 'csv' ? 'text/csv' : 'text/plain' }), url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = `${base}.${fmt}`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000);
+  toast(`Race report saved as ${base}.${fmt}.`);
+};
+ACTIONS['rep-open'] = d => { S.ui.rep = { wid: d.id }; openDrawer('rep'); };
+DRAWERS.rep = function () {
+  const w = get('f1_weekends', (S.ui.rep || {}).wid); if (!w) return '';
+  const t = get('f1_tracks', w.trackId) || {}, rep = buildReport(w);
+  return `<header><div><h2>Race report</h2><p>${esc(t.name || '')}${w.session === 'sprint' ? ' sprint' : w.session === 'test' ? ' testing' : ''}: everything that happened, for writing it up.</p></div><button class="btn ghost" data-act="close-drawer">Close</button></header>
+    <div class="body"><p>It covers ${[rep.practice.length ? `${plural(rep.practice.length, w.session === 'test' ? 'test day' : 'practice session')} (conditions, incidents, timesheets and the players’ runs)` : '', rep.qualifying ? 'qualifying, session by session' : '', rep.race ? `the race lap by lap, ${rep.race.lapsRun} of ${rep.race.laps} laps (positions, gaps, lap times, tyres, stops, weather and every event)` : ''].filter(Boolean).join('; ') || 'nothing yet'}.</p>
+    <div class="rep-formats">
+      <button class="btn" data-act="rep-download" data-id="${esc(w.id)}" data-fmt="txt"><b>Text (.txt)</b><span>A readable account, stage by stage and lap by lap.</span></button>
+      <button class="btn" data-act="rep-download" data-id="${esc(w.id)}" data-fmt="json"><b>JSON (.json)</b><span>The complete data, for tools and bots.</span></button>
+      <button class="btn" data-act="rep-download" data-id="${esc(w.id)}" data-fmt="csv"><b>Spreadsheet (.csv)</b><span>One row per car per lap, plus every event.</span></button>
+    </div></div>`;
+};
+/* The report button sits beside Export timing. */
+const _exportBtnRep = exportButtonHtml;
+exportButtonHtml = function (w) {
+  const a = _exportBtnRep(w), has = w && (endedSessions(w).length || (w.quali && w.quali.results) || (w.state && w.state.lap > 0));
+  return (a || '') + (has ? `<button class="btn small" data-act="rep-open" data-id="${esc(w.id)}">Race report</button>` : '');
+};
+/* On a finished weekend: practice and qualifying as well as the race. */
+function weekendStoryHtml(w) {
+  const done = endedSessions(w), q = w.quali && w.quali.results ? exportStages(w).filter(x => /^q/.test(x[0])) : [];
+  if (!done.length && !q.length) return '';
+  return `<section class="card"><h2>The rest of the weekend</h2>
+    ${done.map(s => `<details><summary><b>${esc(sessionName(w, s.n))}</b>${s.weather ? ` <span class="muted small">${esc(weatherText(s.weather))}</span>` : ''}</summary><div class="scroll-x">${timesheetHtml(w, s)}</div></details>`).join('')}
+    ${q.map(([k, label]) => { const rows = exportRows(w, k); return `<details><summary><b>${esc(label)}</b></summary><table class="data compact"><tbody>${rows.map(r => `<tr><td>${r.pos}</td><td><span class="f1-bar" style="background:${esc(r.color)}"></span>${esc(r.name)}</td><td class="num">${esc(r.value)}</td></tr>`).join('')}</tbody></table></details>`; }).join('')}</section>`;
+}
 
 /* =====================================================================
    F1 SIM — Home, Paddock, Race Control desk, accounts and backups.
@@ -4812,6 +5136,7 @@ route('control', 'Race Control', function () {
       <div class="btn-row"><button class="btn primary" data-act="app-decide" data-id="${esc(a.id)}" data-ok="1">Give them the seat</button><button class="btn" data-act="app-decide" data-id="${esc(a.id)}" data-ok="0">Decline</button></div></article>`; };
   return `<div class="page-head"><div><h1>Race Control</h1><p>Character applications, seat applications, the people in the paddock, and a record of everything Race Control and the teams have done. Use View as in the top bar to see the league as any character.</p></div></div>
     ${noticeComposerHtml()}
+    ${leaguePanelHtml()}
     ${chargenQueueHtml()}
     <section><h2 class="section-h">Seat applications ${pending.length ? `<span class="count">${pending.length}</span>` : ''}</h2>
       ${pending.length ? `<div class="cards">${pending.map(appCard).join('')}</div>` : '<p class="muted">No applications waiting. Open seats on The Grid to take applications.</p>'}

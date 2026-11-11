@@ -453,15 +453,30 @@ button.ppl-seat { cursor: pointer; } button.ppl-seat:hover { border-color: var(-
 .stages-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; } .stages-row > ol { margin-bottom: 0; flex: 1 1 auto; }
 .stages-row { margin-bottom: 16px; } .wk-actions { margin-top: 8px; }
 .tx-preview { max-width: 100%; border: 1px solid var(--line); }
+
+/* ---------- league logo ---------- */
+.league-logo { height: 26px; width: auto; max-width: 110px; object-fit: contain; margin-right: 8px; vertical-align: middle; }
+.league-logo-row { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; } .league-logo-row .brand-preview { width: 220px; height: 100px; } .league-logo-row .brand-preview img { object-fit: contain; padding: 8px; }
+
+/* ---------- calendar ---------- */
+.cal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.cal-card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; box-shadow: inset 0 4px 0 var(--team, var(--line)); }
+.cal-card header { display: flex; justify-content: space-between; align-items: center; } .cal-round { font: 700 15px var(--cond); color: var(--muted); }
+.cal-card h2 { margin: 0; font: 700 24px/1.1 var(--cond); } .cal-card p { margin: 0; } .cal-card .btn-row { margin-top: auto; padding-top: 6px; }
+.cal-card.next { border-color: var(--ink); } .cal-card.later { opacity: 0.92; } .cal-card.test { background: var(--panel-2); }
+.cal-podium { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: 14.5px; } .cal-pos { display: inline-block; width: 16px; color: var(--muted); font-weight: 600; }
+/* ---------- race report ---------- */
+.rep-formats { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.rep-formats .btn { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 12px 14px; height: auto; } .rep-formats .btn span { font-weight: 400; font-size: 14px; color: var(--muted); }
 </style>
 </head>
 <body>
 <div id="auth-root"><div class="boot"><div class="boot-card"><span class="brand-mark big" aria-hidden="true"></span><h1>F1 SIM</h1><p>Loading…</p></div></div></div>
 <div id="app"></div>
-<script>window.F1SIM_BUILD = 'f1sim-0.15.0'; window.F1SIM_VERSION = '0.15.0';</script>
+<script>window.F1SIM_BUILD = 'f1sim-0.17.0'; window.F1SIM_VERSION = '0.17.0';</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
-<script src="config.js?v=f1sim-0.15.0"></script>
-<script src="bridge.js?v=f1sim-0.15.0"></script>
+<script src="config.js?v=f1sim-0.17.0"></script>
+<script src="bridge.js?v=f1sim-0.17.0"></script>
 <noscript>F1 SIM needs JavaScript switched on.</noscript>
 </body>
 </html>
