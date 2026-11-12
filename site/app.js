@@ -1,4 +1,4 @@
-/* F1 SIM v0.41.0 (build f1sim-0.41.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v1.0.0 (build f1sim-1.0.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -5094,7 +5094,7 @@ route('calendar', 'Calendar', function () {
   return `<div class="page-head"><div><p class="eyebrow">${esc(s.name)}, ${esc(season.name)} season</p><h1>Calendar</h1><p>${done} of ${plural(tracks.length, 'round')} done. Pick a round to see what happened.</p></div>
       <div class="btn-row"><button class="btn" data-act="share-open" data-kind="calendar">Export calendar</button><div class="seg" role="tablist" aria-label="Show">${[['all', 'All rounds'], ['done', 'Done'], ['tocome', 'To come']].map(([k, l]) => `<button role="tab" aria-selected="${filter === k}" data-act="cal-filter" data-f="${k}">${l}</button>`).join('')}</div>
       ${S.isGm ? (edit ? '<button class="btn primary" data-act="cal-dates-save">Save the dates</button><button class="btn" data-act="cal-edit">Cancel</button>' : '<button class="btn" data-act="cal-edit">Set dates</button>') : ''}</div></div>
-    <div class="cal-grid">${filter !== 'done' || tests.some(w => w.status === 'finished') ? testCards : ''}${cards || '<div class="empty">Nothing here yet.</div>'}</div>`;
+    <div class="cal-grid">${typeof plannedTestsHtml === 'function' ? plannedTestsHtml(s, tests, filter) : (filter !== 'done' || tests.some(w => w.status === 'finished') ? testCards : '')}${cards || '<div class="empty">Nothing here yet.</div>'}</div>`;
 });
 
 /* =====================================================================
@@ -8123,23 +8123,24 @@ ACTIONS['seats-close-all'] = () => { if (S.isGm) setAllSeats(false); };
    ===================================================================== */
 'use strict';
 
-const NAV_CATS = [['formula', 'Formula', 'Single-seaters'], ['endurance', 'Endurance', 'Endurance'], ['rally', 'Rally', 'Rally'], ['touring', 'Touring', 'Touring']];
-const catSeries = group => ((CAREER_GROUPS.find(g => g[0] === group) || [])[1] || []).filter(x => x !== 'Other');
-const catOfChamp = name => { const g = CAREER_GROUPS.find(x => x[1].indexOf(name) !== -1); const c = g && NAV_CATS.find(k => k[2] === g[0]); return c ? c[0] : 'formula'; };
+const NAV_CATS = [['formula', 'GP', 'Single-seaters'], ['indy', 'IndyCar', 'Indy'], ['endurance', 'Endurance', 'Endurance'], ['rally', 'Rally', 'Rally'], ['touring', 'Touring', 'Touring']];
+const INDY = ['IndyCar', 'Indy NXT', 'Indy Lights'];
+const catSeries = group => group === 'Indy' ? INDY.slice() : ((CAREER_GROUPS.find(g => g[0] === group) || [])[1] || []).filter(x => x !== 'Other' && (group !== 'Single-seaters' || INDY.indexOf(x) === -1));
+const catOfChamp = name => { if (INDY.indexOf(name) !== -1) return 'indy'; const g = CAREER_GROUPS.find(x => x[1].indexOf(name) !== -1); const c = g && NAV_CATS.find(k => k[2] === g[0]); return c ? c[0] : 'formula'; };
 function onRecord(name) { return list('characters').filter(c => !c.retired && charApproved(c) && careerRows(c).some(r => r.status === 'canon' && seriesLabel(r) === name)).length; }
-function activeCat() { return S.route === 'champ' && S.ui.champ && S.ui.champ.kind === 'canon' ? catOfChamp(S.ui.champ.key) : 'formula'; }
+function activeCat() { if (S.route === 'endurance') return 'endurance'; return S.route === 'champ' && S.ui.champ && S.ui.champ.kind === 'canon' ? catOfChamp(S.ui.champ.key) : 'formula'; }
 function topNavHtml() {
   const league = allSeries().length ? allSeries() : [curSeries()], cur = curSeriesId(), act = activeCat(), leagueNames = new Set(league.map(s => s.name));
   const champBtn = name => { const n = onRecord(name), on = act !== 'formula' && S.ui.champ && S.ui.champ.key === name;
     return `<button class="tn-item ${on ? 'on' : ''}" data-act="champ-open" data-kind="canon" data-key="${esc(name)}"><span>${esc(name)}</span><small>${n ? plural(n, 'character') + ' on record' : 'No records yet'}</small></button>`; };
   return `<nav class="topnav" aria-label="Championships">${NAV_CATS.map(([k, label, group]) => {
     const on = act === k, others = catSeries(group).filter(n => !leagueNames.has(n));
-    const sum = k === 'formula' ? `${esc(label)}<b>${esc(curSeries().name)}</b>` : `${esc(label)}${on && S.ui.champ ? `<b>${esc(S.ui.champ.key)}</b>` : ''}`;
+    const sum = k === 'formula' ? `${esc(label)}<b>${esc(curSeries().name)}</b>` : `${esc(label)}${on && S.route === 'endurance' ? '<b>Simulator</b>' : on && S.ui.champ ? `<b>${esc(S.ui.champ.key)}</b>` : ''}`;
     const panel = k === 'formula'
       ? `<p class="tn-h">Racing in F1 SIM</p>${league.map(s => `<button class="tn-item ${s.id === cur && act === 'formula' ? 'on' : ''}" data-act="nav-series" data-id="${esc(s.id)}"><span><i style="background:${esc(s.color || '#E10600')}"></i>${esc(s.name)}</span><small>${s.id === cur ? 'Showing now' : 'Switch the site to it'}</small></button>`).join('')}
         ${S.isGm ? '<button class="tn-item tn-link" data-act="nav" data-route="series"><span>Set up a series</span></button>' : ''}
         <p class="tn-h">Other championships <span>career records</span></p>${others.map(champBtn).join('')}`
-      : `<p class="tn-note">Not raced in F1 SIM yet. Each opens its leaderboard and champions from characters’ career records.</p>${others.map(champBtn).join('')}`;
+      : (k === 'endurance' ? `<p class="tn-h">The simulator</p><button class="tn-item tn-sim ${S.route === 'endurance' ? 'on' : ''}" data-act="nav" data-route="endurance"><span>Endurance racing</span><small>In development · roadmap and the 2027 WEC</small></button><p class="tn-h">Championships <span>career records</span></p>` : `<p class="tn-note">Not raced in F1 SIM yet. Each opens its leaderboard and champions from characters’ career records.</p>`) + others.map(champBtn).join('');
     return `<details class="tn-menu ${on ? 'on' : ''}"><summary>${sum}</summary><div class="tn-panel" role="menu">${panel}</div></details>`; }).join('')}</nav>`;
 }
 ACTIONS['nav-series'] = d => {
@@ -8275,6 +8276,85 @@ ROUTES.standings.view = function () {
   const tabsEnd = h.indexOf('</div>', h.indexOf('class="seg stand-tabs"')), tabsStart = h.indexOf('<div class="seg stand-tabs"');
   return head + (tabsStart >= 0 ? h.slice(tabsStart, tabsEnd + 6) : '') + body;
 };
+
+/* =====================================================================
+   F1 SIM v1.0.0 — the start of the expansion beyond Grand Prix racing.
+   Planned testing on every series' calendar: pre-season tests (circuit,
+   days, date) that Race Control can add, date, remove and open, so the
+   calendar shows every time the cars will be on track.
+   The Endurance section: the home of the endurance simulator. Phase 1
+   shows the roadmap, the 2027 FIA WEC season and its classes, and the
+   endurance championships from career records.
+   ===================================================================== */
+'use strict';
+
+/* ---------------------------------------------------------------- planned testing */
+const DEFAULT_TESTS = { f1: [['bahrain', 3]], f2: [['bahrain', 3]], f3: [['spain', 3]] };
+function seriesTests(s) {
+  if (Array.isArray(s.tests)) return s.tests;
+  const d = DEFAULT_TESTS[s.template || s.id] || (F1.tracks()[0] ? [[F1.tracks()[0].id, 3]] : []);
+  return d.map(([trackId, days], i) => ({ id: `t${i + 1}`, name: 'Pre-season test', trackId, days, date: '' }));
+}
+async function saveTests(s, tests) {
+  await Data.put('f1_series', s.id, Object.assign(get('f1_series', s.id) ? clone(S.store.f1_series[s.id]) : { template: s.id, activeSeason: curSeasonId() }, { tests }));
+}
+ACTIONS['test-plan-add'] = () => { if (!S.isGm) return; const s = curSeries(), t = seriesTests(s), track = F1.tracks()[0];
+  run(async () => { await saveTests(s, t.concat([{ id: newId('tp'), name: t.length ? 'Test' : 'Pre-season test', trackId: track ? track.id : '', days: 2, date: '' }])); }, 'Test session added: set its circuit, days and date.'); };
+ACTIONS['test-plan-remove'] = d => { if (!S.isGm) return; const s = curSeries();
+  askConfirm('Remove this test session from the calendar? Anything already run there stays in the record.', 'Remove it', () => run(async () => { await saveTests(s, seriesTests(s).filter(x => x.id !== d.id)); }, 'Removed.'), true); };
+CHANGES['test-plan-field'] = (v, d) => { if (!S.isGm) return; const s = curSeries(), k = d.k;
+  const val = k === 'days' ? Math.max(1, Math.min(5, Number(v) || 1)) : String(v || '').slice(0, k === 'name' ? 40 : 20);
+  run(async () => { await saveTests(s, seriesTests(s).map(x => x.id === d.id ? Object.assign({}, x, { [k]: val }) : x)); }); };
+ACTIONS['test-plan-open'] = d => { if (!S.isGm) return; const x = seriesTests(curSeries()).find(t => t.id === d.id); if (!x) return;
+  S.ui.form.f1w = Object.assign({}, S.ui.form.f1w || {}, { trackId: x.trackId, session: 'test' }); S.ui.f1view = null; go('weekend');
+  toast(`Testing at ${(F1.track(x.trackId) || {}).name || 'the circuit'} is set up below: choose the weather, then open it.`); };
+function plannedTestsHtml(s, played, filter) {
+  const plan = seriesTests(s).slice().sort((a, b) => String(a.date || '9999').localeCompare(String(b.date || '9999'))), edit = S.isGm && S.ui.calEdit, used = new Set();
+  const cards = plan.map(x => { const t = F1.track(x.trackId) || {}, w = played.find(p => p.trackId === x.trackId && !used.has(p.id)); if (w) used.add(w.id);
+    const state = !w ? 'planned' : w.status === 'finished' ? 'done' : 'live';
+    if (filter === 'done' && state !== 'done') return ''; if (filter === 'tocome' && state === 'done') return '';
+    const fields = edit ? `<div class="test-edit"><label class="field">Name<input type="text" value="${esc(x.name)}" data-change="test-plan-field" data-id="${esc(x.id)}" data-k="name"></label>
+        <label class="field">Circuit<select data-change="test-plan-field" data-id="${esc(x.id)}" data-k="trackId">${F1.tracks().map(tt => `<option value="${esc(tt.id)}" ${tt.id === x.trackId ? 'selected' : ''}>${esc(tt.name)}</option>`).join('')}</select></label>
+        <label class="field">Days<input type="number" min="1" max="5" value="${esc(x.days)}" data-change="test-plan-field" data-id="${esc(x.id)}" data-k="days"></label>
+        <label class="field">First day<input type="date" value="${esc(x.date || '')}" data-change="test-plan-field" data-id="${esc(x.id)}" data-k="date"></label>
+        <button class="btn small ghost" data-act="test-plan-remove" data-id="${esc(x.id)}">Remove</button></div>` : '';
+    return `<article class="cal-card test ${state}"><header><span class="cal-round">Testing</span>${state === 'done' ? '<span class="tag">Done</span>' : state === 'live' ? '<span class="tag live">On now</span>' : '<span class="tag">Planned</span>'}</header>
+      <h2>${esc(t.flag || '')} ${esc(x.name)}</h2><p class="muted small">${esc(t.circuit || t.name || 'Circuit to be set')} · ${plural(x.days, 'day')}${x.date ? ` · from ${esc(fmtDay(x.date))}` : ' · date to be set'}${w ? ` · ${plural(endedSessions(w).length, 'day')} run` : ''}</p>${fields}
+      <div class="btn-row">${w ? `<button class="btn small ${state === 'done' ? 'primary' : ''}" data-act="cal-open" data-id="${esc(w.id)}">${state === 'done' ? 'See the timesheets' : 'Go to testing'}</button>` : S.isGm ? `<button class="btn small" data-act="test-plan-open" data-id="${esc(x.id)}">Open testing</button>` : ''}</div></article>`; }).join('');
+  /* Tests run somewhere that wasn't planned still show. */
+  const extra = played.filter(w => !used.has(w.id)).map(w => { const t = get('f1_tracks', w.trackId) || {};
+    return `<article class="cal-card test ${w.status === 'finished' ? 'done' : 'live'}"><header><span class="cal-round">Testing</span>${w.status === 'finished' ? '<span class="tag">Done</span>' : '<span class="tag live">On now</span>'}</header><h2>${esc(t.flag || '')} Testing</h2><p class="muted small">${esc(t.circuit || t.name || '')}. ${plural(endedSessions(w).length, 'day')} run.</p><div class="btn-row"><button class="btn small" data-act="cal-open" data-id="${esc(w.id)}">See the timesheets</button></div></article>`; }).join('');
+  const add = edit ? '<article class="cal-card test add"><button class="btn" data-act="test-plan-add">Add a test session</button><p class="muted small">Pre-season or in-season testing, at any circuit.</p></article>' : '';
+  return cards + extra + add;
+}
+
+/* ---------------------------------------------------------------- the Endurance section */
+const WEC_2027 = [['Prologue', 'Official Prologue (group test)', 'Lusail, Qatar', '21–22 March', 'test'], ['1', 'Qatar 1812km', 'Lusail, Qatar', '25–27 March', '1812 km'], ['2', '6 Hours of Imola', 'Imola, Italy', '9–11 April', '6 hours'],
+  ['3', '6 Hours of Silverstone', 'Silverstone, Britain', '23–25 April', '6 hours'], ['4', '6 Hours of Spa-Francorchamps', 'Spa, Belgium', '13–15 May', '6 hours'], ['5', '24 Hours of Le Mans', 'Circuit de la Sarthe, France', '9–13 June', '24 hours'],
+  ['6', '6 Hours of São Paulo', 'Interlagos, Brazil', '9–11 July', '6 hours'], ['7', 'Lone Star Le Mans', 'Circuit of the Americas, USA', '10–12 September', '6 hours'], ['8', '6 Hours of Fuji', 'Fuji Speedway, Japan', '24–26 September', '6 hours'], ['9', '8 Hours of Bahrain', 'Bahrain', '4–6 November', '8 hours']];
+const ENDURANCE_PHASES = [
+  ['1', 'The Endurance section', 'This page, the menu entry, the roadmap, the 2027 WEC season and classes, and the endurance career records.', 'done'],
+  ['2', 'Endurance series and grid', 'A WEC series: Hypercar and LMGT3 classes, real teams and cars, three drivers per car, team principals and engineers, driver ratings by category (Platinum to Bronze), the calendar with race lengths, and the grid, teams and characters working for it.', 'next'],
+  ['3', 'The endurance race engine', 'Timed races (6, 8, 10 or 24 hours), several classes on track at once with traffic and passing, fuel and tyre stints, driver stints and maximum drive time, day and night, weather through the race, slow zones, full-course yellows and safety cars, and Balance of Performance.', 'later'],
+  ['4', 'The endurance race weekend', 'Practice, Hyperpole qualifying, a race in hours shown live, and the pit wall: stint plans, driver changes, fuel and tyre calls, and night running, with the three involvement levels.', 'later'],
+  ['5', 'Le Mans and the other events', 'The 24 Hours of Le Mans with Test Day and LMP2, the Qatar 1812km, and a lighter European Le Mans Series and IMSA.', 'later'],
+  ['6', 'Everything else, for endurance', 'Championships by class and for manufacturers, development and money, exports and Discord, race reports, records and the history views.', 'later']];
+route('endurance', 'Endurance', function () {
+  const ch = ['WEC', 'Le Mans 24 Hours', 'IMSA', 'European Le Mans Series', 'GT World Challenge'], status = { done: ['In place', 'player'], next: ['Next', 'open'], later: ['Planned', ''] };
+  return `<div class="page-head"><div><p class="eyebrow">Endurance</p><h1>Endurance racing</h1><p>F1 SIM is expanding beyond Grand Prix racing. This is the home of the endurance simulator: built in phases, with everything the Grand Prix side has, plus what makes endurance racing its own.</p></div></div>
+    <section class="card"><h2>The roadmap</h2><ol class="end-phases">${ENDURANCE_PHASES.map(([n, t, d, st]) => `<li class="end-phase ${st}"><span class="end-n">${n}</span><div><b>${esc(t)}</b> <span class="tag ${status[st][1]}">${status[st][0]}</span><p class="small">${esc(d)}</p></div></li>`).join('')}</ol></section>
+    <div class="cols2" style="align-items:start">
+      <section class="card"><h2>The 2027 FIA WEC season</h2><p class="muted small">Nine rounds and a pre-season test, as published by the FIA WEC on 12 June 2026. This is the calendar the simulator will race.</p>
+        <div class="scroll-x"><table class="data compact"><thead><tr><th>Round</th><th>Event</th><th>Circuit</th><th>Dates</th><th>Length</th></tr></thead><tbody>${WEC_2027.map(([r, e, c, d, l]) => `<tr${l === 'test' ? ' class="muted"' : ''}><td>${esc(r)}</td><td><b>${esc(e)}</b></td><td>${esc(c)}</td><td>${esc(d)}</td><td>${esc(l === 'test' ? 'Testing' : l)}</td></tr>`).join('')}</tbody></table></div></section>
+      <section class="card"><h2>The classes</h2>
+        <div class="end-class" style="--cc:#E10600"><b>Hypercar</b><p class="small">The top class, for outright wins. 17 cars from eight manufacturers in 2026 (Alpine, Aston Martin, BMW, Cadillac, Ferrari, Genesis, Peugeot, Toyota); Ford and McLaren join in 2027.</p></div>
+        <div class="end-class" style="--cc:#2FA84F"><b>LMGT3</b><p class="small">GT3 cars run by customer teams, with a mix of professional and amateur drivers in every crew. 18 cars from nine marques in 2026.</p></div>
+        <div class="end-class" style="--cc:#5AA9FF"><b>LMP2</b><p class="small">Races at Le Mans (not the full WEC season), in the plan for Phase 5.</p></div>
+        <p class="muted small">Each car has three drivers sharing it in stints.</p></section></div>
+    <section class="card"><h2>Endurance championships on record</h2><p class="muted small">Until the simulator races them, these show the leaderboards and champions from characters’ career records.</p>
+      <div class="btn-row">${ch.map(n => `<button class="btn small" data-act="champ-open" data-kind="canon" data-key="${esc(n)}">${esc(n)}</button>`).join('')}</div></section>`;
+});
+if (LIMITED_ROUTES.indexOf('endurance') === -1) LIMITED_ROUTES.push('endurance');
 
 /* start-up: every part has registered its routes, drawers and actions */
 init();

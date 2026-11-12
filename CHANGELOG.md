@@ -25,6 +25,18 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v1.0.0: beyond Grand Prix racing
+
+12 November 2026. Build `f1sim-1.0.0`. **No database update.** Version 1 marks the start of expanding the simulator beyond Grand Prix racing, beginning with endurance.
+
+| Area | What it does |
+| --- | --- |
+| GP and IndyCar tabs | The top bar now reads GP, IndyCar, Endurance, Rally and Touring. GP holds the series raced in F1 SIM (Formula 1, 2 and 3 and any others) and the other single-seater championships; IndyCar has its own menu (IndyCar, Indy NXT, Indy Lights). |
+| Testing on every calendar | Each series has planned test sessions on its calendar, before the rounds: Formula 1 and Formula 2 start with a three-day pre-season test in Bahrain, Formula 3 in Barcelona. Each shows its circuit, number of days and first day, and whether it's planned, on now or done. Race Control (Set dates) can name, move, re-date or remove tests and add more (pre-season or in-season, 1 to 5 days, any circuit). Open testing sets up the Race Weekend form with that circuit and testing chosen. Tests run at a circuit that wasn't planned still show. |
+| The Endurance section | The Endurance menu leads with Endurance racing: the home of the endurance simulator. It shows the six-phase roadmap and where each phase stands, the 2027 FIA WEC season (nine rounds and the Prologue test, as published on 12 June 2026), the classes (Hypercar, LMGT3, and LMP2 at Le Mans), and links to the endurance championships from career records. |
+
+---
+
 ## v0.41.0: championship history, as a timeline and a calendar
 
 12 November 2026. Build `f1sim-0.41.0`. **No database update.**
