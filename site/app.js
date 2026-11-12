@@ -1162,6 +1162,9 @@ ACTIONS['ch-pref-first'] = d => {
   if (tp.first === d.team) { tp.first = ''; } else { tp.first = d.team; if (tp.second === d.team) tp.second = ''; }
   S.ui.form.ch = Object.assign({}, f, { teamPref: tp }); render();
 };
+ACTIONS['ch-role-btn'] = d => {
+  if (S.ui.form.ch) { S.ui.form.ch.role = d.role; renderOverlay(); if (S.ui.charInline || S.route === 'newchar') render(); }
+};
 /* The character form's fields: used by the side panel (new characters) and inline on the application page. */
 function charFormFields(f) {
   const txt = (k, label, extra) => `<label class="field">${label}<input id="ch-${k}" type="text" data-bind="ui/form/ch/${k}" value="${esc(f[k] || '')}" ${extra || ''}></label>`;
@@ -1171,7 +1174,7 @@ function charFormFields(f) {
       ${txt('faceclaim', 'Face claim', 'placeholder="Who the picture shows, e.g. the actor or model" autocomplete="off"')}</div></div>
     <div class="form-grid">
       ${txt('name', 'Name', 'autocomplete="off" required')}
-      <label class="field">What they do<select id="ch-role" data-change="ch-role" ${f.id && charStatus(get('characters', f.id) || {}) === 'approved' ? 'disabled' : ''}>${CHAR_ROLES.map(([k, l]) => `<option value="${k}" ${f.role === k ? 'selected' : ''}>${l}</option>`).join('')}</select>${f.id && charStatus(get('characters', f.id) || {}) === 'approved' ? '<span class="muted small">Fixed once approved; ask Race Control to change it.</span>' : ''}</label>
+      ${(() => { const locked = f.id && charStatus(get('characters', f.id) || {}) === 'approved'; return `<div class="field" style="grid-column:1/-1">What they do<div class="role-tiles">${CHAR_ROLES.map(([k, l]) => locked ? `<span class="role-tile${(f.role || 'driver') === k ? ' on' : ''}">${esc(l)}</span>` : `<button class="role-tile${(f.role || 'driver') === k ? ' on' : ''}" data-act="ch-role-btn" data-role="${esc(k)}" type="button" aria-pressed="${(f.role || 'driver') === k}">${esc(l)}</button>`).join('')}</div>${locked ? '<span class="muted small" style="margin-top:4px">Fixed once approved; ask Race Control to change it.</span>' : ''}</div>`; })()}
       ${txt('nationality', 'Nationality', 'placeholder="e.g. Scottish"')}
       ${f.role === 'driver' ? txt('code', 'Three-letter code (drivers)', 'maxlength="3" placeholder="e.g. HAR"') + `<label class="field">Car number (drivers)<input id="ch-number" type="number" min="1" max="99" data-bind="ui/form/ch/number" data-type="number" value="${esc(f.number || '')}"></label>` : ''}
       ${txt('discord', 'Discord username (for @mentions)', 'autocomplete="off" placeholder="e.g. amelia.hart"')}
@@ -1184,17 +1187,21 @@ function charFormFields(f) {
 
     ${typeof flavourFieldsHtml === 'function' ? flavourFieldsHtml(f) : ''}`;
 }
+CHANGES['ch-newchar-series'] = v => { S.ui.newcharSeries = v; render(); };
 function charDrawerPrefHtml(f) {
   if (PREF_ROLES.indexOf(f.role || 'driver') === -1) return '';
   const tp = f.teamPref || {}, role = f.role === 'principal' ? 'principal' : f.role === 'engineer' ? 'engineer' : 'driver';
   const roleWord = { driver: 'seats', engineer: 'engineer posts', principal: 'principal post' }[role];
-  const teams = list('f1_teams').sort((a, b) => (a.order || 0) - (b.order || 0));
+  const sid = S.ui.newcharSeries || (tp.first ? ((get('f1_teams', tp.first) || {}).seriesId || 'f1') : 'f1');
+  const seriesList = allSeries().filter(s => list('f1_teams').some(t => (t.seriesId || 'f1') === s.id));
+  const teams = list('f1_teams').filter(t => (t.seriesId || 'f1') === sid).sort((a, b) => (a.order || 0) - (b.order || 0));
   if (!teams.length) return '';
   const card = t => { const seats = list('f1_seats').filter(s => s.teamId === t.id && s.role === role), held = seats.filter(s => s.holderCharId).length;
     return `<button class="card tp-team ${tp.first === t.id ? 'on' : ''}" style="--team:${esc(t.color || '#888')}" data-act="ch-pref-first" data-team="${esc(t.id)}" aria-pressed="${tp.first === t.id}">
       <b>${esc(t.name)}</b><span class="muted small">${seats.length ? (held ? `${held} of ${seats.length} ${roleWord} held` : (seats.length === 1 ? 'Open to players' : `All ${seats.length} open`)) : ''}</span></button>`; };
   return `<div class="ch-pref-section"><h3>Team preference</h3>
     <p class="muted small">Pick your first choice. Race Control makes the final call when they review your application.</p>
+    ${seriesList.length > 1 ? `<label class="field" style="max-width:280px">Series<select data-change="ch-newchar-series">${seriesList.map(s => `<option value="${esc(s.id)}" ${s.id === sid ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>` : ''}
     <div class="tp-grid">${teams.map(card).join('')}</div>
     ${tp.first ? `<div class="form-grid" style="margin-top:8px">
       <label class="field">Second choice<select data-bind="ui/form/ch/teamPref/second"><option value="">None</option>${teams.filter(t => t.id !== tp.first).map(t => `<option value="${esc(t.id)}" ${tp.second === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>
@@ -1213,13 +1220,24 @@ DRAWERS.char = function () {
 route('newchar', 'New character', function () {
   const f = S.ui.form.ch || (S.ui.form.ch = Object.assign({}, CHAR_BLANK));
   if (f.id) { go('character'); return ''; }
+  const stepBtn = (n, label, active) => `<button class="newchar-step ${active ? 'now' : 'next'}" ${active ? 'aria-current="step"' : `data-act="char-save" title="Save and go to ${label}"`} type="button"><span class="step-num">${n}</span><span class="step-name">${label}</span></button>`;
   return `<div class="page-head"><div><h1>New character</h1>
-      <p>Fill in who they are and pick a team. Click Create character when you're ready -- you can keep editing on the next page, and come back any time via Your characters.</p></div></div>
+      <p>Fill in who they are and pick a team. You can keep editing and add their story on the next page.</p></div></div>
+    <nav class="newchar-stepper" aria-label="Application steps">
+      ${stepBtn(1, 'About them', true)}
+      <span class="step-line" aria-hidden="true"></span>
+      ${stepBtn(2, 'Background & ratings', false)}
+      <span class="step-line" aria-hidden="true"></span>
+      ${stepBtn(3, 'Submit to Race Control', false)}
+    </nav>
     <section class="card">${charFormFields(f)}
     ${charDrawerPrefHtml(f)}</section>
-    <div class="btn-row" style="padding:0 var(--page-gap) var(--page-gap)">
-      <button class="btn primary" data-act="char-save">Create character</button>
-      <button class="btn ghost" data-act="nav" data-route="characters">Cancel</button>
+    <div class="newchar-sticky">
+      <span class="muted small">Name is required to create</span>
+      <div class="btn-row" style="margin:0">
+        <button class="btn ghost" data-act="nav" data-route="characters">Cancel</button>
+        <button class="btn primary" data-act="char-save">Create character</button>
+      </div>
     </div>`;
 });
 ACTIONS['char-save'] = () => {

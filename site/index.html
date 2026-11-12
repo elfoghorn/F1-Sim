@@ -549,6 +549,23 @@ table.data tr.me td, table.data tr.picked td, .data tr.me { background: var(--me
 .tp-team { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 10px 12px; margin: 0; border-left: 6px solid var(--team); cursor: pointer; color: var(--ink); font: inherit; }
 .tp-team:hover { border-color: var(--team); outline: 1px solid var(--line-strong); }
 .tp-team.on { background: color-mix(in srgb, var(--team) 22%, var(--panel)); outline: 2px solid var(--team); }
+/* ---------- role tiles ---------- */
+.role-tiles { display: flex; flex-wrap: wrap; gap: 6px; }
+.role-tile { font: 500 13px var(--body); padding: 7px 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel-2); color: var(--muted); cursor: pointer; }
+.role-tile.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--panel)); color: var(--accent); font-weight: 600; }
+button.role-tile:hover:not(.on) { border-color: var(--line-strong); color: var(--ink); }
+span.role-tile { cursor: default; }
+/* ---------- new character stepper ---------- */
+.newchar-stepper { display: flex; align-items: center; padding: 0 0 20px; }
+.newchar-step { display: flex; align-items: center; gap: 8px; background: none; border: none; padding: 0; cursor: pointer; font: inherit; color: var(--muted); }
+.newchar-step.now { cursor: default; color: var(--ink); pointer-events: none; }
+.newchar-step.next:hover .step-name { color: var(--ink); }
+.step-num { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font: 600 12px var(--body); flex-shrink: 0; border: 2px solid currentColor; }
+.newchar-step.now .step-num { background: var(--accent); border-color: var(--accent); color: var(--panel); }
+.step-name { font-size: 13px; font-weight: 500; white-space: nowrap; }
+.step-line { flex: 1; height: 1px; background: var(--line); margin: 0 10px; min-width: 12px; }
+/* ---------- new character sticky footer ---------- */
+.newchar-sticky { position: sticky; bottom: 0; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; z-index: 20; margin-top: 16px; }
 /* ---------- wins and podiums ---------- */
 .wins-champ { margin-top: 16px; } .wins-champ .metrics { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); } .wins-champ th.bars-h { width: 32%; }
 .wp-bar { position: relative; height: 14px; background: var(--bar-track); } .wp-bar span { position: absolute; top: 0; bottom: 0; left: 0; } .wp-bar .p { background: #F5C400; } .wp-bar .w { background: #E10600; }
