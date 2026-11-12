@@ -1157,6 +1157,11 @@ const CHAR_BLANK = { name: '', code: '', number: '', nationality: '', role: 'dri
 ACTIONS['char-new'] = () => { S.ui.form.ch = Object.assign({}, CHAR_BLANK); openDrawer('char'); };
 ACTIONS['char-edit'] = d => { const c = get('characters', d.id); if (!c) return; S.ui.form.ch = Object.assign({}, CHAR_BLANK, clone(S.store.characters[d.id]), { id: d.id }); openDrawer('char'); };
 ACTIONS['char-play'] = d => { S.charId = d.id; lsSet('f1sim.char', d.id); toast('Now playing as ' + ((get('characters', d.id) || {}).name || 'this character') + '.'); render(); };
+ACTIONS['ch-pref-first'] = d => {
+  const f = S.ui.form.ch || {}, tp = Object.assign({}, f.teamPref || {});
+  if (tp.first === d.team) { tp.first = ''; } else { tp.first = d.team; if (tp.second === d.team) tp.second = ''; }
+  S.ui.form.ch = Object.assign({}, f, { teamPref: tp }); render();
+};
 /* The character form's fields: used by the side panel (new characters) and inline on the application page. */
 function charFormFields(f) {
   const txt = (k, label, extra) => `<label class="field">${label}<input id="ch-${k}" type="text" data-bind="ui/form/ch/${k}" value="${esc(f[k] || '')}" ${extra || ''}></label>`;
@@ -1179,11 +1184,32 @@ function charFormFields(f) {
 
     ${typeof flavourFieldsHtml === 'function' ? flavourFieldsHtml(f) : ''}`;
 }
+function charDrawerPrefHtml(f) {
+  if (PREF_ROLES.indexOf(f.role || 'driver') === -1) return '';
+  const tp = f.teamPref || {}, role = f.role === 'principal' ? 'principal' : f.role === 'engineer' ? 'engineer' : 'driver';
+  const roleWord = { driver: 'seats', engineer: 'engineer posts', principal: 'principal post' }[role];
+  const teams = list('f1_teams').sort((a, b) => (a.order || 0) - (b.order || 0));
+  if (!teams.length) return '';
+  const card = t => { const seats = list('f1_seats').filter(s => s.teamId === t.id && s.role === role), held = seats.filter(s => s.holderCharId).length;
+    return `<button class="card tp-team ${tp.first === t.id ? 'on' : ''}" style="--team:${esc(t.color || '#888')}" data-act="ch-pref-first" data-team="${esc(t.id)}" aria-pressed="${tp.first === t.id}">
+      <b>${esc(t.name)}</b><span class="muted small">${seats.length ? (held ? `${held} of ${seats.length} ${roleWord} held` : (seats.length === 1 ? 'Open to players' : `All ${seats.length} open`)) : ''}</span></button>`; };
+  return `<div class="ch-pref-section"><h3>Team preference</h3>
+    <p class="muted small">Pick your first choice. Race Control makes the final call when they review your application.</p>
+    <div class="tp-grid">${teams.map(card).join('')}</div>
+    ${tp.first ? `<div class="form-grid" style="margin-top:8px">
+      <label class="field">Second choice<select data-bind="ui/form/ch/teamPref/second"><option value="">None</option>${teams.filter(t => t.id !== tp.first).map(t => `<option value="${esc(t.id)}" ${tp.second === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>
+      <label class="field">Why this team? (optional)<input type="text" maxlength="200" data-bind="ui/form/ch/teamPref/why" value="${esc(tp.why || '')}" placeholder="e.g. grew up watching them"></label>
+    </div>` : ''}
+    <label class="small" style="margin-top:8px"><input type="checkbox" data-bind="ui/form/ch/teamPref/any" ${tp.any ? 'checked' : ''}> Happy to go to any team</label>
+  </div>`;
+}
 DRAWERS.char = function () {
   const f = S.ui.form.ch || {};
-  return `<header><div><h2>${f.id ? 'Edit character' : 'New character'}</h2><p>Characters are fiction. Race Control puts characters into seats on the grid; you can also apply for one.</p></div>
+  const desc = f.id ? 'Characters are fiction.' : 'Fill in who they are and pick a team. Background and ratings come next, then you send the application to Race Control.';
+  return `<header><div><h2>${f.id ? 'Edit character' : 'New character'}</h2><p>${desc}</p></div>
       <button class="btn ghost" data-act="close-drawer">Close</button></header>
     <div class="body">${charFormFields(f)}
+    ${!f.id ? charDrawerPrefHtml(f) : ''}
     <div class="btn-row"><button class="btn primary" data-act="char-save">${f.id ? 'Save changes' : 'Create character'}</button>${f.id ? `<button class="btn danger" data-act="char-retire" data-id="${esc(f.id)}">Retire this character</button>` : ''}</div></div>`;
 };
 ACTIONS['char-save'] = () => {
