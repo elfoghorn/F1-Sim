@@ -25,6 +25,18 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v0.24.1: F1 Academy, simpler career record, Discord username only
+
+12 November 2026. Build `f1sim-0.24.1`. **No database update.** Optional: a Discord bot to turn usernames into pings (SETUP.md, Discord).
+
+| Area | What it does |
+| --- | --- |
+| Career record | F1 Academy added to the single-seater series. Starts and Class or category removed from the form, the tables, the totals and the exports. The check is now "more wins than podiums". |
+| Discord username only | The Discord user ID field is gone. The character form asks for the Discord username (for @mentions); a leading @ and spaces are removed. |
+| Acceptance pings | The acceptance post names the player's Discord username. With a Discord bot set up (`DISCORD_BOT_TOKEN` and `DISCORD_GUILD_ID` in Cloudflare), the relay looks the username up on the server and makes it a real ping, matching the exact username first, then the display name or server nickname. Without the bot, or if the player isn't found, the @username is written as plain text. Race Control's message says which happened. |
+
+---
+
 ## v0.24.0: picture and face claim on the application
 
 12 November 2026. Build `f1sim-0.24.0`. **No database update.**

@@ -67,6 +67,21 @@ async function isRaceControl(env, request) {
   return (await r.json()) === true;
 }
 
+/* A player named by Discord username becomes a real @mention when a bot is set up
+   (DISCORD_BOT_TOKEN and DISCORD_GUILD_ID); otherwise the username is written as plain text. */
+async function findMember(env, username) {
+  if (!env.DISCORD_BOT_TOKEN || !env.DISCORD_GUILD_ID) return null;
+  const q = username.toLowerCase();
+  const r = await fetch(`https://discord.com/api/v10/guilds/${encodeURIComponent(env.DISCORD_GUILD_ID)}/members/search?query=${encodeURIComponent(q)}&limit=10`,
+    { headers: { Authorization: 'Bot ' + env.DISCORD_BOT_TOKEN } });
+  if (!r.ok) return null;
+  const list = await r.json().catch(() => []);
+  const exact = m => m && m.user && String(m.user.username || '').toLowerCase() === q;
+  const named = m => m && m.user && (String(m.user.global_name || '').toLowerCase() === q || String(m.nick || '').toLowerCase() === q);
+  const hit = (Array.isArray(list) ? list : []).find(exact) || (Array.isArray(list) ? list : []).find(named);
+  return hit && /^\d{15,21}$/.test(String(hit.user.id)) ? String(hit.user.id) : null;
+}
+
 export async function onRequestGet({ request, env }) {
   try { if (!(await isRaceControl(env, request))) return reply(403, { error: 'Only Race Control can post to Discord.' }); }
   catch (e) { return reply(500, { error: 'Couldn’t check your access: ' + e.message }); }
@@ -97,6 +112,15 @@ export async function onRequestPost({ request, env }) {
   /* Pinging a person needs their numeric Discord user ID, listed explicitly. */
   const users = (Array.isArray(payload.allowed_users) ? payload.allowed_users : []).map(String).filter(u => /^\d{15,21}$/.test(u)).slice(0, 10);
   if (users.length) clean.allowed_mentions.users = users;
+  /* Or by Discord username: looked up through the bot when there is one. */
+  let mentioned = null;
+  const who = String(payload.mention_username || '').trim().replace(/^@+/, '').replace(/#\d{4}$/, '').slice(0, 40);
+  if (who) {
+    let id = null; try { id = await findMember(env, who); } catch (e) { id = null; }
+    if (id) { clean.content = `<@${id}> ` + clean.content; clean.allowed_mentions.users = [id].concat(users).slice(0, 10); mentioned = true; }
+    else { clean.content = `@${who} ` + clean.content; mentioned = false; }
+    clean.content = clean.content.slice(0, 2000);
+  }
   const out = new FormData();
   const file = form.get('file');
   if (file && typeof file === 'object') {
@@ -112,5 +136,5 @@ export async function onRequestPost({ request, env }) {
   if (r.status === 429) { const j = await r.json().catch(() => ({})); return reply(429, { error: `Discord is rate-limiting posts. Try again in ${Math.ceil(Number(j.retry_after) || 5)} seconds.` }); }
   if (!r.ok) { const t = await r.text().catch(() => ''); return reply(502, { error: `Discord refused the post (${r.status}).`, detail: t.slice(0, 300) }); }
   const msg = await r.json().catch(() => ({}));
-  return reply(200, { ok: true, channel: name, messageId: msg.id || null });
+  return reply(200, { ok: true, channel: name, messageId: msg.id || null, mentioned, bot: !!(env.DISCORD_BOT_TOKEN && env.DISCORD_GUILD_ID) });
 }

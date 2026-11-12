@@ -1,4 +1,4 @@
-/* F1 SIM v0.24.0 (build f1sim-0.24.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v0.24.1 (build f1sim-0.24.1): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -1143,7 +1143,7 @@ async function init() {
 }
 
 /* ---------------------------------------------------------------- Your characters */
-const CHAR_BLANK = { name: '', code: '', number: '', nationality: '', role: 'driver', bio: '', discord: '', discordId: '', faceclaim: '', portraitUrl: null, nickname: '', birthplace: '', junior: '', helmet: '' };
+const CHAR_BLANK = { name: '', code: '', number: '', nationality: '', role: 'driver', bio: '', discord: '', faceclaim: '', portraitUrl: null, nickname: '', birthplace: '', junior: '', helmet: '' };
 ACTIONS['char-new'] = () => { S.ui.form.ch = Object.assign({}, CHAR_BLANK); openDrawer('char'); };
 ACTIONS['char-edit'] = d => { const c = get('characters', d.id); if (!c) return; S.ui.form.ch = Object.assign({}, CHAR_BLANK, clone(S.store.characters[d.id]), { id: d.id }); openDrawer('char'); };
 ACTIONS['char-play'] = d => { S.charId = d.id; lsSet('f1sim.char', d.id); toast('Now playing as ' + ((get('characters', d.id) || {}).name || 'this character') + '.'); render(); };
@@ -1160,8 +1160,7 @@ DRAWERS.char = function () {
       <label class="field">What they do<select id="ch-role" data-bind="ui/form/ch/role" ${f.id && charStatus(get('characters', f.id) || {}) === 'approved' ? 'disabled' : ''}>${CHAR_ROLES.map(([k, l]) => `<option value="${k}" ${f.role === k ? 'selected' : ''}>${l}</option>`).join('')}</select>${f.id && charStatus(get('characters', f.id) || {}) === 'approved' ? '<span class="muted small">Fixed once approved; ask Race Control to change it.</span>' : ''}</label>
       ${txt('nationality', 'Nationality', 'placeholder="e.g. Scottish"')}
       ${f.role === 'driver' ? txt('code', 'Three-letter code (drivers)', 'maxlength="3" placeholder="e.g. HAR"') + `<label class="field">Car number (drivers)<input id="ch-number" type="number" min="1" max="99" data-bind="ui/form/ch/number" data-type="number" value="${esc(f.number || '')}"></label>` : ''}
-      ${txt('discord', 'Discord username (optional)', 'autocomplete="off"')}
-      <label class="field">Discord user ID (optional, for @mentions)<input id="ch-discordId" type="text" inputmode="numeric" autocomplete="off" data-bind="ui/form/ch/discordId" value="${esc(f.discordId || '')}" placeholder="e.g. 123456789012345678"><span class="muted small">In Discord: Settings, Advanced, turn on Developer Mode. Then right-click your name and choose Copy User ID.</span></label>
+      ${txt('discord', 'Discord username (for @mentions)', 'autocomplete="off" placeholder="e.g. amelia.hart"')}
       ${txt('nickname', 'Nickname (optional)')}${txt('birthplace', 'Where they’re from (optional)')}
     </div>
     <label class="field">About them<textarea id="ch-bio" rows="6" data-bind="ui/form/ch/bio" placeholder="Background, personality, how they got into the paddock">${esc(f.bio || '')}</textarea></label>
@@ -1174,8 +1173,8 @@ ACTIONS['char-save'] = () => {
   f.name = String(f.name || '').trim();
   if (!f.name) { toast('Give your character a name.', true); return; }
   f.code = String(f.code || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
-  f.discordId = String(f.discordId || '').replace(/\s/g, '');
-  if (f.discordId && !/^\d{15,21}$/.test(f.discordId)) { toast('A Discord user ID is a long number, 15 to 21 digits. Use Copy User ID in Discord.', true); return; }
+  f.discord = String(f.discord || '').trim().replace(/^@+/, '').replace(/\s+/g, '');
+  delete f.discordId;
   const prev = get('characters', id);
   if (prev && charStatus(prev) === 'approved') f.role = prev.role;
   const doc = Object.assign({}, prev ? clone(S.store.characters[id]) : { createdAt: nowIso() }, f, { userId: prev ? prev.userId : S.uid, updatedAt: nowIso() });
@@ -2508,7 +2507,7 @@ function chargenQueueHtml() {
         ${careerRows(c).length ? `<h4>Career record</h4>${careerTableHtml(careerRows(c), { review: c.id })}<p class="muted small">Mark any season you won’t accept as not canon; approving makes the rest canon.</p>` : ''}
         ${r ? `<p><b>${esc(b.name)}</b>. ${esc(b.blurb)}</p>${ratingsTableHtml(r)}<details><summary>Every roll</summary>${rollHistoryHtml(c)}<p class="muted small">Rolls are worked out from the character, so these are exactly what the player saw.</p></details>` : ''}
         <label class="field">Note to the player (needed to return it)<textarea id="rcn-${esc(c.id)}" rows="2" data-bind="ui/form/rcnote/${esc(c.id)}"></textarea></label>
-        <label class="small"><input type="checkbox" data-bind="ui/form/postAccept/${esc(c.id)}" ${((S.ui.form.postAccept || {})[c.id]) !== false ? 'checked' : ''}> Post the acceptance card to Discord${c.discordId ? `, mentioning ${esc(c.discord || 'the player')}` : ' (no Discord user ID, so no @mention)'}</label>
+        <label class="small"><input type="checkbox" data-bind="ui/form/postAccept/${esc(c.id)}" ${((S.ui.form.postAccept || {})[c.id]) !== false ? 'checked' : ''}> Post the acceptance card to Discord${c.discord ? `, mentioning @${esc(c.discord)}` : ' (no Discord username, so no @mention)'}</label>
         <div class="btn-row"><button class="btn primary" data-act="gen-approve" data-id="${esc(c.id)}">Approve</button><button class="btn" data-act="gen-return" data-id="${esc(c.id)}">Return with the note</button></div></article>`; }).join('')}</div>`
       : '<p class="muted">No characters waiting.</p>'}</section>`;
 }
@@ -4952,7 +4951,7 @@ function pickChannel(purpose, seriesId, list) { return [`${seriesId}-${purpose}`
 async function discordSend(purpose, payload, file, chosen) {
   const api = await window.claude.use('discord'), list = await discordChannels().catch(() => ['default']);
   const ch = chosen && list.indexOf(chosen) !== -1 ? chosen : pickChannel(purpose, curSeriesId(), list);
-  await api.post(Object.assign({ channel: ch, payload }, file ? { file } : {}));
+  S.discordLast = await api.post(Object.assign({ channel: ch, payload }, file ? { file } : {}));
   return ch;
 }
 ACTIONS['discord-check'] = () => { S.ui.dcErr = null; discordChannels(true).then(() => render()).catch(e => { S.ui.dcErr = e.message || String(e); render(); }); };
@@ -5484,7 +5483,7 @@ DRAWERS.incidents = function () {
 'use strict';
 
 const CAREER_GROUPS = [
-  ['Single-seaters', ['Formula 1', 'Formula 2', 'Formula 3', 'Formula Regional', 'Formula 4', 'Super Formula', 'Formula E', 'IndyCar', 'Indy NXT', 'Karting']],
+  ['Single-seaters', ['Formula 1', 'Formula 2', 'Formula 3', 'F1 Academy', 'Formula Regional', 'Formula 4', 'Super Formula', 'Formula E', 'IndyCar', 'Indy NXT', 'Karting']],
   ['Endurance', ['WEC', 'Le Mans 24 Hours', 'IMSA', 'European Le Mans Series', 'GT World Challenge']],
   ['Rally', ['WRC', 'WRC2', 'Dakar']],
   ['Touring', ['DTM', 'BTCC', 'Supercars']],
@@ -5501,7 +5500,7 @@ const CAREER_STATUS = { pending: ['Awaiting approval', 'open'], canon: ['Canon',
 /* ---------------------------------------------------------------- the player's side */
 const careerRows = c => (c && Array.isArray(c.career) ? c.career : []);
 const careerEditable = c => !!c && (c.userId === S.uid || S.isGm) && !c.retired;
-ACTIONS['cr-add'] = () => { S.ui.form.cr = { id: null, years: '', series: 'Formula 2', other: '', cls: '', team: '', starts: '', wins: '', podiums: '', poles: '', pos: '', notes: '' }; render(); };
+ACTIONS['cr-add'] = () => { S.ui.form.cr = { id: null, years: '', series: 'Formula 2', other: '', team: '', wins: '', podiums: '', poles: '', pos: '', notes: '' }; render(); };
 ACTIONS['cr-edit'] = d => { const c = get('characters', S.ui.charEdit), r = careerRows(c).find(x => x.id === d.rid); if (r) { S.ui.form.cr = Object.assign({}, r); render(); } };
 ACTIONS['cr-cancel'] = () => { S.ui.form.cr = null; render(); };
 CHANGES['cr-series'] = v => { if (S.ui.form.cr) { S.ui.form.cr.series = v; render(); } };
@@ -5512,9 +5511,9 @@ ACTIONS['cr-save'] = () => {
   if (f.series === 'Other' && !String(f.other || '').trim()) { toast('Name the series.', true); return; }
   const num = v => v === '' || v == null ? '' : Math.max(0, Math.round(Number(v) || 0));
   const row = { id: f.id || newId('cr'), years: String(f.years).trim().slice(0, 20), series: f.series, other: f.series === 'Other' ? String(f.other).trim().slice(0, 60) : '',
-    cls: String(f.cls || '').trim().slice(0, 40), team: String(f.team || '').trim().slice(0, 60), starts: num(f.starts), wins: num(f.wins), podiums: num(f.podiums), poles: num(f.poles),
+    team: String(f.team || '').trim().slice(0, 60), wins: num(f.wins), podiums: num(f.podiums), poles: num(f.poles),
     pos: String(f.pos || ''), notes: String(f.notes || '').trim().slice(0, 200), status: 'pending', at: nowIso() };
-  if (row.wins !== '' && row.starts !== '' && row.wins > row.starts) { toast('More wins than starts: check the numbers.', true); return; }
+  if (row.wins !== '' && row.podiums !== '' && row.wins > row.podiums) { toast('More wins than podiums: check the numbers.', true); return; }
   const doc = charDoc(c.id), rows = careerRows(doc).filter(x => x.id !== row.id).concat([row]);
   rows.sort((a, b) => String(parseInt(a.years, 10) || 0).localeCompare(String(parseInt(b.years, 10) || 0)) || 0);
   doc.career = rows;
@@ -5531,9 +5530,8 @@ function careerFormHtml(f) {
       <label class="field">Year or years<input id="cr-years" type="text" data-bind="ui/form/cr/years" value="${esc(f.years || '')}" placeholder="e.g. 2025, or 2023 to 2024"></label>
       <label class="field">Series<select id="cr-series" data-change="cr-series">${CAREER_GROUPS.map(([g, xs]) => `<optgroup label="${esc(g)}">${xs.map(x => opt(x, x === 'Other' ? 'Another series' : x, f.series)).join('')}</optgroup>`).join('')}</select></label>
       ${f.series === 'Other' ? `<label class="field">Which series<input id="cr-other" type="text" data-bind="ui/form/cr/other" value="${esc(f.other || '')}" placeholder="e.g. Super GT"></label>` : ''}
-      <label class="field">Class or category (optional)<input id="cr-cls" type="text" data-bind="ui/form/cr/cls" value="${esc(f.cls || '')}" placeholder="${/WEC|Le Mans|IMSA|European/.test(f.series) ? 'e.g. Hypercar, LMP2, LMGT3' : /WRC|Dakar/.test(f.series) ? 'e.g. Rally1, Rally2' : 'e.g. Senior, Rookie'}"></label>
       <label class="field">Team<input id="cr-team" type="text" data-bind="ui/form/cr/team" value="${esc(f.team || '')}"></label>
-      ${num('starts', /WRC|Dakar/.test(f.series) ? 'Rallies' : 'Starts')}${num('wins', 'Wins')}${num('podiums', 'Podiums')}${num('poles', /WRC|Dakar/.test(f.series) ? 'Stage wins' : 'Poles')}
+      ${num('wins', 'Wins')}${num('podiums', 'Podiums')}${num('poles', /WRC|Dakar/.test(f.series) ? 'Stage wins' : 'Poles')}
       <label class="field">Championship<select id="cr-pos" data-bind="ui/form/cr/pos">${CAREER_POS.map(([v, l]) => opt(v, l, f.pos)).join('')}</select></label></div>
     <label class="field">Notes (optional)<input id="cr-notes" type="text" data-bind="ui/form/cr/notes" value="${esc(f.notes || '')}" placeholder="e.g. Class win at Le Mans; rookie of the year"></label>
     <p class="muted small">Titles and wins in the top series count as major achievements: they only become canon once Race Control approves them.</p>
@@ -5549,10 +5547,10 @@ function careerAppHtml(c) {
 }
 function careerTableHtml(rows, o) {
   const opts = o || {}, cell = v => v === '' || v == null ? '<span class="muted">–</span>' : esc(v);
-  return `<div class="scroll-x"><table class="data compact career"><thead><tr><th>Years</th><th>Series</th><th>Team</th><th class="num">Starts</th><th class="num">Wins</th><th class="num">Podiums</th><th class="num">Poles</th><th>Championship</th>${opts.status !== false ? '<th></th>' : ''}${opts.manage || opts.review ? '<th></th>' : ''}</tr></thead><tbody>
+  return `<div class="scroll-x"><table class="data compact career"><thead><tr><th>Years</th><th>Series</th><th>Team</th><th class="num">Wins</th><th class="num">Podiums</th><th class="num">Poles</th><th>Championship</th>${opts.status !== false ? '<th></th>' : ''}${opts.manage || opts.review ? '<th></th>' : ''}</tr></thead><tbody>
     ${rows.map(r => { const st = CAREER_STATUS[r.status || 'pending'] || CAREER_STATUS.pending;
-      return `<tr><td>${esc(r.years)}</td><td><b>${esc(seriesLabel(r))}</b>${r.cls ? ` <span class="muted small">${esc(r.cls)}</span>` : ''}${r.notes ? `<div class="muted small">${esc(r.notes)}</div>` : ''}</td><td>${cell(r.team)}</td>
-        <td class="num">${cell(r.starts)}</td><td class="num">${cell(r.wins)}</td><td class="num">${cell(r.podiums)}</td><td class="num">${cell(r.poles)}</td><td>${String(r.pos) === '1' ? '<span class="tag trophy">Champion</span>' : r.pos ? esc(posLabel(r.pos)) : '<span class="muted">–</span>'}</td>
+      return `<tr><td>${esc(r.years)}</td><td><b>${esc(seriesLabel(r))}</b>${r.notes ? `<div class="muted small">${esc(r.notes)}</div>` : ''}</td><td>${cell(r.team)}</td>
+        <td class="num">${cell(r.wins)}</td><td class="num">${cell(r.podiums)}</td><td class="num">${cell(r.poles)}</td><td>${String(r.pos) === '1' ? '<span class="tag trophy">Champion</span>' : r.pos ? esc(posLabel(r.pos)) : '<span class="muted">–</span>'}</td>
         ${opts.status !== false ? `<td>${isMajor(r) && r.status !== 'canon' ? '<span class="tag flag">Major achievement</span> ' : ''}<span class="tag ${st[1]}">${st[0]}</span></td>` : ''}
         ${opts.manage ? `<td class="nowrap"><button class="btn small" data-act="cr-edit" data-rid="${esc(r.id)}">Edit</button> <button class="btn small ghost" data-act="cr-remove" data-rid="${esc(r.id)}">Remove</button></td>` : ''}
         ${opts.review ? `<td class="nowrap"><button class="btn small ${r.status === 'canon' ? 'primary' : ''}" data-act="cr-judge" data-cid="${esc(opts.review)}" data-rid="${esc(r.id)}" data-v="canon" aria-pressed="${r.status === 'canon'}">Canon</button> <button class="btn small ${r.status === 'notcanon' ? 'primary' : ''}" data-act="cr-judge" data-cid="${esc(opts.review)}" data-rid="${esc(r.id)}" data-v="notcanon" aria-pressed="${r.status === 'notcanon'}">Not canon</button></td>` : ''}</tr>`; }).join('')}</tbody></table></div>`;
@@ -5611,9 +5609,9 @@ function careerRecordHtml(p, c) {
   const sum = k => canon.reduce((s, r) => s + (Number(r[k]) || 0), 0) + sim.reduce((s, o) => s + (o[k] || 0), 0);
   const groups = CAREER_GROUPS.map(([g]) => [g, rows.filter(r => careerGroupOf(r.series) === g)]).filter(x => x[1].length);
   return `<section class="card career-record"><h2>Career record</h2>
-    <div class="metrics"><div class="metric"><b>${titles}</b><span>${titles === 1 ? 'Title' : 'Titles'}</span></div><div class="metric"><b>${sum('starts')}</b><span>Starts</span></div><div class="metric"><b>${sum('wins')}</b><span>Wins</span></div><div class="metric"><b>${sum('podiums')}</b><span>Podiums</span></div><div class="metric"><b>${sum('poles')}</b><span>Poles</span></div></div>
-    ${sim.length ? `<h3>F1 SIM</h3><div class="scroll-x"><table class="data compact career"><thead><tr><th>Season</th><th>Series</th><th>Team</th><th class="num">Starts</th><th class="num">Wins</th><th class="num">Podiums</th><th class="num">Poles</th><th class="num">Points</th><th>Championship</th></tr></thead><tbody>
-      ${sim.map(o => `<tr><td>${esc(o.seasonName)}</td><td><b>${esc(o.seriesName)}</b></td><td><span class="f1-bar" style="background:${esc(f1Colour(o.team))}"></span>${esc((F1.team(o.team) || {}).name || '')}</td><td class="num">${o.starts}</td><td class="num">${o.wins}</td><td class="num">${o.podiums}</td><td class="num">${o.poles}</td><td class="num"><b>${o.pts}</b></td>
+    <div class="metrics"><div class="metric"><b>${titles}</b><span>${titles === 1 ? 'Title' : 'Titles'}</span></div><div class="metric"><b>${sum('wins')}</b><span>Wins</span></div><div class="metric"><b>${sum('podiums')}</b><span>Podiums</span></div><div class="metric"><b>${sum('poles')}</b><span>Poles</span></div></div>
+    ${sim.length ? `<h3>F1 SIM</h3><div class="scroll-x"><table class="data compact career"><thead><tr><th>Season</th><th>Series</th><th>Team</th><th class="num">Wins</th><th class="num">Podiums</th><th class="num">Poles</th><th class="num">Points</th><th>Championship</th></tr></thead><tbody>
+      ${sim.map(o => `<tr><td>${esc(o.seasonName)}</td><td><b>${esc(o.seriesName)}</b></td><td><span class="f1-bar" style="background:${esc(f1Colour(o.team))}"></span>${esc((F1.team(o.team) || {}).name || '')}</td><td class="num">${o.wins}</td><td class="num">${o.podiums}</td><td class="num">${o.poles}</td><td class="num"><b>${o.pts}</b></td>
         <td>${o.done && o.pos === 1 ? '<span class="tag trophy">Champion</span>' : o.pos ? `${ordinal(o.pos)}${o.done ? '' : ' <span class="muted small">so far</span>'}` : ''}</td></tr>`).join('')}</tbody></table></div>` : ''}
     ${groups.map(([g, rs]) => `<h3>${esc(g)}</h3>${careerTableHtml(rs, { status: own })}`).join('')}
     ${own && rows.some(r => r.status !== 'canon') ? '<p class="muted small">Only you and Race Control see seasons that aren’t canon yet.</p>' : ''}</section>`;
@@ -5702,7 +5700,7 @@ async function drawCharCard(cid, kind) {
         g.fillStyle = 'rgba(255,255,255,0.15)'; g.fillRect(x, yy + 14, 440, 10); g.fillStyle = col; g.fillRect(x, yy + 14, 440 * Math.min(1, v / 100), 10); });
       by += 230;
     }
-    const tiles = [['Titles', d.titles], ['Starts', d.totals.starts], ['Wins', d.totals.wins], ['Podiums', d.totals.podiums]];
+    const tiles = [['Titles', d.titles], ['Wins', d.totals.wins], ['Podiums', d.totals.podiums], ['Poles', d.totals.poles]];
     tiles.forEach(([k, v], i) => { const x = 64 + i * 238; g.fillStyle = 'rgba(255,255,255,0.08)'; g.fillRect(x, by, 220, 100); g.fillStyle = '#FFFFFF'; g.font = cond(700, 52); g.fillText(String(v), x + 18, by + 58); g.font = bodyF(500, 22); g.fillStyle = 'rgba(255,255,255,0.7)'; g.fillText(k, x + 18, by + 88); });
     by += 140;
     if (c.bio && by < H - 120) { g.font = bodyF(400, 26); g.fillStyle = 'rgba(255,255,255,0.85)'; wrapLines(g, c.bio, W - 128, Math.max(1, Math.floor((H - 90 - by) / 36))).forEach((l, i) => g.fillText(l, 64, by + i * 36)); }
@@ -5790,12 +5788,12 @@ async function sheetDocx(cid) {
   /* Career record. */
   if (d.sim.length || d.canon.length) {
     body.push(H2('Career record'));
-    body.push(P(`${d.titles} ${d.titles === 1 ? 'title' : 'titles'}  ·  ${d.totals.starts} starts  ·  ${d.totals.wins} wins  ·  ${d.totals.podiums} podiums  ·  ${d.totals.poles} poles`, { b: true, color: accent, sz: 22 }));
-    const cw = [880, 2080, 1760, 820, 700, 1020, 760, 1340], head = ['Year', 'Series', 'Team', 'Starts', 'Wins', 'Podiums', 'Poles', 'Finish'];
-    const headRow = docxRow(head.map((h, i) => docxCell(docxPara(docxRun(h, { b: true, sz: 18, color: 'FFFFFF' }), { after: 0, align: i >= 3 && i < 7 ? 'right' : null }), cw[i], { fill: DARK })));
-    const rows = d.sim.map(o => [o.seasonName, `F1 SIM: ${o.seriesName}`, (F1.team(o.team) || {}).name || '', o.starts, o.wins, o.podiums, o.poles, o.done && o.pos === 1 ? 'Champion' : o.pos ? ordinal(o.pos) + (o.done ? '' : ' so far') : ''])
-      .concat(d.canon.map(r => [r.years, seriesLabel(r) + (r.cls ? ` (${r.cls})` : ''), r.team, r.starts, r.wins, r.podiums, r.poles, String(r.pos) === '1' ? 'Champion' : r.pos ? posLabel(r.pos) : '']));
-    body.push(docxTable(cw, [headRow].concat(rows.map((r, j) => docxRow(r.map((v, i) => docxCell(docxPara(docxRun(v === '' || v == null ? '–' : String(v), { sz: 19, b: i === 7 && v === 'Champion', color: i === 7 && v === 'Champion' ? RED : null }), { after: 0, align: i >= 3 && i < 7 ? 'right' : null }), cw[i], { fill: j % 2 ? 'FFFFFF' : LIGHT })))))));
+    body.push(P(`${d.titles} ${d.titles === 1 ? 'title' : 'titles'}  ·  ${d.totals.wins} wins  ·  ${d.totals.podiums} podiums  ·  ${d.totals.poles} poles`, { b: true, color: accent, sz: 22 }));
+    const cw = [900, 2500, 2200, 760, 1040, 760, 1200], head = ['Year', 'Series', 'Team', 'Wins', 'Podiums', 'Poles', 'Finish'];
+    const headRow = docxRow(head.map((h, i) => docxCell(docxPara(docxRun(h, { b: true, sz: 18, color: 'FFFFFF' }), { after: 0, align: i >= 3 && i < 6 ? 'right' : null }), cw[i], { fill: DARK })));
+    const rows = d.sim.map(o => [o.seasonName, `F1 SIM: ${o.seriesName}`, (F1.team(o.team) || {}).name || '', o.wins, o.podiums, o.poles, o.done && o.pos === 1 ? 'Champion' : o.pos ? ordinal(o.pos) + (o.done ? '' : ' so far') : ''])
+      .concat(d.canon.map(r => [r.years, seriesLabel(r), r.team, r.wins, r.podiums, r.poles, String(r.pos) === '1' ? 'Champion' : r.pos ? posLabel(r.pos) : '']));
+    body.push(docxTable(cw, [headRow].concat(rows.map((r, j) => docxRow(r.map((v, i) => docxCell(docxPara(docxRun(v === '' || v == null ? '–' : String(v), { sz: 19, b: i === 6 && v === 'Champion', color: i === 6 && v === 'Champion' ? RED : null }), { after: 0, align: i >= 3 && i < 6 ? 'right' : null }), cw[i], { fill: j % 2 ? 'FFFFFF' : LIGHT })))))));
     const notes = d.canon.filter(r => r.notes); if (notes.length) notes.forEach(r => body.push(P(`${r.years} ${seriesLabel(r)}: ${r.notes}`, { sz: 19, color: GREY })));
   }
   if (d.rels.length) { body.push(H2('Relationships')); d.rels.forEach(r => body.push(P(`${r.who}: ${r.kind}${r.note ? `. ${r.note}` : ''}`))); }
@@ -5829,7 +5827,7 @@ DRAWERS.sheet = function () {
   return `<header><div><h2>Export ${esc(c.name)}</h2><p>A photo card, or a document for Google Docs.</p></div><button class="btn ghost" data-act="close-drawer">Close</button></header>
     <div class="body"><h3>Photo card</h3><label class="field" style="max-width:320px">Card<select id="sheet-kind" data-change="sheet-kind">${SHEET_KINDS.map(([k, l]) => `<option value="${k}" ${x.kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
     ${x.url ? `<img class="card-preview tx-preview" src="${x.url}" alt="${esc(c.name)}’s ${x.kind === 'accepted' ? 'acceptance card' : 'character sheet'}">` : '<p class="muted">Drawing the card…</p>'}
-    <div class="btn-row"><button class="btn primary" data-act="sheet-png" ${x.url ? '' : 'disabled'}>Download the card</button>${S.isGm ? `<button class="btn" data-act="sheet-discord" ${x.url ? '' : 'disabled'}>Post to Discord${x.kind === 'accepted' && c.discordId ? ' with an @mention' : ''}</button>` : ''}${x.posted ? `<span class="tag player">Posted to #${esc(x.posted)}</span>` : ''}</div>
+    <div class="btn-row"><button class="btn primary" data-act="sheet-png" ${x.url ? '' : 'disabled'}>Download the card</button>${S.isGm ? `<button class="btn" data-act="sheet-discord" ${x.url ? '' : 'disabled'}>Post to Discord${x.kind === 'accepted' && c.discord ? ` mentioning @${esc(c.discord)}` : ''}</button>` : ''}${x.posted ? `<span class="tag player">Posted to #${esc(x.posted)}</span>` : ''}</div>
     <h3>Google Doc</h3><p class="small">A styled document of the whole sheet: particulars, ratings, story, career record, relationships and recent diary entries.</p>
     <div class="btn-row"><button class="btn" data-act="sheet-docx">Download for Google Docs (.docx)</button></div>
     <p class="muted small">To open it in Google Docs: in Google Drive choose <b>New</b>, then <b>File upload</b>, pick the file, then open it with <b>Google Docs</b>. It opens in Word too.</p></div>`;
@@ -5840,13 +5838,13 @@ ACTIONS['sheet-docx'] = () => { const x = S.ui.sheet; if (!x) return; const c = 
 
 /* ---------------------------------------------------------------- the acceptance post */
 function acceptText(c) {
-  const d = sheetData(c.id), who = c.discordId ? `<@${c.discordId}> ` : '';
-  return `${who}🏁 **Welcome to the grid!** ${c.name} has been approved as ${d.role.toLowerCase()}${d.team ? ` for ${d.team.name}` : ''}.`;
+  const d = sheetData(c.id);
+  return `🏁 **Welcome to the grid!** ${c.name} has been approved as ${d.role.toLowerCase()}${d.team ? ` for ${d.team.name}` : ''}.`;
 }
 async function postAcceptance(cid, chosen) {
   const c = get('characters', cid); if (!c) return null;
   const blob = await drawCharCard(cid, 'accepted');
-  return discordSend('approvals', Object.assign({ content: acceptText(c) }, c.discordId ? { allowed_users: [c.discordId] } : {}), { blob, name: `${fileSafe(c.name)}-approved.png` }, chosen);
+  return discordSend('approvals', Object.assign({ content: acceptText(c) }, c.discord ? { mention_username: c.discord } : {}), { blob, name: `${fileSafe(c.name)}-approved.png` }, chosen);
 }
 ACTIONS['sheet-discord'] = () => { const x = S.ui.sheet; if (!x || !x.blob) return; const c = get('characters', x.cid);
   run(async () => {
@@ -5862,7 +5860,8 @@ ACTIONS['gen-approve'] = d => {
   if (!post) return;
   waitFor(() => charStatus(get('characters', d.id) || {}) === 'approved', 15000).then(ok => {
     if (!ok) return; const c = get('characters', d.id);
-    postAcceptance(d.id).then(ch => toast(`Acceptance card posted to Discord #${ch}${c && c.discordId ? `, mentioning ${c.discord || 'the player'}` : ' (no Discord user ID on the character, so no @mention)'}.`))
+    postAcceptance(d.id).then(ch => { const r = S.discordLast || {};
+      toast(`Acceptance card posted to Discord #${ch}${!c || !c.discord ? ' (no Discord username on the character, so no @mention)' : r.mentioned ? `, pinging @${c.discord}` : r.bot ? `; @${c.discord} wasn’t found on the server, so it’s written as text` : `, with @${c.discord} as text (set up the Discord bot to ping players)`}.`); })
       .catch(e => toast(`The character is approved, but the Discord post didn’t go: ${e.message || e}`, true));
   });
 };

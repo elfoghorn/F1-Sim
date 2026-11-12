@@ -81,6 +81,14 @@ Race Control can post race results, timing exports, announcements and driver car
 
 For a separate channel per series, put the series code first: `DISCORD_WEBHOOK_F2_RESULTS`, `DISCORD_WEBHOOK_F3_TIMING`. A post tries the series channel, then the general one, then `DISCORD_WEBHOOK`. When exporting timing, Race Control can also pick any channel by hand.
 
+**Optional: pinging players.** Acceptance cards mention the player's Discord username. To make that a real ping, add a small bot:
+1. At discord.com/developers/applications choose **New Application**, open **Bot**, choose **Reset Token**, copy the token, and turn on **Server Members Intent**.
+2. Under **OAuth2 → URL Generator** tick **bot** (no permissions needed), open the link it makes, and add the bot to your server.
+3. In Discord, turn on Developer Mode (Settings → Advanced), right-click your server's icon and choose **Copy Server ID**.
+4. In Cloudflare add two secrets: `DISCORD_BOT_TOKEN` (the token) and `DISCORD_GUILD_ID` (the server ID), then redeploy.
+
+Without them, posts still go out, with the @username written as plain text.
+
 Treat webhook URLs like passwords. If one leaks, delete it in Discord and make a new one.
 
 ## Phones
