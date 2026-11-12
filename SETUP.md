@@ -79,6 +79,9 @@ Race Control can post race results, timing exports, announcements and driver car
 | `DISCORD_WEBHOOK_STANDINGS` | Drivers' and constructors' championship standings. |
 | `DISCORD_WEBHOOK_APPROVALS` | Acceptance cards when Race Control approves a character, @mentioning the player. |
 | `DISCORD_WEBHOOK_TRANSFERS` | Transfer cards when Race Control moves a character to another team, @mentioning the player. |
+| `DISCORD_WEBHOOK_TEAMS` | Team cards from the Teams pages ("Export the team card" and "Post every team"). |
+| `DISCORD_WEBHOOK_F2_TEAMS`, `DISCORD_WEBHOOK_F3_TEAMS` | Team cards for Formula 2 or Formula 3 teams only. Any series works: `DISCORD_WEBHOOK_<SERIES>_TEAMS`. |
+| `DISCORD_WEBHOOK_TEAM_<TEAM>` | A channel for one team, e.g. `DISCORD_WEBHOOK_TEAM_MCLAREN`, `DISCORD_WEBHOOK_TEAM_REDBULL`, `DISCORD_WEBHOOK_TEAM_F2_PREMA`. The team's card panel shows its exact name. A team card goes to its team's channel first, then its series' teams channel, then `DISCORD_WEBHOOK_TEAMS`, then the standings channel, then the default. |
 
 For a separate channel per series, put the series code first: `DISCORD_WEBHOOK_F2_RESULTS`, `DISCORD_WEBHOOK_F3_TIMING`. A post tries the series channel, then the general one, then `DISCORD_WEBHOOK`. When exporting timing, Race Control can also pick any channel by hand.
 

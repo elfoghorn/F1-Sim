@@ -25,6 +25,44 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v0.36.1: date and time on exports
+
+12 November 2026. Build `f1sim-0.36.1`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| On the images | Every export shows when it was made, in UK time (GMT, or BST in summer), e.g. "12 Nov 2026, 12:56 GMT": timing sheets (portrait and widescreen), the calendar and standings, team cards, character sheets and acceptance cards, and transfer cards. |
+| In Discord | Every post from F1 SIM ends with a small "As of" line using Discord's own timestamp, so each reader sees the time in their own time zone. |
+| Files | The race report (.txt, and .json as "exported") and the Google Doc character sheet say when they were exported, with the time. |
+
+---
+
+## v0.36.0: team cards to Discord by series and by team; principals and engineers on Teams
+
+12 November 2026. Build `f1sim-0.36.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Team card channels | A team card posted to Discord goes to the team's own channel if there is one (`DISCORD_WEBHOOK_TEAM_<TEAM>`, e.g. `DISCORD_WEBHOOK_TEAM_MCLAREN` or `DISCORD_WEBHOOK_TEAM_F2_PREMA`), else its series' teams channel (`DISCORD_WEBHOOK_F2_TEAMS`, `DISCORD_WEBHOOK_F3_TEAMS`…), else `DISCORD_WEBHOOK_TEAMS`, else the standings channel, else the default. The card panel says where it will go and the exact webhook name for that team. Works for every series. |
+| Post every team | On Teams, Race Control has "Post every … team to Discord": every team card of the series shown, each to its right channel, with progress. |
+| Principals and engineers | Each team card on Teams lists the team principal and each race engineer post (players tagged, open posts shown), for earlier seasons too (from who ran the team at that season's last race). The exported card shows the principal and "Car 1: … · Car 2: …" with players marked. A team's Previous championships tab lists the team principals and race engineers it has had, with seasons, races and wins. |
+| Setup | The new webhook names are in SETUP.md. |
+
+---
+
+## v0.35.0: race involvement levels for players
+
+12 November 2026. Build `f1sim-0.35.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Three levels | Each player character chooses how involved they are in the race sim. **Hands-off**: the car runs on defaults (a standard set-up and practice, the default race strategy), and driver moments settle themselves straight away. **Set-up only**: they plan practice and choose the set-up; the race strategy, live calls and driver moments are automatic. **Full**: everything, as before (the default for everyone). |
+| Switch any time | The switch is at the top of the Race Weekend page and on the Home weekend card. It can be changed race to race or mid-weekend; the level in force at each stage is the one used. |
+| What changes | Hands-off players see the simple weekend page (timing and entry list) instead of the pit wall; practice runs they planned are set aside and their calls are refused with an explanation. On set-up only, the Race plan view is hidden, saved race plans and strategy calls aren't used, and no driver moments are created for their car (so the live race doesn't wait for them). Switching back to Full brings their saved plans back into use. |
+| Race Control | Home's weekend card lists hands-off cars separately ("Hands-off (defaults): …") instead of waiting on them to plan. |
+
+---
+
 ## v0.34.0: careers and standings for team principals, engineers and other roles; JSON updates
 
 12 November 2026. Build `f1sim-0.34.0`. **No database update.**

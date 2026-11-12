@@ -1,4 +1,4 @@
-/* F1 SIM v0.34.0 (build f1sim-0.34.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v0.36.1 (build f1sim-0.36.1): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -1499,7 +1499,7 @@ function f1CallAllowed(c, w) {
     default: return false;
   }
 }
-const f1Calls = w => list('f1_calls').filter(c => c.weekendId === w.id).sort((a, b) => String(a.at).localeCompare(String(b.at)));
+const f1Calls = w => list('f1_calls').filter(c => c.weekendId === w.id && (typeof callAllowed !== 'function' || callAllowed(c))).sort((a, b) => String(a.at).localeCompare(String(b.at)));
 function f1CallText(c, w) {
   const ent = (w.entrants || f1Entrants()).find(e => e.id === c.carId), who = ent ? ent.id : F1.team(c.teamId).name;
   if (c.type === 'box') return `${who}: box for ${c.value === 'auto' ? 'the best tyre' : RaceEngine.COMPOUNDS[c.value].label.toLowerCase() + 's'}`;
@@ -1866,7 +1866,7 @@ function f1CanRun(w, ent, charId) {
   return seats.some(s => s.role === 'driver' && s.car === ent.car) && !(eng && eng.holderCharId);
 }
 /* Runs count in the order they were made, up to the limit per car. */
-const f1Runs = (w, carId) => list('f1_runs').filter(r => r.weekendId === w.id && r.carId === carId).sort((a, b) => String(a.at).localeCompare(String(b.at)));
+const f1Runs = (w, carId) => list('f1_runs').filter(r => r.weekendId === w.id && r.carId === carId && (typeof involveAllows !== 'function' || involveAllows(r.charId, 'setup'))).sort((a, b) => String(a.at).localeCompare(String(b.at)));
 function f1Lap(circuit, entry, setup) {
   return circuit.baseLap - (RaceEngine.carScore(entry.car, circuit) - 85) * RaceEngine.DEFAULTS.carCoef - (entry.driver.pace - 85) * RaceEngine.DEFAULTS.driverCoef - (setup - 60) * F1_RULES.setupCoef;
 }
@@ -4366,9 +4366,9 @@ ROUTES.weekend.view = function () {
   S.ui.wkCarNow = sel.id;
   const t = F1.track(w.trackId) || { name: w.trackId, laps: 0 }, st = w.state, sprint = w.session === 'sprint', racing = !!(st && st.lap > 0);
   const stage = w.status === 'practice' ? 'practice' : racing ? 'race' : 'quali';
-  const views = stage === 'practice' ? [['setup', 'Set-up'], ['plan', 'Race plan'], ['timing', 'Full timing'], ['entry', 'Entry list']]
+  const views = (stage === 'practice' ? [['setup', 'Set-up'], ['plan', 'Race plan'], ['timing', 'Full timing'], ['entry', 'Entry list']]
     : stage === 'quali' ? [['timing', 'Qualifying'], ['plan', 'Race plan'], ['entry', 'Entry list']]
-    : [['timing', 'Timing'], ['plan', 'Race plan'], ['entry', 'Entry list']];
+    : [['timing', 'Timing'], ['plan', 'Race plan'], ['entry', 'Entry list']]).filter(x => x[0] !== 'plan' || typeof involveAllows !== 'function' || involveAllows(S.charId, 'strategy'));
   const v = S.ui.wkView && S.ui.wkViewFor === stage && views.some(x => x[0] === S.ui.wkView) ? S.ui.wkView : views[0][0];
   const mine = cars.map(e => e.id);
 
@@ -4833,7 +4833,7 @@ async function drawTiming(w, key, format, theme) {
       g.fillStyle = T.ink; g.font = cond(700, Math.min(24, rh - 8)); g.fillText(r.code, x + 58, y + rh - 10);
       g.fillStyle = T.muted; g.font = bodyF(500, Math.min(18, rh - 12)); const nm = r.name; g.fillText(nm.length > 18 ? nm.slice(0, 17) + '…' : nm, x + 122, y + rh - 11);
       g.fillStyle = T.ink; g.font = bodyF(600, Math.min(19, rh - 12)); g.textAlign = 'right'; g.fillText(r.value, x + cw, y + rh - 11); g.textAlign = 'left'; });
-    g.fillStyle = T.muted; g.font = bodyF(500, 17); g.fillText(sub, 60, H - 40); g.textAlign = 'right'; g.fillText(fmtDate(nowIso()), W - 60, H - 40); g.textAlign = 'left';
+    g.fillStyle = T.muted; g.font = bodyF(500, 17); g.fillText(sub, 60, H - 40); g.textAlign = 'right'; g.fillText(stampText(), W - 60, H - 40); g.textAlign = 'left';
   } else {
     const me = drawMark(g, 56, 52, T, logo); g.fillStyle = T.line; g.fillRect(me + 20, 50, 2, 34); g.fillStyle = T.ink; g.font = cond(700, 44); g.fillText(title, me + 42, 84);
     g.font = cond(700, 34); const sw = g.measureText(stage).width + (key === 'race' ? 64 : 40); rr(g, W - 56 - sw, 44, sw, 52, 26); g.fillStyle = T.panel; g.fill();
@@ -4863,6 +4863,7 @@ async function drawTiming(w, key, format, theme) {
       g.fillStyle = T.muted; g.font = bodyF(500, Math.min(19, rh - 14)); const nm = r.team; g.fillText(nm.length > 16 ? nm.slice(0, 15) + '…' : nm, tx + 190, y + rh - 12);
       g.fillStyle = T.ink; g.font = bodyF(600, Math.min(21, rh - 14)); g.textAlign = 'right'; g.fillText(r.value, tx + 560, y + rh - 12); g.textAlign = 'left';
       if (r.tyre) tyreDot(g, tx + 600, y + rh / 2, Math.min(13, rh / 3), r.tyre, T); });
+    g.fillStyle = T.muted; g.font = bodyF(500, 16); g.textAlign = 'right'; g.fillText(stampText(), W - 56, H - 16); g.textAlign = 'left';
   }
   return new Promise(ok => cv.toBlob(ok, 'image/png'));
 }
@@ -5110,7 +5111,7 @@ const TRACK_WORD = ['dry', 'damp', 'wet'];
 function entInfo(w) { const ents = w.entrants || f1Entrants(); return id => { const e = ents.find(x => x.id === id) || { id, name: id }; return { code: id, name: e.name || id, team: (get('f1_teams', e.teamId) || {}).name || '', player: !!e.charId }; }; }
 function buildReport(w) {
   const t = get('f1_tracks', w.trackId) || {}, s = seriesDoc(wSeries(w)), who = entInfo(w), st = w.state;
-  const rep = { league: 'F1 SIM', series: s.name, season: seasonDoc(wSeason(w)).name, round: (F1.track(w.trackId) || {}).round || null, event: t.name || w.trackId, circuit: t.circuit || '',
+  const rep = { league: 'F1 SIM', exported: stampText(), series: s.name, season: seasonDoc(wSeason(w)).name, round: (F1.track(w.trackId) || {}).round || null, event: t.name || w.trackId, circuit: t.circuit || '',
     session: w.session === 'test' ? 'Pre-season testing' : w.session === 'sprint' ? 'Sprint' : 'Grand Prix', official: raceSettings(w).lock !== false, practice: [], qualifying: null, race: null };
   /* Practice or testing. */
   endedSessions(w).forEach(sess => {
@@ -5152,7 +5153,7 @@ function buildReport(w) {
 }
 function reportTxt(rep) {
   const L = [], line = (s = '') => L.push(s), hr = () => line('-'.repeat(72));
-  line(`${rep.league}: ${rep.series}, ${rep.season} season`); line(`${rep.round ? `Round ${rep.round}: ` : ''}${rep.event}${rep.session === 'Grand Prix' ? '' : ', ' + rep.session.toLowerCase()}`); line(rep.circuit); hr();
+  line(`${rep.league}: ${rep.series}, ${rep.season} season`); line(`Exported ${rep.exported}`); line(`${rep.round ? `Round ${rep.round}: ` : ''}${rep.event}${rep.session === 'Grand Prix' ? '' : ', ' + rep.session.toLowerCase()}`); line(rep.circuit); hr();
   rep.practice.forEach(p => { line(); line(p.name.toUpperCase() === p.name ? p.name : p.name); line(`Conditions: ${p.conditions}`);
     if (p.incidents.length) { line('Incidents:'); p.incidents.forEach(i => line(`  - ${i}`)); }
     line('Timesheet:'); p.timesheet.forEach(r => line(`  ${String(r.pos).padStart(2)}. ${r.code.padEnd(4)} ${r.driver.padEnd(22)} ${r.team.padEnd(16)} ${r.time}`));
@@ -5425,7 +5426,7 @@ async function drawShare(kind, theme) {
       g.fillStyle = T.ink; g.font = cond(700, fs); g.textAlign = 'right'; g.fillText(String(d.pts), lx + lw, y + rh - 10); g.textAlign = 'left'; });
     drawTeams(g, 1000, top + 10, W - 1000 - 56, H - top - 60, T, st.teams);
   }
-  g.fillStyle = T.muted; g.font = bodyF(500, 17); g.textAlign = 'right'; g.fillText(`Shared from F1 SIM, ${fmtDate(nowIso())}`, W - 60, H - 30); g.textAlign = 'left';
+  g.fillStyle = T.muted; g.font = bodyF(500, 17); g.textAlign = 'right'; g.fillText(`Shared from F1 SIM, ${stampText()}`, W - 60, H - 30); g.textAlign = 'left';
   return new Promise(ok => cv.toBlob(ok, 'image/png'));
 }
 
@@ -5750,6 +5751,7 @@ async function drawCharCard(cid, kind) {
     if (c.bio && by < H - 120) { g.font = bodyF(400, 26); g.fillStyle = 'rgba(255,255,255,0.85)'; wrapLines(g, c.bio, W - 128, Math.max(1, Math.floor((H - 90 - by) / 36))).forEach((l, i) => g.fillText(l, 64, by + i * 36)); }
   }
   g.fillStyle = col; g.fillRect(0, H - 20, W, 20);
+  g.font = bodyF(500, 20); g.fillStyle = 'rgba(255,255,255,0.55)'; g.textAlign = 'right'; g.fillText(stampText(), W - 40, H - 22); g.textAlign = 'left';
   return new Promise(ok => cv.toBlob(ok, 'image/png'));
 }
 
@@ -5844,7 +5846,7 @@ async function sheetDocx(cid) {
   }
   if (d.rels.length) { body.push(H2('Relationships')); d.rels.forEach(r => body.push(P(`${r.who}: ${r.kind}${r.note ? `. ${r.note}` : ''}`))); }
   if (d.diary.length) { body.push(H2('From the diary')); d.diary.forEach(e => { body.push(docxPara(docxRun(`${e.title}`, { b: true, sz: 22 }) + docxRun(`   ${fmtDate(e.at)}`, { sz: 18, color: GREY }), { after: 40, keep: true })); body.push(P(String(e.body || '').slice(0, 800))); }); }
-  body.push(docxPara(docxRun(`Exported from F1 SIM on ${fmtDate(nowIso())}.`, { i: true, sz: 17, color: GREY }), { before: 360, after: 0 }));
+  body.push(docxPara(docxRun(`Exported from F1 SIM on ${stampText()}.`, { i: true, sz: 17, color: GREY }), { before: 360, after: 0 }));
   const doc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
 <w:body>${body.join('')}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1000" w:right="1273" w:bottom="1000" w:left="1273" w:header="500" w:footer="500" w:gutter="0"/></w:sectPr></w:body></w:document>`;
@@ -6610,7 +6612,8 @@ route('teams', 'Teams', function () {
       <span class="tm-band" style="background:${esc(col)};color:${ink}"><span><b>${esc(t.name)}</b><br><small>${esc(teamEngine(t.id, sid, sea))}</small></span><span class="tm-pos"><b>${i >= 0 ? `P${i + 1}` : '–'}</b><br><small>${row.pts} pts</small></span></span>
       <span class="tm-drivers">${ds.map(d => `<span class="tm-driver"><span class="tm-face" style="${d.player ? `background:${esc(col)};color:${ink}` : ''}">${d.c && d.c.portraitUrl ? `<img src="${esc(d.c.portraitUrl)}" alt="">` : esc(initials(d.name))}</span>
         <span><b>${esc(d.name)}</b>${d.player ? ' <span class="tag player">Player</span>' : ''}<br><small class="muted">${d.pos ? `P${d.pos}, ${d.pts} pts` : 'No points yet'}</small></span><span class="tm-num">${esc(d.num || '')}</span></span>`).join('') || '<span class="muted small">No results this season.</span>'}</span>
-      <span class="tm-foot"><span>${current ? esc(teamStaffLine(t)) : ''}</span><b>Open team ›</b></span></button>`; };
+      ${typeof teamStaffHtml === 'function' ? teamStaffHtml(t, sid, sea) : ''}
+      <span class="tm-foot"><span></span><b>Open team ›</b></span></button>`; };
   return `<div class="page-head"><div><p class="eyebrow">${esc(s.name)} · ${esc(seasonDoc(sea).name)} season · ${current ? `after round ${done} of ${roundsOf(sid)}` : 'final standings'}</p><h1>Teams</h1></div>
       <div class="btn-row">${series.length > 1 ? `<div class="seg" role="tablist" aria-label="Series">${series.map(x => `<button role="tab" aria-selected="${x.id === sid}" data-act="teams-series" data-id="${esc(x.id)}">${esc(x.name)}</button>`).join('')}</div>` : ''}
       <label class="sr-only" for="teams-season">Season</label><select id="teams-season" data-change="teams-season">${seasons.map(x => `<option value="${esc(x.id)}" ${x.id === sea ? 'selected' : ''}>${esc(x.name)}${x.id === curSeasonId(sid) ? ' (this season)' : champ(x.id) && seasonDone(x.id) ? `: champions ${esc(champ(x.id))}` : ''}</option>`).join('')}</select></div></div>
@@ -6703,13 +6706,13 @@ async function drawTeamCard(tid) {
     g.fillStyle = '#FFFFFF'; fitText(g, m.name, z => cond(900, z), 36, w - 176); g.fillText(m.name, x + 158, y + 104);
     g.fillStyle = '#C9CCD2'; g.font = bodyF(500, 20); g.fillText(row >= 0 ? `P${row + 1} · ${d.st.drivers[row].pts} pts` : 'No points yet', x + 158, y + 140); });
   const tp = lu.find(m => m.role === 'Team principal'), engs = lu.filter(m => /^Race engineer/.test(m.role));
-  [[`Team principal`, tp ? tp.name : '–'], ['Race engineers', engs.filter(m => !m.open).map(m => m.name).join(', ') || 'Open posts']].forEach(([k, v], i) => { const x = 56 + i * 492; g.fillStyle = T.panel; g.fillRect(x, 730, 476, 96); g.fillStyle = T.muted; g.font = bodyF(500, 18); g.fillText(k, x + 18, 766); g.fillStyle = '#FFFFFF'; fitText(g, v, z => cond(700, z), 26, 440); g.fillText(v, x + 18, 804); });
+  [[`Team principal`, tp ? `${tp.name}${tp.player ? ' (player)' : tp.open ? '' : ''}` : '–'], ['Race engineers', engs.map((m, k) => `Car ${k + 1}: ${m.open ? 'open' : m.name + (m.player ? ' (player)' : '')}`).join(' · ') || 'Open posts']].forEach(([k, v], i) => { const x = 56 + i * 492; g.fillStyle = T.panel; g.fillRect(x, 730, 476, 96); g.fillStyle = T.muted; g.font = bodyF(500, 18); g.fillText(k, x + 18, 766); g.fillStyle = '#FFFFFF'; fitText(g, v, z => cond(700, z), 26, 440); g.fillText(v, x + 18, 804); });
   if (hist.titles || hist.dTitles.length) { g.fillStyle = '#F5C400'; g.fillRect(56, 856, W - 112, 84); g.fillStyle = '#2A2200'; g.font = cond(900, 30); g.fillText('Honours', 76, 908);
     const txt = [hist.titles ? `Constructors’ champions ${hist.rows.filter(r => r.done && r.pos === 1).map(r => r.season).join(', ')}` : '', hist.dTitles.length ? `Drivers’ champion: ${hist.dTitles.join('; ')}` : ''].filter(Boolean).join(' · ');
     fitText(g, txt, z => bodyF(600, z), 22, W - 112 - 200); g.fillText(txt, 230, 906); }
   const rs = d.rounds.slice(-8), maxP = Math.max(1, ...rs.map(r => r.pts));
   if (rs.length) { g.fillStyle = T.muted; g.font = bodyF(600, 20); g.fillText('Points by round', 56, 990); rs.forEach((r, i) => { const x = 56 + i * 120, hh = r.pts / maxP * 118; g.fillStyle = col; g.fillRect(x, 1170 - hh, 84, hh); g.fillStyle = '#FFFFFF'; g.font = cond(700, 22); g.textAlign = 'center'; g.fillText(String(r.pts), x + 42, 1162 - hh); g.fillStyle = T.muted; g.font = bodyF(600, 18); g.fillText(r.code, x + 42, 1198); g.textAlign = 'left'; }); }
-  g.fillStyle = T.muted; g.font = bodyF(500, 18); g.fillText(`Updated ${fmtDate(nowIso())}`, 56, H - 50); g.textAlign = 'right'; g.fillText('F1 SIM', W - 56, H - 50); g.textAlign = 'left';
+  g.fillStyle = T.muted; g.font = bodyF(500, 18); g.fillText(`Updated ${stampText()}`, 56, H - 50); g.textAlign = 'right'; g.fillText('F1 SIM', W - 56, H - 50); g.textAlign = 'left';
   g.fillStyle = col; g.fillRect(0, H - 16, W, 16);
   return new Promise(ok => cv.toBlob(ok, 'image/png'));
 }
@@ -7079,7 +7082,8 @@ function playerWeekendHtml(c) {
     <div class="home-wk-head"><div><p class="eyebrow">${esc(roundLabel(w, t))} · ${esc(stageWords(w))}</p><h2>${esc(t.flag || '')} ${esc(t.name)}${w.session === 'sprint' ? ' Sprint' : w.session === 'test' ? ' testing' : ''}</h2>
       ${ent ? `<p>${esc(ent.name)} · ${esc(F1.team(ent.teamId).name)}, car ${esc((ent.car || 1))}</p>` : ''}</div>${ent ? statStripHtml(w, ent) : ''}</div>
     ${typeof lvStagesHtml === 'function' ? lvStagesHtml(w) : ''}
-    <p class="home-todo"><b>Now:</b> ${esc(todo)}</p>
+    <p class="home-todo"><b>Now:</b> ${esc(ent && c && typeof involveOf === 'function' && involveOf(c.id) === 'none' ? 'Nothing: you’re hands-off, so your car runs on defaults. Watch it live.' : ent && c && typeof involveOf === 'function' && involveOf(c.id) === 'setup' && w.status !== 'practice' ? 'Nothing: the race strategy is automatic on set-up only. Watch it live.' : todo)}</p>
+    ${c && ent && typeof involveBarHtml === 'function' ? involveBarHtml(c, true) : ''}
     <div class="btn-row"><button class="btn primary" data-act="nav" data-route="weekend">${ent ? 'Go to your pit wall' : 'Watch the weekend'}</button><button class="btn" data-act="nav" data-route="calendar">The calendar</button></div></section>`;
 }
 function playerAlertsHtml(c) {
@@ -7108,8 +7112,9 @@ function rcWeekendHtml() {
   if (w.status === 'practice') {
     const n = endedSessions(w).length, N = sessionsOf(w), sess = n + 1;
     const planned = new Set(list('f1_runs').filter(r => r.weekendId === w.id && (r.session || 1) === sess).map(r => r.carId));
-    const waiting = players.filter(e => !planned.has(e.id));
-    detail = n < N ? `<p><b>${players.length - waiting.length} of ${players.length}</b> player cars have planned runs for ${esc(sessionName(w, sess))}.${waiting.length ? ` Waiting on: ${waiting.map(e => esc(e.name)).join(', ')}.` : ''}</p>` : '<p>All sessions are run.</p>';
+    const handsOff = players.filter(e => typeof involveOf === 'function' && involveOf(e.charId) === 'none'), active = players.filter(e => handsOff.indexOf(e) === -1);
+    const waiting = active.filter(e => !planned.has(e.id));
+    detail = n < N ? `<p><b>${active.length - waiting.length} of ${active.length}</b> player cars have planned runs for ${esc(sessionName(w, sess))}.${waiting.length ? ` Waiting on: ${waiting.map(e => esc(e.name)).join(', ')}.` : ''}${handsOff.length ? ` Hands-off (defaults): ${handsOff.map(e => esc(e.name)).join(', ')}.` : ''}</p>` : '<p>All sessions are run.</p>';
     action = n < N ? `<button class="btn primary" data-act="fp-end">Run ${esc(sessionName(w, sess))}</button>` : w.session === 'test' ? '<button class="btn primary" data-act="test-finish">Finish testing</button>' : '<button class="btn primary" data-act="f1-quali">Run qualifying</button>';
   } else if (w.status === 'quali') { detail = `<p>Q${w.qualiStage || 1} done.</p>`; action = '<button class="btn primary" data-act="f1-quali-next">Run the next session</button>'; }
   else { const st = w.state; detail = st && st.lap > 0 ? `<p>Lap ${st.lap} of ${st.laps}${w.live ? ', running live' : ', paused'}.${st.sc && st.sc.type ? ' Safety car out.' : ''}</p>` : `<p>${plural(players.length, 'player car')} on the grid. Start the race from the weekend page.</p>`; }
@@ -7341,7 +7346,7 @@ async function drawTransferCard(cid, from, to) {
     g.fillStyle = '#FFFFFF'; fitText(g, n, z => cond(700, z), 52, bw - 50); g.fillText(n, x + 34, y + 98); });
   g.fillStyle = '#FFFFFF'; g.beginPath(); const ax = W / 2 - 34, ay = y + bh / 2; g.moveTo(ax, ay - 8); g.lineTo(ax + 40, ay - 8); g.lineTo(ax + 40, ay - 26); g.lineTo(ax + 70, ay); g.lineTo(ax + 40, ay + 26); g.lineTo(ax + 40, ay + 8); g.lineTo(ax, ay + 8); g.closePath(); g.fill();
   g.textAlign = 'center'; g.font = cond(600, 36); g.fillStyle = 'rgba(255,255,255,0.9)'; g.fillText(seatLine(to, c).replace(/^./, m => m.toUpperCase()), W / 2, 1258);
-  g.font = bodyF(500, 24); g.fillStyle = 'rgba(255,255,255,0.65)'; g.fillText(`${(d && d.series) || seriesDoc(teamSeriesId(to.teamId)).name} · ${fmtDate(nowIso())}`, W / 2, 1300); g.textAlign = 'left';
+  g.font = bodyF(500, 24); g.fillStyle = 'rgba(255,255,255,0.65)'; g.fillText(`${(d && d.series) || seriesDoc(teamSeriesId(to.teamId)).name} · ${stampText()}`, W / 2, 1300); g.textAlign = 'left';
   return new Promise(ok => cv.toBlob(ok, 'image/png'));
 }
 /* The switch on The Grid. */
@@ -7514,6 +7519,172 @@ DRAWERS.io = function () {
     h = h.replace(tag, ctl); });
   return h.replace('<option value="approved" ', '<option value="approved" title="Also updates the ratings of approved drivers in the file" ').replace('Approved, with the ratings in the file</option>', 'Approved, with the ratings in the file (updates approved drivers’ ratings too)</option>')
     + '';
+};
+
+/* =====================================================================
+   F1 SIM — how involved a player is in the race sim.
+   Each character picks one of three, and can change it at any time
+   (the level in force at each stage is the one that counts):
+     Hands-off    the car runs on defaults: standard set-up and practice,
+                  the default race strategy, and driver moments settle
+                  themselves straight away.
+     Set-up only  practice runs and the set-up are theirs; the race
+                  strategy, live calls and driver moments are automatic.
+     Full         everything: set-up, race plan, live calls and moments.
+   ===================================================================== */
+'use strict';
+
+const INVOLVE = [
+  ['none', 'Hands-off', 'Your car runs on defaults all weekend: a standard set-up, the default race strategy, and driver moments settle themselves. Nothing to do; just watch.'],
+  ['setup', 'Set-up only', 'You plan practice and choose the set-up. The race strategy, live calls and driver moments are automatic.'],
+  ['full', 'Full', 'Everything: practice and set-up, the race plan and triggers, live calls from the pit wall, and driver moments.']
+];
+const involveOf = cid => { const c = cid ? get('characters', cid) : null; return (c && c.involve) || 'full'; };
+const involveName = l => (INVOLVE.find(x => x[0] === l) || INVOLVE[2])[1];
+function involveAllows(cid, what) { if (!cid) return true; const l = involveOf(cid); return what === 'setup' ? l !== 'none' : what === 'strategy' ? l === 'full' : true; }
+ACTIONS['involve-set'] = d => {
+  const c = get('characters', d.cid || S.charId); if (!c || !(c.userId === S.uid || S.isGm) || ['none', 'setup', 'full'].indexOf(d.v) === -1 || involveOf(c.id) === d.v) return;
+  run(async () => { const doc = charDoc(c.id); doc.involve = d.v; doc.involveAt = nowIso(); await Data.put('characters', c.id, doc); await Data.audit('character.involve', `${c.name}: race involvement set to ${involveName(d.v).toLowerCase()}`); },
+    `${involveName(d.v)}${d.v === 'none' ? ': your car runs on defaults.' : d.v === 'setup' ? ': you do practice and set-up; the race strategy is automatic.' : ': everything is yours.'}`);
+};
+function involveBarHtml(c, compact) {
+  if (!c) return ''; const l = involveOf(c.id), cur = INVOLVE.find(x => x[0] === l);
+  return `<div class="involve ${compact ? 'compact' : ''}"><div class="involve-head"><b>Your involvement${compact ? '' : ' this race'}</b><div class="seg" role="radiogroup" aria-label="Race involvement">${INVOLVE.map(([k, n]) => `<button role="radio" aria-checked="${l === k}" data-act="involve-set" data-cid="${esc(c.id)}" data-v="${k}">${esc(n)}</button>`).join('')}</div></div>
+    ${compact ? '' : `<p class="muted small">${esc(cur[2])} Change it whenever you like, race to race or mid-weekend.</p>`}</div>`;
+}
+
+/* ---------------------------------------------------------------- what the simulation uses */
+const _setupChoiceInvolve = setupChoice;
+setupChoice = function (w, ent) { const ch = _setupChoiceInvolve(w, ent); return ch && ch.by && !involveAllows(ch.by, 'setup') ? null : ch; };
+f1Plan = function (w, ent) {
+  return list('f1_plans').filter(p => p.weekendId === w.id && p.carId === ent.id && canPlan(w, ent, p.charId) && involveAllows(p.charId, 'strategy'))
+    .sort((a, b) => String(b.at).localeCompare(String(a.at)))[0] || null;
+};
+const _f1NewMomentsInvolve = f1NewMoments;
+f1NewMoments = function (w, st, log) {
+  const ents = w.entrants || f1Entrants();
+  return _f1NewMomentsInvolve(w, st, log).filter(m => { const e = ents.find(x => x.id === m.carId); return !e || !e.charId || involveAllows(e.charId, 'strategy'); });
+};
+const callAllowed = c => !c || !c.charId || (c.type === 'setup' ? involveAllows(c.charId, 'setup') : involveAllows(c.charId, 'strategy'));
+const _f1SendCallInvolve = f1SendCall;
+f1SendCall = function (call) {
+  const doc = Object.assign({ charId: S.charId }, call);
+  if (!callAllowed(doc)) { toast(involveOf(S.charId) === 'none' ? 'You’re hands-off this race: your car runs on defaults. Change your involvement to make calls.' : 'You’re on set-up only: the race strategy is automatic. Switch to Full to make race calls.', true); return; }
+  return _f1SendCallInvolve(call);
+};
+
+/* ---------------------------------------------------------------- the pit wall */
+const _weekendViewInvolve = ROUTES.weekend.view;
+ROUTES.weekend.view = function () {
+  const w = F1.live(), c = currentChar();
+  if (!w || S.ui.f1view || !c || !(w.entrants || f1Entrants()).some(e => canPlan(w, e, c.id))) return _weekendViewInvolve();
+  const l = involveOf(c.id), bar = involveBarHtml(c);
+  if (l === 'none') return bar + _weekendTabs();
+  return bar + _weekendViewInvolve();
+};
+
+/* =====================================================================
+   F1 SIM — team cards on Discord, and the people running each team.
+   A team card goes to the team's own channel if there is one
+   (DISCORD_WEBHOOK_TEAM_<TEAM>), else its series' teams channel
+   (DISCORD_WEBHOOK_F2_TEAMS…), else DISCORD_WEBHOOK_TEAMS, else the
+   standings channel, else the default. Race Control can post every team
+   of a series in one go. The Teams pages show each team's principal and
+   race engineers, and the principals and engineers it has had.
+   ===================================================================== */
+'use strict';
+
+if (!DISCORD_PURPOSES.some(p => p[0] === 'teams')) DISCORD_PURPOSES.push(['teams', 'Team cards (per series, or a channel per team)', 'DISCORD_WEBHOOK_TEAMS']);
+const teamHookName = tid => `DISCORD_WEBHOOK_TEAM_${String(tid).toUpperCase().replace(/[^A-Z0-9]+/g, '_')}`;
+function teamChannel(tid, list) {
+  const sid = (get('f1_teams', tid) || {}).seriesId || 'f1';
+  return [`team-${tid}`, `${sid}-teams`, 'teams', `${sid}-standings`, 'standings', 'default'].find(c => list.indexOf(c) !== -1) || list[0] || 'default';
+}
+async function postTeamCard(tid, blob) {
+  const t = get('f1_teams', tid), sid = t.seriesId || 'f1', list = await discordChannels().catch(() => ['default']);
+  const b = blob || await drawTeamCard(tid);
+  return discordSend('teams', { content: `**${t.name}**: ${seriesDoc(sid).name}, ${seasonDoc(curSeasonId(sid)).name} season` }, { blob: b, name: `${fileSafe(t.name)}-team-card.png` }, teamChannel(tid, list));
+}
+ACTIONS['tcard-discord'] = () => { const x = S.ui.tcard; if (!x || !x.blob) return;
+  run(async () => { x.posted = await postTeamCard(x.tid, x.blob); await Data.audit('discord.team', `${(get('f1_teams', x.tid) || {}).name} team card posted to #${x.posted}`); }, 'Posted to Discord.'); };
+const _drawerTcardDiscord = DRAWERS.tcard;
+DRAWERS.tcard = function () {
+  const x = S.ui.tcard || {}, t = get('f1_teams', x.tid) || {}, sid = t.seriesId || 'f1', list = S.discordCh;
+  if (!S.isGm) return _drawerTcardDiscord();
+  const where = list ? `It goes to <b>#${esc(teamChannel(x.tid, list))}</b>.` : 'Check the channels on the League page to see where it goes.';
+  return _drawerTcardDiscord().replace('</div></div>', `</div><p class="muted small">${where} For a channel just for ${esc(t.name)}, add <code>${esc(teamHookName(x.tid))}</code>; for all ${esc(seriesDoc(sid).name)} teams, <code>DISCORD_WEBHOOK_${esc(sid.toUpperCase())}_TEAMS</code>.</p></div>`);
+};
+ACTIONS['teams-post-all'] = () => {
+  if (!S.isGm) return; const sid = S.ui.teamsSeries || curSeriesId(), teams = list('f1_teams').filter(t => (t.seriesId || 'f1') === sid).sort((a, b) => (a.order || 0) - (b.order || 0));
+  askConfirm(`Post all ${teams.length} ${seriesDoc(sid).name} team cards to Discord? Each goes to its team’s channel if it has one, else the ${seriesDoc(sid).name} teams channel.`, 'Post them', async () => {
+    S.ui.teamsPosting = { done: 0, total: teams.length, fails: 0 }; render(); const chans = new Set();
+    for (const t of teams) { try { chans.add(await postTeamCard(t.id)); } catch (e) { S.ui.teamsPosting.fails++; } S.ui.teamsPosting.done++; render(); await new Promise(ok => setTimeout(ok, 700)); }
+    const p = S.ui.teamsPosting; S.ui.teamsPosting = null; render();
+    await Data.audit('discord.teams', `${seriesDoc(sid).name}: ${p.done - p.fails} team cards posted`).catch(() => {});
+    toast(p.fails ? `${p.done - p.fails} of ${p.total} posted; ${p.fails} didn’t go.` : `All ${p.total} team cards posted (${[...chans].map(c => '#' + c).join(', ')}).`, !!p.fails);
+  });
+};
+
+/* ---------------------------------------------------------------- the people running each team */
+function staffAt(tid, sid, sea) {
+  /* The latest race of that season that recorded who ran the team. */
+  const w = list('f1_weekends').filter(x => x.status === 'finished' && x.staff && x.staff[tid] && wSeries(x) === sid && wSeason(x) === sea).sort((a, b) => String(b.finishedAt).localeCompare(String(a.finishedAt)))[0];
+  if (!w) return null; const st = w.staff[tid], nm = x => x ? { name: (F1.person(staffPid(x)) || {}).name || '–', player: !!x.charId } : null;
+  return { principal: nm(st.principal), engineers: Object.keys(st.engineers || {}).sort().map(car => Object.assign({ car }, nm(st.engineers[car]))) };
+}
+function teamStaffHtml(t, sid, sea) {
+  let rows;
+  if (sea === curSeasonId(sid)) rows = teamLineup(t).filter(m => !/^Driver/.test(m.role)).map(m => [m.role, m.name, m.player, m.open]);
+  else { const s = staffAt(t.id, sid, sea); if (!s) return ''; rows = [['Team principal', s.principal ? s.principal.name : '–', s.principal && s.principal.player, !s.principal]].concat(s.engineers.map(e => [`Race engineer, car ${e.car}`, e.name, e.player, false])); }
+  return `<span class="tm-staff">${rows.map(([r, n, pl, open]) => `<span class="tm-staff-row"><span class="muted">${esc(r)}</span><b class="${open ? 'muted' : ''}">${esc(open ? 'Open' : n)}</b>${pl ? '<span class="tag player">Player</span>' : ''}</span>`).join('')}</span>`;
+}
+function teamStaffHistory(tid, sid) {
+  const out = { principal: new Map(), engineer: new Map() };
+  list('f1_weekends').filter(w => w.status === 'finished' && w.staff && w.staff[tid] && wSeries(w) === sid && w.session !== 'test').forEach(w => {
+    const st = w.staff[tid], seaName = seasonDoc(wSeason(w)).name, rs = (w.results || []).filter(r => r.teamId === tid);
+    const add = (role, x, results, label) => { const pid = staffPid(x); if (!pid) return; const m = out[role], o = m.get(pid) || { pid, name: (F1.person(pid) || {}).name || pid, player: !!x.charId, seasons: new Set(), races: 0, wins: 0, cars: new Set() };
+      o.seasons.add(seaName); if (label) o.cars.add(label); if (w.session !== 'sprint') { o.races++; o.wins += results.filter(r => r.position === 1).length; } m.set(pid, o); };
+    add('principal', st.principal, rs);
+    Object.keys(st.engineers || {}).forEach(car => add('engineer', st.engineers[car], rs.filter(r => String(r.car || 1) === String(car)), `car ${car}`));
+  });
+  return { principal: [...out.principal.values()].sort((a, b) => b.races - a.races), engineer: [...out.engineer.values()].sort((a, b) => b.races - a.races) };
+}
+const _teamviewStaff = ROUTES.teamview.view;
+ROUTES.teamview.view = function () {
+  const h = _teamviewStaff(), t = get('f1_teams', S.ui.teamView); if (!t || (S.ui.teamTab || 'season') !== 'history') return h;
+  const sh = teamStaffHistory(t.id, t.seriesId || 'f1');
+  const block = (title, rows, eng) => `<h3>${esc(title)}</h3>${rows.length ? `<div class="tm-lineup">${rows.map(o => `<button class="tm-member ${o.player ? 'player' : ''}" data-act="career" data-id="${esc(o.pid)}"><span class="tm-face">${esc(initials(o.name))}</span><span><b>${esc(o.name)}</b>${o.player ? ' <span class="tag player">Player</span>' : ''}<br><small class="muted">${esc([...o.seasons].join(', '))} · ${plural(o.races, 'race')} · ${plural(o.wins, eng ? 'win for their car' : 'win', eng ? 'wins for their car' : 'wins')}${eng && o.cars.size ? ` · ${esc([...o.cars].join(', '))}` : ''}</small></span></button>`).join('')}</div>` : '<p class="muted">None recorded yet.</p>'}`;
+  return h + `<section class="card"><h2>Team principals and race engineers</h2>${block('Team principals', sh.principal)}${block('Race engineers', sh.engineer, true)}<p class="muted small">Recorded from every race since who ran each team started being kept.</p></section>`;
+};
+const _teamsViewDiscord = ROUTES.teams.view;
+ROUTES.teams.view = function () {
+  const h = _teamsViewDiscord(); if (!S.isGm) return h;
+  const sid = S.ui.teamsSeries || curSeriesId(), p = S.ui.teamsPosting;
+  const btn = p ? `<button class="btn" disabled>Posting ${p.done} of ${p.total}…</button>` : `<button class="btn" data-act="teams-post-all">Post every ${esc(seriesDoc(sid).short || seriesDoc(sid).name)} team to Discord</button>`;
+  const i = h.indexOf('</select></div>'); return i < 0 ? h : h.slice(0, i + 9) + btn + h.slice(i + 9);
+};
+
+/* =====================================================================
+   F1 SIM — dates and times on exports.
+   Every exported image says when it was made, in UK time (GMT or BST),
+   and every Discord post says "As of" using Discord's own timestamp, so
+   each reader sees it in their own time zone.
+   ===================================================================== */
+'use strict';
+
+function stampText(when) {
+  const d = when ? new Date(when) : new Date();
+  try {
+    const p = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZoneName: 'short' }).formatToParts(d);
+    const v = k => (p.find(x => x.type === k) || {}).value || '';
+    return `${v('day')} ${v('month')} ${v('year')}, ${v('hour')}:${v('minute')} ${v('timeZoneName')}`.trim();
+  } catch (e) { return d.toISOString().slice(0, 16).replace('T', ', ') + ' UTC'; }
+}
+const _discordSendStamp = discordSend;
+discordSend = function (purpose, payload, file, chosen) {
+  const unix = Math.floor(Date.now() / 1000), p = Object.assign({}, payload || {});
+  p.content = `${p.content ? p.content + '\n' : ''}-# As of <t:${unix}:f>`;
+  return _discordSendStamp(purpose, p, file, chosen);
 };
 
 /* start-up: every part has registered its routes, drawers and actions */
