@@ -25,6 +25,19 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v0.24.0: picture and face claim on the application
+
+12 November 2026. Build `f1sim-0.24.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Character form | A "Picture and face claim" section at the top of the first step (new character, and Edit details): upload a picture (JPEG, PNG or WebP, resized to fit) with a preview, change or remove it, and a Face claim field for who the picture shows. Both are saved with the character. |
+| Application | A new "Picture and face claim" step in the application's progress strip. The picture and face claim show under "Who they are". Sending an application without them asks first, so it can still be sent. |
+| Race Control's review | Each application shows the picture and the face claim, or "No face claim given" and "No picture" warnings. |
+| Character page and exports | The face claim appears in the character's particulars and in the Google Docs character sheet. |
+
+---
+
 ## v0.23.1: Current driver background
 
 12 November 2026. Build `f1sim-0.23.1`. **No database update.**

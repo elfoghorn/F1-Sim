@@ -1,4 +1,4 @@
-/* F1 SIM v0.23.1 (build f1sim-0.23.1): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v0.24.0 (build f1sim-0.24.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -1143,7 +1143,7 @@ async function init() {
 }
 
 /* ---------------------------------------------------------------- Your characters */
-const CHAR_BLANK = { name: '', code: '', number: '', nationality: '', role: 'driver', bio: '', discord: '', discordId: '', nickname: '', birthplace: '', junior: '', helmet: '' };
+const CHAR_BLANK = { name: '', code: '', number: '', nationality: '', role: 'driver', bio: '', discord: '', discordId: '', faceclaim: '', portraitUrl: null, nickname: '', birthplace: '', junior: '', helmet: '' };
 ACTIONS['char-new'] = () => { S.ui.form.ch = Object.assign({}, CHAR_BLANK); openDrawer('char'); };
 ACTIONS['char-edit'] = d => { const c = get('characters', d.id); if (!c) return; S.ui.form.ch = Object.assign({}, CHAR_BLANK, clone(S.store.characters[d.id]), { id: d.id }); openDrawer('char'); };
 ACTIONS['char-play'] = d => { S.charId = d.id; lsSet('f1sim.char', d.id); toast('Now playing as ' + ((get('characters', d.id) || {}).name || 'this character') + '.'); render(); };
@@ -1151,7 +1151,11 @@ DRAWERS.char = function () {
   const f = S.ui.form.ch || {}, txt = (k, label, extra) => `<label class="field">${label}<input id="ch-${k}" type="text" data-bind="ui/form/ch/${k}" value="${esc(f[k] || '')}" ${extra || ''}></label>`;
   return `<header><div><h2>${f.id ? 'Edit character' : 'New character'}</h2><p>Characters are fiction. Race Control puts characters into seats on the grid; you can also apply for one.</p></div>
       <button class="btn ghost" data-act="close-drawer">Close</button></header>
-    <div class="body"><div class="form-grid">
+    <div class="body"><div class="ch-photo-row"><div class="ch-photo">${f.portraitUrl ? `<img src="${esc(f.portraitUrl)}" alt="The character’s picture">` : '<span class="muted small">No picture yet</span>'}</div>
+      <div><h3>Picture and face claim</h3><div class="btn-row"><label class="btn small file-btn">${f.portraitUrl ? 'Change the picture' : 'Upload a picture'}<input type="file" accept="image/*" class="sr-only" data-change="ch-portrait"></label>${f.portraitUrl ? '<button class="btn small ghost" data-act="ch-portrait-remove">Remove</button>' : ''}${S.ui.chUploading ? '<span class="muted small">Uploading…</span>' : ''}</div>
+      <p class="muted small">JPEG, PNG or WebP; a head-and-shoulders shot works best. It’s saved with the character.</p>
+      ${txt('faceclaim', 'Face claim', 'placeholder="Who the picture shows, e.g. the actor or model" autocomplete="off"')}</div></div>
+    <div class="form-grid">
       ${txt('name', 'Name', 'autocomplete="off" required')}
       <label class="field">What they do<select id="ch-role" data-bind="ui/form/ch/role" ${f.id && charStatus(get('characters', f.id) || {}) === 'approved' ? 'disabled' : ''}>${CHAR_ROLES.map(([k, l]) => `<option value="${k}" ${f.role === k ? 'selected' : ''}>${l}</option>`).join('')}</select>${f.id && charStatus(get('characters', f.id) || {}) === 'approved' ? '<span class="muted small">Fixed once approved; ask Race Control to change it.</span>' : ''}</label>
       ${txt('nationality', 'Nationality', 'placeholder="e.g. Scottish"')}
@@ -2499,7 +2503,7 @@ function chargenQueueHtml() {
   const pend = list('characters').filter(c => !c.retired && charStatus(c) === 'pending').sort((a, b) => String(a.submittedAt).localeCompare(String(b.submittedAt)));
   return `<section><h2 class="section-h">Character applications ${pend.length ? `<span class="count">${pend.length}</span>` : ''}</h2>
     ${pend.length ? `<div class="cards">${pend.map(c => { const b = bracketOf((c.gen || {}).bracket), r = c.role === 'driver' ? rolledRatings(c) : null;
-      return `<article class="card"><h3>${esc(c.name)}</h3><p class="muted small">${esc(charRoleName(c.role))}${c.nationality ? ', ' + esc(c.nationality) : ''}${c.code ? ', ' + esc(c.code) : ''}${c.number ? ' #' + esc(c.number) : ''}. Sent ${esc(fmtWhen(c.submittedAt))}.</p>
+      return `<article class="card">${c.portraitUrl ? `<img class="app-photo" src="${esc(c.portraitUrl)}" alt="${esc(c.name)}">` : ''}<h3>${esc(c.name)}</h3><p class="small">${c.faceclaim ? `Face claim: <b>${esc(c.faceclaim)}</b>` : '<span class="tag flag">No face claim given</span>'}${c.portraitUrl ? '' : ' <span class="tag flag">No picture</span>'}</p><p class="muted small">${esc(charRoleName(c.role))}${c.nationality ? ', ' + esc(c.nationality) : ''}${c.code ? ', ' + esc(c.code) : ''}${c.number ? ' #' + esc(c.number) : ''}. Sent ${esc(fmtWhen(c.submittedAt))}.</p>
         ${paras(c.bio)}
         ${careerRows(c).length ? `<h4>Career record</h4>${careerTableHtml(careerRows(c), { review: c.id })}<p class="muted small">Mark any season you won’t accept as not canon; approving makes the rest canon.</p>` : ''}
         ${r ? `<p><b>${esc(b.name)}</b>. ${esc(b.blurb)}</p>${ratingsTableHtml(r)}<details><summary>Every roll</summary>${rollHistoryHtml(c)}<p class="muted small">Rolls are worked out from the character, so these are exactly what the player saw.</p></details>` : ''}
@@ -2535,14 +2539,14 @@ route('character', 'Character', function () {
   if (!c || (c.userId !== S.uid && !S.isGm)) return '<div class="empty">Choose a character from Your characters.</div>';
   const st = charStatus(c), ed = editable(c), g = c.gen || {}, b = bracketOf(g.bracket), driver = c.role === 'driver', r = driver ? rolledRatings(c) : null;
   const roll = driver && g.rolls ? rollValues(c.id, g.rolls, g.bracket) : null, order = validOrder(g.order) ? g.order : ROLL_ATTRS.map((x, i) => i);
-  const steps = [['Who they are', !!String(c.bio || '').trim()], ...(driver ? [['Background', !!b], ['Years', !!g.years], ['Roll and arrange', !!g.rolls]] : []), ['Race Control', st === 'approved']];
+  const steps = [['Who they are', !!String(c.bio || '').trim()], ['Picture and face claim', !!(c.portraitUrl && String(c.faceclaim || '').trim())], ...(driver ? [['Background', !!b], ['Years', !!g.years], ['Roll and arrange', !!g.rolls]] : []), ['Race Control', st === 'approved']];
   let h = `<div class="page-head"><div><p class="eyebrow">${esc(charRoleName(c.role))}</p><h1>${esc(c.name)}</h1><p><span class="tag ${st === 'approved' ? 'player' : st === 'pending' ? 'open' : st === 'returned' ? 'flag' : ''}">${esc(STATUS_TEXT[st])}</span></p></div>
       <div class="btn-row"><button class="btn" data-act="char-edit" data-id="${esc(c.id)}">Edit details</button><button class="btn" data-act="sheet-open" data-id="${esc(c.id)}">Export</button><button class="btn ghost" data-act="nav" data-route="characters">All characters</button></div></div>
     <ol class="stages" aria-label="Application">${steps.map(([l, done], i) => `<li class="${done ? 'done' : (steps.findIndex(s => !s[1]) === i ? 'now' : '')}">${esc(l)}</li>`).join('')}</ol>`;
   if (st === 'returned' && c.rcNote) h += `<div class="card notice warn"><b>Race Control’s note:</b> ${esc(c.rcNote)}</div>`;
   h += offersHtml(c.id);
   h += `<section class="card"><h2>Who they are</h2>${c.bio ? paras(c.bio) : '<p class="muted">No background written yet. Use Edit details.</p>'}
-    <p class="muted small">${[c.nationality, c.code, c.number ? '#' + c.number : '', c.discord ? 'Discord: ' + c.discord : ''].filter(Boolean).map(esc).join('. ')}</p></section>`;
+    <p class="muted small">${[c.nationality, c.code, c.number ? '#' + c.number : '', c.faceclaim ? 'Face claim: ' + c.faceclaim : '', c.discord ? 'Discord: ' + c.discord : ''].filter(Boolean).map(esc).join('. ')}</p>${c.portraitUrl ? `<img class="app-photo" src="${esc(c.portraitUrl)}" alt="${esc(c.name)}">` : ''}</section>`;
   h += careerAppHtml(c);
   if (driver) {
     h += `<section class="card"><h2>Background</h2>${g.rolls ? `<p><b>${esc(b.name)}</b>. ${esc(b.blurb)}</p>` : `<p class="muted">Where your driver comes from sets their starting range and experience. It’s fixed once you roll.</p>
@@ -4623,8 +4627,8 @@ route('career', 'Character', function () {
       ${k ? `<div><dt>Contract</dt><dd>£${k.salary}m a season, until ${esc(contractLeft(k))}</dd></div>` : ''}
       ${eng ? `<div><dt>Race engineer</dt><dd>${careerLink(f1PcId(eng.holderCharId), eng.holderName)}${f1Rapport(seat.teamId, seat.car) ? `, ${plural(f1Rapport(seat.teamId, seat.car), 'weekend')} together` : ''}</dd></div>` : ''}
       ${seatsOfChar(cid || '').length > 1 ? `<div><dt>Also races in</dt><dd>${seatsOfChar(cid).filter(s => s.id !== seat.id).map(s => `${esc(seriesOfTeam(s.teamId).name)}, ${esc(F1.team(s.teamId).name)}`).join('<br>')}</dd></div>` : ''}
-      ${c && c.discord ? `<div><dt>Discord</dt><dd>${esc(c.discord)}</dd></div>` : ''}
-      ${!(c && (c.helmet || c.junior || c.discord)) && !k && !eng ? '<p class="muted small">Nothing more yet.</p>' : ''}</dl></section>
+      ${c && c.faceclaim ? `<div><dt>Face claim</dt><dd>${esc(c.faceclaim)}</dd></div>` : ''}${c && c.discord ? `<div><dt>Discord</dt><dd>${esc(c.discord)}</dd></div>` : ''}
+      ${!(c && (c.helmet || c.junior || c.discord || c.faceclaim)) && !k && !eng ? '<p class="muted small">Nothing more yet.</p>' : ''}</dl></section>
     <section class="card"><h2>Relationships</h2>${rels.length ? `<ul class="rels">${rels.map(r => { const mineRel = r.personId === p.id;
         return `<li><b>${esc(relKind(r.kind))}:</b> ${mineRel ? careerLink(r.otherId, relName(r.otherId)) : `${careerLink(r.personId, relName(r.personId))} counts them as a ${esc(relKind(r.kind).toLowerCase())}`}${r.note ? `<p class="muted small">${esc(r.note)}</p>` : ''}${mineRel && mine ? ` <button class="btn small ghost" data-act="rel-delete" data-id="${esc(r.id)}">Remove</button>` : ''}</li>`; }).join('')}</ul>` : '<p class="muted small">None declared.</p>'}
       ${rivals.length ? `<h4>On track</h4><ul class="rels">${rivals.map(r => `<li>${careerLink(r.personId, r.name)} <span class="muted small">${r.won} passes for, ${r.lost} against</span></li>`).join('')}</ul>` : ''}</section></aside>`;
@@ -5766,7 +5770,7 @@ async function sheetDocx(cid) {
     .concat([docxCell(nameRuns, pic ? FULL - 3200 : FULL, { fill: DARK, valign: 'center' })]))], { lines: false }));
   body.push(docxPara('', { rule: RED, after: 160 }));
   /* Particulars. */
-  const facts = [['Role', d.role], ['Team', d.team ? d.team.name : 'No seat yet'], ['Nationality', c.nationality], ['From', c.birthplace], ['Nickname', c.nickname],
+  const facts = [['Role', d.role], ['Team', d.team ? d.team.name : 'No seat yet'], ['Nationality', c.nationality], ['From', c.birthplace], ['Nickname', c.nickname], ['Face claim', c.faceclaim],
     d.driver ? ['Three-letter code', c.code] : null, d.driver ? ['Car number', c.number ? '#' + c.number : ''] : null, d.driver ? ['Background', d.background] : null,
     d.driver ? ['Years in racing', d.years] : null, d.driver ? ['Driving style', d.style] : null, d.driver ? ['Helmet', c.helmet] : null, ['Discord', c.discord]].filter(x => x && x[1]);
   body.push(H2('Particulars'));
@@ -5861,6 +5865,27 @@ ACTIONS['gen-approve'] = d => {
     postAcceptance(d.id).then(ch => toast(`Acceptance card posted to Discord #${ch}${c && c.discordId ? `, mentioning ${c.discord || 'the player'}` : ' (no Discord user ID on the character, so no @mention)'}.`))
       .catch(e => toast(`The character is approved, but the Discord post didn’t go: ${e.message || e}`, true));
   });
+};
+
+/* ---------------------------------------------------------------- picture and face claim on the character form */
+CHANGES['ch-portrait'] = (v, d, el) => {
+  const file = el.files && el.files[0]; if (!file || !S.ui.form.ch) return;
+  if (!/^image\//.test(file.type)) { toast('Choose a picture: a JPEG, PNG or WebP.', true); return; }
+  S.ui.chUploading = true; renderOverlay();
+  (async () => { try { const blob = await shrinkImage(file, 900), assets = await window.claude.use('assets'), up = await assets.upload(blob, { type: 'image/jpeg' });
+      if (S.ui.form.ch) S.ui.form.ch.portraitUrl = up.url; toast('Picture uploaded. Save the character to keep it.'); }
+    catch (e) { toast('The picture didn’t upload: ' + (e.message || e), true); }
+    S.ui.chUploading = false; renderOverlay(); })();
+  el.value = '';
+};
+ACTIONS['ch-portrait-remove'] = () => { if (S.ui.form.ch) { S.ui.form.ch.portraitUrl = null; renderOverlay(); } };
+/* Sending without a picture or face claim asks first. */
+const _genSubmitPhoto = ACTIONS['gen-submit'];
+ACTIONS['gen-submit'] = d => {
+  const c = get('characters', S.ui.charEdit); if (!c) return;
+  const missing = [!c.portraitUrl ? 'picture' : '', !String(c.faceclaim || '').trim() ? 'face claim' : ''].filter(Boolean);
+  if (missing.length) askConfirm(`There’s no ${missing.join(' or ')} yet (add ${missing.length > 1 ? 'them' : 'it'} with Edit details). Send the application anyway?`, 'Send anyway', () => _genSubmitPhoto(d));
+  else _genSubmitPhoto(d);
 };
 
 /* =====================================================================
