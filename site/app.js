@@ -1,4 +1,4 @@
-/* F1 SIM v0.22.0 (build f1sim-0.22.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v0.23.1 (build f1sim-0.23.1): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -1143,7 +1143,7 @@ async function init() {
 }
 
 /* ---------------------------------------------------------------- Your characters */
-const CHAR_BLANK = { name: '', code: '', number: '', nationality: '', role: 'driver', bio: '', discord: '', nickname: '', birthplace: '', junior: '', helmet: '' };
+const CHAR_BLANK = { name: '', code: '', number: '', nationality: '', role: 'driver', bio: '', discord: '', discordId: '', nickname: '', birthplace: '', junior: '', helmet: '' };
 ACTIONS['char-new'] = () => { S.ui.form.ch = Object.assign({}, CHAR_BLANK); openDrawer('char'); };
 ACTIONS['char-edit'] = d => { const c = get('characters', d.id); if (!c) return; S.ui.form.ch = Object.assign({}, CHAR_BLANK, clone(S.store.characters[d.id]), { id: d.id }); openDrawer('char'); };
 ACTIONS['char-play'] = d => { S.charId = d.id; lsSet('f1sim.char', d.id); toast('Now playing as ' + ((get('characters', d.id) || {}).name || 'this character') + '.'); render(); };
@@ -1153,10 +1153,11 @@ DRAWERS.char = function () {
       <button class="btn ghost" data-act="close-drawer">Close</button></header>
     <div class="body"><div class="form-grid">
       ${txt('name', 'Name', 'autocomplete="off" required')}
-      <label class="field">What they do<select id="ch-role" data-bind="ui/form/ch/role">${CHAR_ROLES.map(([k, l]) => `<option value="${k}" ${f.role === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label class="field">What they do<select id="ch-role" data-bind="ui/form/ch/role" ${f.id && charStatus(get('characters', f.id) || {}) === 'approved' ? 'disabled' : ''}>${CHAR_ROLES.map(([k, l]) => `<option value="${k}" ${f.role === k ? 'selected' : ''}>${l}</option>`).join('')}</select>${f.id && charStatus(get('characters', f.id) || {}) === 'approved' ? '<span class="muted small">Fixed once approved; ask Race Control to change it.</span>' : ''}</label>
       ${txt('nationality', 'Nationality', 'placeholder="e.g. Scottish"')}
       ${f.role === 'driver' ? txt('code', 'Three-letter code (drivers)', 'maxlength="3" placeholder="e.g. HAR"') + `<label class="field">Car number (drivers)<input id="ch-number" type="number" min="1" max="99" data-bind="ui/form/ch/number" data-type="number" value="${esc(f.number || '')}"></label>` : ''}
       ${txt('discord', 'Discord username (optional)', 'autocomplete="off"')}
+      <label class="field">Discord user ID (optional, for @mentions)<input id="ch-discordId" type="text" inputmode="numeric" autocomplete="off" data-bind="ui/form/ch/discordId" value="${esc(f.discordId || '')}" placeholder="e.g. 123456789012345678"><span class="muted small">In Discord: Settings, Advanced, turn on Developer Mode. Then right-click your name and choose Copy User ID.</span></label>
       ${txt('nickname', 'Nickname (optional)')}${txt('birthplace', 'Where they’re from (optional)')}
     </div>
     <label class="field">About them<textarea id="ch-bio" rows="6" data-bind="ui/form/ch/bio" placeholder="Background, personality, how they got into the paddock">${esc(f.bio || '')}</textarea></label>
@@ -1169,10 +1170,19 @@ ACTIONS['char-save'] = () => {
   f.name = String(f.name || '').trim();
   if (!f.name) { toast('Give your character a name.', true); return; }
   f.code = String(f.code || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
+  f.discordId = String(f.discordId || '').replace(/\s/g, '');
+  if (f.discordId && !/^\d{15,21}$/.test(f.discordId)) { toast('A Discord user ID is a long number, 15 to 21 digits. Use Copy User ID in Discord.', true); return; }
   const prev = get('characters', id);
+  if (prev && charStatus(prev) === 'approved') f.role = prev.role;
   const doc = Object.assign({}, prev ? clone(S.store.characters[id]) : { createdAt: nowIso() }, f, { userId: prev ? prev.userId : S.uid, updatedAt: nowIso() });
   run(async () => {
     await Data.put('characters', id, doc);
+    /* An approved character's name, code and number also change on the grid. */
+    const pid = f1PcId(id), person = prev && F1.person(pid);
+    if (person && (person.name !== doc.name || person.abbr !== (doc.code || person.abbr) || (person.num || null) !== (doc.number || null))) {
+      await Data.put('f1_people', pid, Object.assign(clone(S.store.f1_people[pid]), { name: doc.name, abbr: doc.code || person.abbr, num: doc.number || null }));
+      for (const s of list('f1_seats').filter(x => x.holderCharId === id)) await Data.put('f1_seats', s.id, Object.assign(clone(S.store.f1_seats[s.id]), { holderName: doc.name }));
+    }
     if (!prev) { if (!S.isGm || !S.charId) { S.charId = id; lsSet('f1sim.char', id); } await Data.audit('character.new', `${doc.name} started an application as ${charRoleName(doc.role).toLowerCase()}`); }
     closeDrawer();
     if (!prev) { S.ui.charEdit = id; go('character'); }
@@ -2386,6 +2396,7 @@ const BRACKETS = [
   { id: 'f2', name: 'Formula 2 graduate', blurb: 'Quick and well drilled, straight up the ladder.', base: 70, dice: [2, 10], exp: 30, mods: {} },
   { id: 'prodigy', name: 'Karting prodigy', blurb: 'Skipped a step. Could be brilliant, could be raw.', base: 63, dice: [3, 10], exp: 15, mods: {} },
   { id: 'convert', name: 'IndyCar or endurance convert', blurb: 'Hardened wheel-to-wheel racer, new to these cars.', base: 68, dice: [2, 10], exp: 55, mods: { overtaking: 3, defense: 3, pace: -2 } },
+  { id: 'current', name: 'Current driver', blurb: 'Already on the grid. Proven over full seasons: knows the circuits, the car and the pressure.', base: 72, dice: [2, 8], exp: 60, mods: { consistency: 2, defense: 2 } },
   { id: 'reserve', name: 'Team reserve driver', blurb: 'Knows the car from the simulator. Steady rather than spectacular.', base: 71, dice: [2, 8], exp: 40, mods: { consistency: 3 } },
   { id: 'veteran', name: 'Returning veteran', blurb: 'Been here before. Not the fastest any more, but rarely wrong.', base: 66, dice: [2, 10], exp: 75, mods: { consistency: 4, wet: 2, pace: -3 } }
 ];
@@ -2394,8 +2405,8 @@ const YEARS = [
   { id: '1-2', label: '1 to 2 years', min: 1, max: 2, growth: 1.5, note: 'Raw. Little experience, but they develop half as fast again.' },
   { id: '3-6', label: '3 to 6 years', min: 3, max: 6, growth: 1, note: 'Established. A solid base of experience.' },
   { id: '7+', label: '7 years or more', min: 7, max: 12, growth: 0.75, note: 'Seasoned. Lots of experience and composure, but slower to develop.' }];
-const BRACKET_YEARS = { f2: ['1-2', '3-6'], prodigy: ['1-2', '3-6'], convert: ['3-6', '7+'], reserve: ['1-2', '3-6', '7+'], veteran: ['7+'] };
-const BRACKET_EXP = { f2: 0, prodigy: -5, convert: 8, reserve: 3, veteran: 6 };
+const BRACKET_YEARS = { f2: ['1-2', '3-6'], prodigy: ['1-2', '3-6'], convert: ['3-6', '7+'], current: ['3-6', '7+'], reserve: ['1-2', '3-6', '7+'], veteran: ['7+'] };
+const BRACKET_EXP = { f2: 0, prodigy: -5, convert: 8, current: 5, reserve: 3, veteran: 6 };
 const yearsOf = id => YEARS.find(y => y.id === id) || null;
 const bracketOf = id => BRACKETS.find(b => b.id === id) || null;
 const charStatus = c => c.status || (F1.person(f1PcId(c.id)) ? 'approved' : 'draft');
@@ -2493,6 +2504,7 @@ function chargenQueueHtml() {
         ${careerRows(c).length ? `<h4>Career record</h4>${careerTableHtml(careerRows(c), { review: c.id })}<p class="muted small">Mark any season you won’t accept as not canon; approving makes the rest canon.</p>` : ''}
         ${r ? `<p><b>${esc(b.name)}</b>. ${esc(b.blurb)}</p>${ratingsTableHtml(r)}<details><summary>Every roll</summary>${rollHistoryHtml(c)}<p class="muted small">Rolls are worked out from the character, so these are exactly what the player saw.</p></details>` : ''}
         <label class="field">Note to the player (needed to return it)<textarea id="rcn-${esc(c.id)}" rows="2" data-bind="ui/form/rcnote/${esc(c.id)}"></textarea></label>
+        <label class="small"><input type="checkbox" data-bind="ui/form/postAccept/${esc(c.id)}" ${((S.ui.form.postAccept || {})[c.id]) !== false ? 'checked' : ''}> Post the acceptance card to Discord${c.discordId ? `, mentioning ${esc(c.discord || 'the player')}` : ' (no Discord user ID, so no @mention)'}</label>
         <div class="btn-row"><button class="btn primary" data-act="gen-approve" data-id="${esc(c.id)}">Approve</button><button class="btn" data-act="gen-return" data-id="${esc(c.id)}">Return with the note</button></div></article>`; }).join('')}</div>`
       : '<p class="muted">No characters waiting.</p>'}</section>`;
 }
@@ -2525,7 +2537,7 @@ route('character', 'Character', function () {
   const roll = driver && g.rolls ? rollValues(c.id, g.rolls, g.bracket) : null, order = validOrder(g.order) ? g.order : ROLL_ATTRS.map((x, i) => i);
   const steps = [['Who they are', !!String(c.bio || '').trim()], ...(driver ? [['Background', !!b], ['Years', !!g.years], ['Roll and arrange', !!g.rolls]] : []), ['Race Control', st === 'approved']];
   let h = `<div class="page-head"><div><p class="eyebrow">${esc(charRoleName(c.role))}</p><h1>${esc(c.name)}</h1><p><span class="tag ${st === 'approved' ? 'player' : st === 'pending' ? 'open' : st === 'returned' ? 'flag' : ''}">${esc(STATUS_TEXT[st])}</span></p></div>
-      <div class="btn-row">${ed || st === 'approved' ? `<button class="btn" data-act="char-edit" data-id="${esc(c.id)}">Edit details</button>` : ''}<button class="btn ghost" data-act="nav" data-route="characters">All characters</button></div></div>
+      <div class="btn-row"><button class="btn" data-act="char-edit" data-id="${esc(c.id)}">Edit details</button><button class="btn" data-act="sheet-open" data-id="${esc(c.id)}">Export</button><button class="btn ghost" data-act="nav" data-route="characters">All characters</button></div></div>
     <ol class="stages" aria-label="Application">${steps.map(([l, done], i) => `<li class="${done ? 'done' : (steps.findIndex(s => !s[1]) === i ? 'now' : '')}">${esc(l)}</li>`).join('')}</ol>`;
   if (st === 'returned' && c.rcNote) h += `<div class="card notice warn"><b>Race Control’s note:</b> ${esc(c.rcNote)}</div>`;
   h += offersHtml(c.id);
@@ -4629,7 +4641,8 @@ route('career', 'Character', function () {
     ${rec.length ? `<section class="card"><h2>Race by race</h2><table class="data compact"><thead><tr><th>Race</th><th class="num">Grid</th><th class="num">Finish</th><th class="num">Pts</th></tr></thead><tbody>${rec.slice().reverse().slice(0, 12).map(x => { const t = get('f1_tracks', x.w.trackId) || {};
         return `<tr><td>${esc(t.name || '')}${x.w.session === 'sprint' ? ' sprint' : ''}${wSeries(x.w) !== 'f1' ? ` <span class="muted small">${esc(seriesDoc(wSeries(x.w)).short)}</span>` : ''}</td><td class="num">${x.r.grid}</td><td class="num">${x.r.position ? 'P' + x.r.position : 'Out'}</td><td class="num">${x.r.points || ''}</td></tr>`; }).join('')}</tbody></table></section>` : ''}
     ${isDriver ? `<button class="btn" data-act="card-open" data-id="${esc(p.id)}" data-kind="card">Make a driver card</button>` : ''}</aside>`;
-  return h + `<div class="char-cols" style="--team:${esc(color)}">${left}${mid}${right}</div>` + careerRecordHtml(p, c);
+  const exportBtn = c && (c.userId === S.uid || S.isGm) ? `<div class="btn-row" style="justify-content:flex-end"><button class="btn" data-act="sheet-open" data-id="${esc(c.id)}">Export the character sheet</button></div>` : '';
+  return h + exportBtn + `<div class="char-cols" style="--team:${esc(color)}">${left}${mid}${right}</div>` + careerRecordHtml(p, c);
 });
 
 /* =====================================================================
@@ -4923,7 +4936,8 @@ const DISCORD_PURPOSES = [
   ['announcements', 'Race Control announcements', 'DISCORD_WEBHOOK_ANNOUNCEMENTS'],
   ['cards', 'Driver cards (signings, poles, wins, Driver of the Day)', 'DISCORD_WEBHOOK_CARDS'],
   ['calendar', 'The season calendar', 'DISCORD_WEBHOOK_CALENDAR'],
-  ['standings', 'Championship standings', 'DISCORD_WEBHOOK_STANDINGS']
+  ['standings', 'Championship standings', 'DISCORD_WEBHOOK_STANDINGS'],
+  ['approvals', 'Character approvals (acceptance cards with an @mention)', 'DISCORD_WEBHOOK_APPROVALS']
 ];
 async function discordChannels(force) {
   if (S.discordCh && !force) return S.discordCh;
@@ -5605,6 +5619,249 @@ ACTIONS['char-open'] = d => { S.ui.charEdit = d.id; go('character'); };
 /* Race Control's queue also lists approved characters with seasons to check. */
 const _chargenQueueCareer = chargenQueueHtml;
 chargenQueueHtml = function () { return _chargenQueueCareer() + careerQueueHtml(); };
+
+/* =====================================================================
+   F1 SIM — character sheet exports and the acceptance post.
+   Any character's sheet can be exported as a photo card (in the style of
+   the driver cards) or as a Word file laid out to open in Google Docs.
+   When Race Control approves a character, the acceptance card is posted
+   to Discord, @mentioning the player when the character has their Discord
+   user ID (DISCORD_WEBHOOK_APPROVALS, else the default channel).
+   ===================================================================== */
+'use strict';
+
+const SHEET_KINDS = [['sheet', 'Character sheet'], ['accepted', 'Acceptance card']];
+/* Everything the exports need about a character, canon only. */
+function sheetData(cid) {
+  const c = get('characters', cid); if (!c) return null;
+  const pid = f1PcId(c.id), p = F1.person(pid), seat = typeof primarySeat === 'function' ? primarySeat(c.id) : F1.seats().find(s => s.holderCharId === c.id);
+  const team = seat ? F1.team(seat.teamId) : null, driver = c.role === 'driver', g = c.gen || {};
+  let ratings = null;
+  if (driver) ratings = p && p.approved ? f1DevApply(Object.assign({}, F1_ROOKIE, p), c.id) : rolledRatings(c);
+  const canon = careerRows(c).filter(r => r.status === 'canon'), sim = p ? simSeasons(pid) : [];
+  const titles = canon.filter(r => String(r.pos) === '1').length + sim.filter(o => o.done && o.pos === 1).length;
+  const sum = k => canon.reduce((s, r) => s + (Number(r[k]) || 0), 0) + sim.reduce((s, o) => s + (o[k] || 0), 0);
+  const rels = list('f1_relations').filter(r => r.personId === pid || r.otherId === pid).map(r => { const other = r.personId === pid ? r.otherId : r.personId;
+    return { who: (F1.person(other) || {}).name || other, kind: (typeof REL_KINDS !== 'undefined' ? (REL_KINDS.find(x => x[0] === r.kind) || [r.kind, r.kind])[1] : r.kind), note: r.note || '' }; });
+  const diary = list('f1_diary').filter(d => d.charId === c.id).sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 3);
+  const y = typeof yearsOf === 'function' ? yearsOf(g.years) : null, b = typeof bracketOf === 'function' ? bracketOf(g.bracket) : null;
+  const style = ratings && ratings.style ? (F1_STYLES.find(s => s[0] === ratings.style) || ['', ratings.style])[1] : '';
+  return { c, p, pid, seat, team, color: team ? team.color : '#E10600', driver, role: charRoleName(c.role), status: charStatus(c), ratings, canon, sim, titles,
+    totals: { starts: sum('starts'), wins: sum('wins'), podiums: sum('podiums'), poles: sum('poles') }, rels, diary, style,
+    background: b ? b.name : '', years: ratings && ratings.years != null ? `${ratings.years}` : (y ? y.label : ''),
+    series: seat ? seriesDoc(seat.seriesId || F1.team(seat.teamId).seriesId || 'f1').name : '' };
+}
+function wrapLines(g, text, maxW, maxLines) {
+  const words = String(text || '').replace(/\s+/g, ' ').trim().split(' '), out = []; let line = '';
+  for (const w of words) { const t = line ? line + ' ' + w : w; if (g.measureText(t).width > maxW && line) { out.push(line); line = w; if (out.length === maxLines) break; } else line = t; }
+  if (out.length < maxLines && line) out.push(line);
+  if (out.length === maxLines && words.join(' ').length > out.join(' ').length) out[maxLines - 1] = out[maxLines - 1].replace(/\s*\S*$/, '') + '…';
+  return out;
+}
+async function drawCharCard(cid, kind) {
+  const d = sheetData(cid); if (!d) return null;
+  const { c, color: col } = d, W = 1080, H = 1350, cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d');
+  try { await Promise.all(['700 200px "Titillium Web"', '600 40px "Titillium Web"'].map(f => document.fonts.load(f))); } catch (e) { /* fall back */ }
+  const T = EXP_THEMES.dark, img = await loadImg(c.portraitUrl), logo = await loadImg(leagueLogo());
+  g.fillStyle = '#1C1D22'; g.fillRect(0, 0, W, H);
+  const grad = g.createLinearGradient(0, 0, W * 0.9, H * 0.7); grad.addColorStop(0, col); grad.addColorStop(0.55, '#1C1D22'); g.globalAlpha = 0.85; g.fillStyle = grad; g.fillRect(0, 0, W, H); g.globalAlpha = 1;
+  if (c.number) { g.font = cond(700, 620); g.fillStyle = 'rgba(255,255,255,0.06)'; g.textAlign = 'right'; g.fillText(String(c.number), W - 10, 700); g.textAlign = 'left'; }
+  drawMark(g, 64, 64, Object.assign({}, T, { ink: '#FFFFFF' }), logo);
+  const label = kind === 'accepted' ? 'Welcome to the grid' : 'Character sheet';
+  g.font = cond(700, 50); const lw = g.measureText(label).width + 44; g.fillStyle = kind === 'accepted' ? '#E10600' : col; g.beginPath(); g.moveTo(74, 140); g.lineTo(64 + lw + 10, 140); g.lineTo(64 + lw, 210); g.lineTo(64, 210); g.closePath(); g.fill();
+  g.fillStyle = '#FFFFFF'; g.fillText(label, 86, 193);
+  const parts = String(c.name).split(' '), last = parts.pop(), first = parts.join(' ');
+  if (kind === 'accepted') {
+    /* Big portrait, the name, the role and seat, and an approved stamp. */
+    const px = 240, py = 250, pw = 600, ph = 640;
+    drawPhoto(g, img, px, py, pw, ph, 10, { name: c.name }, T);
+    const fade = g.createLinearGradient(0, py + ph - 220, 0, py + ph); fade.addColorStop(0, 'rgba(28,29,34,0)'); fade.addColorStop(1, 'rgba(28,29,34,0.95)'); g.fillStyle = fade; g.fillRect(px, py + ph - 220, pw, 220);
+    g.save(); g.translate(W - 260, 300); g.rotate(-0.18); g.font = cond(700, 64); const sw = g.measureText('APPROVED').width + 56; g.strokeStyle = '#E10600'; g.lineWidth = 8; g.strokeRect(-sw / 2, -52, sw, 104); g.fillStyle = '#E10600'; g.textAlign = 'center'; g.fillText('APPROVED', 0, 22); g.restore(); g.textAlign = 'left';
+    g.fillStyle = '#FFFFFF'; g.font = cond(600, 56); g.textAlign = 'center'; g.fillText(first, W / 2, 980);
+    let size = 150; g.font = cond(700, size); while (g.measureText(last.toUpperCase()).width > W - 120 && size > 70) { size -= 6; g.font = cond(700, size); } g.fillText(last.toUpperCase(), W / 2, 980 + size * 0.9);
+    g.font = cond(600, 40); g.fillStyle = 'rgba(255,255,255,0.88)';
+    const line = d.team ? `${d.role} for ${d.team.name}${d.driver && c.number ? `, car #${c.number}` : ''}` : `${d.role}${d.driver && c.number ? `, car #${c.number}` : ''}`;
+    g.fillText(line, W / 2, 1210); g.font = bodyF(500, 28); g.fillStyle = 'rgba(255,255,255,0.7)'; g.fillText(d.team ? (d.series || '') : 'Seat to be confirmed', W / 2, 1258); g.textAlign = 'left';
+  } else {
+    /* Portrait on the right; name, particulars, ratings, record and story on the left. */
+    drawPhoto(g, img, 600, 250, 416, 500, 10, { name: c.name }, T);
+    g.fillStyle = '#FFFFFF'; g.font = cond(600, 44); g.fillText(first, 64, 300);
+    let size = 120; g.font = cond(700, size); while (g.measureText(last.toUpperCase()).width > 510 && size > 56) { size -= 6; g.font = cond(700, size); } g.fillText(last.toUpperCase(), 60, 300 + size * 0.92);
+    let y = 300 + size + 40;
+    g.font = cond(600, 32); g.fillStyle = 'rgba(255,255,255,0.9)'; g.fillText(d.team ? `${d.role}, ${d.team.name}` : d.role, 64, y); y += 52;
+    const facts = [['Nationality', c.nationality], ['From', c.birthplace], d.driver ? ['Car', [c.number ? '#' + c.number : '', c.code].filter(Boolean).join('  ')] : null, d.driver ? ['Years racing', d.years] : null, d.driver ? ['Style', d.style] : null].filter(x => x && x[1]);
+    facts.slice(0, 5).forEach(([k, v]) => { g.font = bodyF(500, 24); g.fillStyle = 'rgba(255,255,255,0.6)'; g.fillText(k, 64, y); g.font = bodyF(600, 28); g.fillStyle = '#FFFFFF'; g.fillText(String(v), 230, y); y += 42; });
+    let by = 800;
+    if (d.ratings) {
+      F1_RATINGS.forEach(([k, l], i) => { const v = d.ratings[k]; if (v == null) return; const col2 = i % 2, row = Math.floor(i / 2), x = 64 + col2 * 486, yy = by + row * 70;
+        g.font = bodyF(600, 24); g.fillStyle = 'rgba(255,255,255,0.75)'; g.fillText(l, x, yy); g.textAlign = 'right'; g.font = cond(700, 34); g.fillStyle = '#FFFFFF'; g.fillText(String(v), x + 440, yy + 4); g.textAlign = 'left';
+        g.fillStyle = 'rgba(255,255,255,0.15)'; g.fillRect(x, yy + 14, 440, 10); g.fillStyle = col; g.fillRect(x, yy + 14, 440 * Math.min(1, v / 100), 10); });
+      by += 230;
+    }
+    const tiles = [['Titles', d.titles], ['Starts', d.totals.starts], ['Wins', d.totals.wins], ['Podiums', d.totals.podiums]];
+    tiles.forEach(([k, v], i) => { const x = 64 + i * 238; g.fillStyle = 'rgba(255,255,255,0.08)'; g.fillRect(x, by, 220, 100); g.fillStyle = '#FFFFFF'; g.font = cond(700, 52); g.fillText(String(v), x + 18, by + 58); g.font = bodyF(500, 22); g.fillStyle = 'rgba(255,255,255,0.7)'; g.fillText(k, x + 18, by + 88); });
+    by += 140;
+    if (c.bio && by < H - 120) { g.font = bodyF(400, 26); g.fillStyle = 'rgba(255,255,255,0.85)'; wrapLines(g, c.bio, W - 128, Math.max(1, Math.floor((H - 90 - by) / 36))).forEach((l, i) => g.fillText(l, 64, by + i * 36)); }
+  }
+  g.fillStyle = col; g.fillRect(0, H - 20, W, 20);
+  return new Promise(ok => cv.toBlob(ok, 'image/png'));
+}
+
+/* ---------------------------------------------------------------- the Word file for Google Docs */
+const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+const crc32 = u8 => { let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = CRC_TABLE[(c ^ u8[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+/* A plain (stored, uncompressed) zip: no folder entries, which some cloud editors refuse. */
+function zipStore(files) {
+  const enc = new TextEncoder(), parts = [], central = []; let offset = 0;
+  const le = (n, b) => { const a = new Uint8Array(b); for (let i = 0; i < b; i++) a[i] = (n >>> (8 * i)) & 0xFF; return a; };
+  files.forEach(f => {
+    const name = enc.encode(f.name), data = typeof f.data === 'string' ? enc.encode(f.data) : f.data, crc = crc32(data);
+    const head = [le(0x04034b50, 4), le(20, 2), le(0x0800, 2), le(0, 2), le(0, 2), le(0x21, 2), le(crc, 4), le(data.length, 4), le(data.length, 4), le(name.length, 2), le(0, 2), name];
+    const cen = [le(0x02014b50, 4), le(20, 2), le(20, 2), le(0x0800, 2), le(0, 2), le(0, 2), le(0x21, 2), le(crc, 4), le(data.length, 4), le(data.length, 4), le(name.length, 2), le(0, 2), le(0, 2), le(0, 2), le(0, 2), le(0, 4), le(offset, 4), name];
+    head.concat([data]).forEach(p => { parts.push(p); offset += p.length; }); cen.forEach(p => central.push(p));
+  });
+  const cenSize = central.reduce((s, p) => s + p.length, 0);
+  const end = [le(0x06054b50, 4), le(0, 2), le(0, 2), le(files.length, 2), le(files.length, 2), le(cenSize, 4), le(offset, 4), le(0, 2)];
+  const all = parts.concat(central, end), out = new Uint8Array(all.reduce((s, p) => s + p.length, 0)); let o = 0; all.forEach(p => { out.set(p, o); o += p.length; });
+  return out;
+}
+const xe = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const hex = c => String(c || '#E10600').replace('#', '').toUpperCase().slice(0, 6);
+function docxRun(text, o) { const p = o || {};
+  return `<w:r><w:rPr><w:rFonts w:ascii="Titillium Web" w:hAnsi="Titillium Web" w:cs="Titillium Web"/>${p.b ? '<w:b/>' : ''}${p.i ? '<w:i/>' : ''}${p.color ? `<w:color w:val="${p.color}"/>` : ''}<w:sz w:val="${p.sz || 21}"/></w:rPr><w:t xml:space="preserve">${xe(text)}</w:t></w:r>`; }
+function docxPara(runs, o) { const p = o || {};
+  return `<w:p><w:pPr>${p.style ? `<w:pStyle w:val="${p.style}"/>` : ''}${p.keep ? '<w:keepNext/>' : ''}${p.rule ? `<w:pBdr><w:bottom w:val="single" w:sz="18" w:space="4" w:color="${p.rule}"/></w:pBdr>` : ''}<w:spacing w:before="${p.before || 0}" w:after="${p.after == null ? 100 : p.after}"/>${p.align ? `<w:jc w:val="${p.align}"/>` : ''}</w:pPr>${runs}</w:p>`; }
+function docxCell(content, w, o) { const p = o || {};
+  return `<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/>${p.span ? `<w:gridSpan w:val="${p.span}"/>` : ''}${p.fill ? `<w:shd w:val="clear" w:color="auto" w:fill="${p.fill}"/>` : ''}<w:tcMar><w:top w:w="80" w:type="dxa"/><w:left w:w="120" w:type="dxa"/><w:bottom w:w="80" w:type="dxa"/><w:right w:w="120" w:type="dxa"/></w:tcMar>${p.valign ? `<w:vAlign w:val="${p.valign}"/>` : ''}</w:tcPr>${content || docxPara('')}</w:tc>`; }
+function docxTable(widths, rows, o) { const p = o || {}, total = widths.reduce((s, x) => s + x, 0), line = p.lines === false ? 'nil' : 'single';
+  return `<w:tbl><w:tblPr><w:tblW w:w="${total}" w:type="dxa"/><w:tblBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="${line}" w:sz="4" w:space="0" w:color="D0D3D8"/><w:right w:val="nil"/><w:insideH w:val="${line}" w:sz="4" w:space="0" w:color="D0D3D8"/><w:insideV w:val="nil"/></w:tblBorders><w:tblLayout w:type="fixed"/></w:tblPr>
+    <w:tblGrid>${widths.map(x => `<w:gridCol w:w="${x}"/>`).join('')}</w:tblGrid>${rows.join('')}</w:tbl>${docxPara('', { after: 120 })}`; }
+const docxRow = cells => `<w:tr><w:trPr><w:cantSplit/></w:trPr>${cells.join('')}</w:tr>`;
+function docxImage(rid, cxIn, cyIn) { const cx = Math.round(cxIn * 914400), cy = Math.round(cyIn * 914400);
+  return `<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="1" name="Portrait"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr>
+    <a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+    <pic:nvPicPr><pic:cNvPr id="1" name="portrait.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>
+    <pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`; }
+async function portraitPng(url) {
+  const img = await loadImg(url); if (!img) return null;
+  const size = Math.min(900, Math.max(img.width, img.height)), k = size / Math.max(img.width, img.height), cv = document.createElement('canvas');
+  cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k); cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+  const blob = await new Promise(ok => cv.toBlob(ok, 'image/png')); return blob ? { bytes: new Uint8Array(await blob.arrayBuffer()), w: cv.width, h: cv.height } : null;
+}
+async function sheetDocx(cid) {
+  const d = sheetData(cid); if (!d) return null;
+  const { c } = d, accent = hex(d.color), DARK = '1C1D22', RED = 'E10600', GREY = '6B7280', LIGHT = 'F2F3F5', FULL = 9360;
+  const pic = await portraitPng(c.portraitUrl);
+  const H2 = t => docxPara(docxRun(t, { b: true, i: true, sz: 30, color: DARK }), { keep: true, before: 280, after: 80, rule: accent });
+  const P = (t, o) => docxPara(docxRun(t, Object.assign({ sz: 21 }, o || {})), { after: 120 });
+  const body = [];
+  /* Header: portrait and name on a dark band. */
+  const nameRuns = docxPara(docxRun('F1 SIM  ·  CHARACTER SHEET', { b: true, sz: 18, color: RED }), { after: 60 })
+    + docxPara(docxRun(c.name, { b: true, i: true, sz: 56, color: 'FFFFFF' }), { after: 40 })
+    + docxPara(docxRun([d.role, d.team ? d.team.name : '', d.series].filter(Boolean).join('  ·  '), { sz: 24, color: 'C9CCD2' }), { after: 40 })
+    + docxPara(docxRun([c.code, c.number ? '#' + c.number : '', c.nationality].filter(Boolean).join('  ·  '), { b: true, sz: 24, color: accent }), { after: 40 })
+    + docxPara(docxRun(d.status === 'approved' ? 'Approved by Race Control' : d.status === 'pending' ? 'Application with Race Control' : 'Draft application', { sz: 18, color: '9AA0A8' }), { after: 0 });
+  const picW = 2.0, picH = pic ? Math.min(2.6, picW * pic.h / pic.w) : 0;
+  body.push(docxTable(pic ? [3200, FULL - 3200] : [FULL], [docxRow((pic ? [docxCell(docxPara(docxImage('rIdImg1', picW, picH), { after: 0, align: 'center' }), 3200, { fill: DARK, valign: 'center' })] : [])
+    .concat([docxCell(nameRuns, pic ? FULL - 3200 : FULL, { fill: DARK, valign: 'center' })]))], { lines: false }));
+  body.push(docxPara('', { rule: RED, after: 160 }));
+  /* Particulars. */
+  const facts = [['Role', d.role], ['Team', d.team ? d.team.name : 'No seat yet'], ['Nationality', c.nationality], ['From', c.birthplace], ['Nickname', c.nickname],
+    d.driver ? ['Three-letter code', c.code] : null, d.driver ? ['Car number', c.number ? '#' + c.number : ''] : null, d.driver ? ['Background', d.background] : null,
+    d.driver ? ['Years in racing', d.years] : null, d.driver ? ['Driving style', d.style] : null, d.driver ? ['Helmet', c.helmet] : null, ['Discord', c.discord]].filter(x => x && x[1]);
+  body.push(H2('Particulars'));
+  body.push(docxTable([2600, FULL - 2600], facts.map(([k, v], i) => docxRow([docxCell(docxPara(docxRun(k, { b: true, sz: 20, color: GREY }), { after: 0 }), 2600, { fill: i % 2 ? 'FFFFFF' : LIGHT }),
+    docxCell(docxPara(docxRun(String(v), { sz: 21 }), { after: 0 }), FULL - 2600, { fill: i % 2 ? 'FFFFFF' : LIGHT })]))));
+  /* Ratings, as numbers and bars. */
+  if (d.ratings) {
+    body.push(H2('Ratings'));
+    body.push(docxTable([2600, 900, FULL - 3500], F1_RATINGS.filter(([k]) => d.ratings[k] != null).map(([k, l], i) => { const v = d.ratings[k];
+      return docxRow([docxCell(docxPara(docxRun(l, { b: true, sz: 20, color: GREY }), { after: 0 }), 2600, { fill: i % 2 ? 'FFFFFF' : LIGHT }),
+        docxCell(docxPara(docxRun(String(v), { b: true, sz: 24 }), { after: 0, align: 'right' }), 900, { fill: i % 2 ? 'FFFFFF' : LIGHT }),
+        docxCell(docxPara(docxRun('█'.repeat(Math.max(1, Math.round(v / 4))), { sz: 18, color: accent }) + docxRun('█'.repeat(Math.max(0, 25 - Math.round(v / 4))), { sz: 18, color: 'E3E5E9' }), { after: 0 }), FULL - 3500, { fill: i % 2 ? 'FFFFFF' : LIGHT })]); })));
+  }
+  /* Story. */
+  if (c.bio) { body.push(H2('Story')); String(c.bio).split(/\n+/).filter(Boolean).forEach(t => body.push(P(t))); }
+  if (d.driver && c.junior) { body.push(H2('Before Formula 1')); String(c.junior).split(/\n+/).filter(Boolean).forEach(t => body.push(P(t))); }
+  /* Career record. */
+  if (d.sim.length || d.canon.length) {
+    body.push(H2('Career record'));
+    body.push(P(`${d.titles} ${d.titles === 1 ? 'title' : 'titles'}  ·  ${d.totals.starts} starts  ·  ${d.totals.wins} wins  ·  ${d.totals.podiums} podiums  ·  ${d.totals.poles} poles`, { b: true, color: accent, sz: 22 }));
+    const cw = [880, 2080, 1760, 820, 700, 1020, 760, 1340], head = ['Year', 'Series', 'Team', 'Starts', 'Wins', 'Podiums', 'Poles', 'Finish'];
+    const headRow = docxRow(head.map((h, i) => docxCell(docxPara(docxRun(h, { b: true, sz: 18, color: 'FFFFFF' }), { after: 0, align: i >= 3 && i < 7 ? 'right' : null }), cw[i], { fill: DARK })));
+    const rows = d.sim.map(o => [o.seasonName, `F1 SIM: ${o.seriesName}`, (F1.team(o.team) || {}).name || '', o.starts, o.wins, o.podiums, o.poles, o.done && o.pos === 1 ? 'Champion' : o.pos ? ordinal(o.pos) + (o.done ? '' : ' so far') : ''])
+      .concat(d.canon.map(r => [r.years, seriesLabel(r) + (r.cls ? ` (${r.cls})` : ''), r.team, r.starts, r.wins, r.podiums, r.poles, String(r.pos) === '1' ? 'Champion' : r.pos ? posLabel(r.pos) : '']));
+    body.push(docxTable(cw, [headRow].concat(rows.map((r, j) => docxRow(r.map((v, i) => docxCell(docxPara(docxRun(v === '' || v == null ? '–' : String(v), { sz: 19, b: i === 7 && v === 'Champion', color: i === 7 && v === 'Champion' ? RED : null }), { after: 0, align: i >= 3 && i < 7 ? 'right' : null }), cw[i], { fill: j % 2 ? 'FFFFFF' : LIGHT })))))));
+    const notes = d.canon.filter(r => r.notes); if (notes.length) notes.forEach(r => body.push(P(`${r.years} ${seriesLabel(r)}: ${r.notes}`, { sz: 19, color: GREY })));
+  }
+  if (d.rels.length) { body.push(H2('Relationships')); d.rels.forEach(r => body.push(P(`${r.who}: ${r.kind}${r.note ? `. ${r.note}` : ''}`))); }
+  if (d.diary.length) { body.push(H2('From the diary')); d.diary.forEach(e => { body.push(docxPara(docxRun(`${e.title}`, { b: true, sz: 22 }) + docxRun(`   ${fmtDate(e.at)}`, { sz: 18, color: GREY }), { after: 40, keep: true })); body.push(P(String(e.body || '').slice(0, 800))); }); }
+  body.push(docxPara(docxRun(`Exported from F1 SIM on ${fmtDate(nowIso())}.`, { i: true, sz: 17, color: GREY }), { before: 360, after: 0 }));
+  const doc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+<w:body>${body.join('')}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1000" w:right="1273" w:bottom="1000" w:left="1273" w:header="500" w:footer="500" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+  const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Titillium Web" w:hAnsi="Titillium Web" w:cs="Titillium Web" w:eastAsia="Titillium Web"/><w:sz w:val="21"/><w:lang w:val="en-GB"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="100" w:line="276" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>
+<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>`;
+  const ct = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/>
+<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>`;
+  const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`;
+  const docRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>${pic ? '<Relationship Id="rIdImg1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/portrait.png"/>' : ''}</Relationships>`;
+  const files = [{ name: '[Content_Types].xml', data: ct }, { name: '_rels/.rels', data: rels }, { name: 'word/document.xml', data: doc }, { name: 'word/styles.xml', data: styles }, { name: 'word/_rels/document.xml.rels', data: docRels }];
+  if (pic) files.push({ name: 'word/media/portrait.png', data: pic.bytes });
+  return new Blob([zipStore(files)], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+}
+
+/* ---------------------------------------------------------------- the export panel */
+const fileSafe = s => String(s || 'character').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '');
+ACTIONS['sheet-open'] = d => { S.ui.sheet = { cid: d.id, kind: 'sheet', url: null, blob: null }; openDrawer('sheet'); sheetRefresh(); if (S.isGm) discordChannels().then(() => renderOverlay()).catch(() => {}); };
+async function sheetRefresh() { const x = S.ui.sheet; if (!x) return; const blob = await drawCharCard(x.cid, x.kind); if (S.ui.sheet !== x || !blob) return; if (x.url) URL.revokeObjectURL(x.url); x.blob = blob; x.url = URL.createObjectURL(blob); renderOverlay(); }
+CHANGES['sheet-kind'] = v => { const x = S.ui.sheet; if (!x) return; x.kind = v; x.url = null; renderOverlay(); sheetRefresh(); };
+DRAWERS.sheet = function () {
+  const x = S.ui.sheet || {}, c = get('characters', x.cid); if (!c) return '';
+  return `<header><div><h2>Export ${esc(c.name)}</h2><p>A photo card, or a document for Google Docs.</p></div><button class="btn ghost" data-act="close-drawer">Close</button></header>
+    <div class="body"><h3>Photo card</h3><label class="field" style="max-width:320px">Card<select id="sheet-kind" data-change="sheet-kind">${SHEET_KINDS.map(([k, l]) => `<option value="${k}" ${x.kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+    ${x.url ? `<img class="card-preview tx-preview" src="${x.url}" alt="${esc(c.name)}’s ${x.kind === 'accepted' ? 'acceptance card' : 'character sheet'}">` : '<p class="muted">Drawing the card…</p>'}
+    <div class="btn-row"><button class="btn primary" data-act="sheet-png" ${x.url ? '' : 'disabled'}>Download the card</button>${S.isGm ? `<button class="btn" data-act="sheet-discord" ${x.url ? '' : 'disabled'}>Post to Discord${x.kind === 'accepted' && c.discordId ? ' with an @mention' : ''}</button>` : ''}${x.posted ? `<span class="tag player">Posted to #${esc(x.posted)}</span>` : ''}</div>
+    <h3>Google Doc</h3><p class="small">A styled document of the whole sheet: particulars, ratings, story, career record, relationships and recent diary entries.</p>
+    <div class="btn-row"><button class="btn" data-act="sheet-docx">Download for Google Docs (.docx)</button></div>
+    <p class="muted small">To open it in Google Docs: in Google Drive choose <b>New</b>, then <b>File upload</b>, pick the file, then open it with <b>Google Docs</b>. It opens in Word too.</p></div>`;
+};
+ACTIONS['sheet-png'] = () => { const x = S.ui.sheet; if (!x || !x.url) return; const c = get('characters', x.cid), a = document.createElement('a'); a.href = x.url; a.download = `${fileSafe(c && c.name)}-${x.kind === 'accepted' ? 'acceptance' : 'sheet'}.png`; document.body.appendChild(a); a.click(); a.remove(); };
+ACTIONS['sheet-docx'] = () => { const x = S.ui.sheet; if (!x) return; const c = get('characters', x.cid);
+  run(async () => { const blob = await sheetDocx(x.cid); const url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = `${fileSafe(c && c.name)}-character-sheet.docx`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 3000); }, 'Character sheet downloaded.'); };
+
+/* ---------------------------------------------------------------- the acceptance post */
+function acceptText(c) {
+  const d = sheetData(c.id), who = c.discordId ? `<@${c.discordId}> ` : '';
+  return `${who}🏁 **Welcome to the grid!** ${c.name} has been approved as ${d.role.toLowerCase()}${d.team ? ` for ${d.team.name}` : ''}.`;
+}
+async function postAcceptance(cid, chosen) {
+  const c = get('characters', cid); if (!c) return null;
+  const blob = await drawCharCard(cid, 'accepted');
+  return discordSend('approvals', Object.assign({ content: acceptText(c) }, c.discordId ? { allowed_users: [c.discordId] } : {}), { blob, name: `${fileSafe(c.name)}-approved.png` }, chosen);
+}
+ACTIONS['sheet-discord'] = () => { const x = S.ui.sheet; if (!x || !x.blob) return; const c = get('characters', x.cid);
+  run(async () => {
+    x.posted = x.kind === 'accepted' ? await postAcceptance(x.cid) : await discordSend('cards', { content: `**Character sheet:** ${c.name}` }, { blob: x.blob, name: `${fileSafe(c.name)}-sheet.png` });
+    await Data.audit('discord.sheet', `${c.name}: ${x.kind === 'accepted' ? 'acceptance card' : 'character sheet'} posted to Discord #${x.posted}`);
+  }, 'Posted to Discord.'); };
+const waitFor = (test, ms) => new Promise(ok => { const t0 = Date.now(), tick = () => { if (test()) ok(true); else if (Date.now() - t0 > ms) ok(false); else setTimeout(tick, 200); }; tick(); });
+/* After approving, post the acceptance card (unless Race Control untick it). */
+const _genApproveSheet = ACTIONS['gen-approve'];
+ACTIONS['gen-approve'] = d => {
+  const post = ((S.ui.form.postAccept || {})[d.id]) !== false;
+  _genApproveSheet(d);
+  if (!post) return;
+  waitFor(() => charStatus(get('characters', d.id) || {}) === 'approved', 15000).then(ok => {
+    if (!ok) return; const c = get('characters', d.id);
+    postAcceptance(d.id).then(ch => toast(`Acceptance card posted to Discord #${ch}${c && c.discordId ? `, mentioning ${c.discord || 'the player'}` : ' (no Discord user ID on the character, so no @mention)'}.`))
+      .catch(e => toast(`The character is approved, but the Discord post didn’t go: ${e.message || e}`, true));
+  });
+};
 
 /* =====================================================================
    F1 SIM — Home, Paddock, Race Control desk, accounts and backups.

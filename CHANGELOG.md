@@ -25,6 +25,32 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v0.23.1: Current driver background
+
+12 November 2026. Build `f1sim-0.23.1`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| New background | "Current driver": already on the grid and proven over full seasons. Ratings roll from 74 to 88 (average about 81), with +2 consistency and +2 defence; experience 60; 3 to 6 years or 7 years or more in racing. |
+
+---
+
+## v0.23.0: character sheet exports and acceptance posts
+
+12 November 2026. Build `f1sim-0.23.0`. **No database update.** Optional: a new Discord webhook secret, `DISCORD_WEBHOOK_APPROVALS` (SETUP.md, Discord).
+
+| Area | What it does |
+| --- | --- |
+| Editing | "Edit details" is available at every stage: draft, with Race Control, returned and approved. Details, story, before Formula 1, helmet, nickname, Discord, career record and portrait can all be changed. After approval, name, code and number changes also update the character on the grid and in their seat. The role is fixed once approved, and the rolled ratings stay fixed (they still grow with development points). |
+| Discord user ID | A new optional field on the character, with how to find it (Developer Mode, then Copy User ID). Needed for @mentions; a Discord username alone can't ping anyone. |
+| Export | "Export" on the application page and "Export the character sheet" on the character page (for the owner and Race Control). |
+| Photo cards | Character sheet: portrait, name, role and team, particulars, rating bars for drivers, career totals and the start of their story, in the driver card style. Acceptance card: "Welcome to the grid", a large portrait, an Approved stamp, and the role and seat. |
+| Google Doc | "Download for Google Docs (.docx)": a styled document of the whole sheet in Titillium Web with team-colour accents: a dark header with the portrait, particulars, ratings drawn as bars, story, before Formula 1, the career record (F1 SIM seasons and canon seasons), relationships and recent diary entries. Open it in Google Drive with New, File upload, then Open with Google Docs; it opens in Word too. |
+| Acceptance post | When Race Control approves a character, the acceptance card is posted to Discord with an @mention of the player (when the character has a Discord user ID). A tick box in the review turns it off for that approval. The card can also be posted again from the export panel. |
+| Discord channels | New optional webhook `DISCORD_WEBHOOK_APPROVALS` for acceptance cards; without it they go to the default channel. |
+
+---
+
 ## v0.22.0: career records
 
 12 November 2026. Build `f1sim-0.22.0`. **No database update.**
