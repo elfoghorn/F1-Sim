@@ -579,15 +579,42 @@ table.data tr.me td, table.data tr.picked td, .data tr.me { background: var(--me
 .conn-row { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 6px 0; border-bottom: 1px solid var(--line); } .conn-row p { margin: 2px 0 0; }
 .conn-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-top: 5px; } .chip .conn-dot { margin: 0 6px 0 0; vertical-align: -1px; }
 .conn-map { width: 100%; max-width: 760px; height: auto; display: block; margin: 12px auto; } .conn-label { font: 600 13px var(--body); fill: var(--ink); } .conn-map a:hover circle { stroke: var(--red); }
+
+/* ---------- teams ---------- */
+.tm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.tm-card { display: flex; flex-direction: column; text-align: left; padding: 0; background: var(--panel); border: 1px solid var(--line); color: var(--ink); font: inherit; cursor: pointer; }
+.tm-card:hover, .tm-card:focus-visible { border-color: var(--red); }
+.tm-band { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; } .tm-band b { font-size: 21px; font-style: italic; } .tm-band small { font-weight: 600; }
+.tm-pos { text-align: right; } .tm-pos b { font-size: 30px; font-weight: 900; line-height: 1; }
+.tm-drivers { display: flex; flex-direction: column; gap: 8px; padding: 10px 14px; flex: 1; }
+.tm-driver { display: grid; grid-template-columns: 40px 1fr auto; gap: 10px; align-items: center; }
+.tm-face { width: 40px; height: 44px; display: grid; place-items: center; background: var(--panel-2); color: var(--muted); font-weight: 700; overflow: hidden; }
+.tm-face img { width: 100%; height: 100%; object-fit: cover; }
+.tm-num { font-size: 24px; font-weight: 900; font-style: italic; color: var(--line-strong); }
+.tm-foot { display: flex; justify-content: space-between; gap: 10px; padding: 8px 14px; border-top: 1px solid var(--line); font-size: 13.5px; color: var(--muted); } .tm-foot b { color: var(--ink); }
+.tm-banner { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; padding: 24px 28px; margin: 10px 0 14px; }
+.tm-banner h1 { margin: 0; font-size: 64px; line-height: 0.95; font-weight: 900; font-style: italic; } .tm-banner h1::after { display: none; } .tm-banner p { margin: 0; font-weight: 700; }
+.tm-banner .team-logo { height: 52px; margin-right: 12px; vertical-align: middle; } .tm-car { max-width: 340px; max-height: 170px; object-fit: contain; }
+.tm-tabs { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; align-items: center; margin-bottom: 14px; }
+.tm-stats { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+.tm-lineup { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.tm-member { display: grid; grid-template-columns: 56px 1fr; gap: 12px; align-items: center; padding: 10px; background: var(--panel-2); border: 2px solid transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.tm-member .tm-face { width: 56px; height: 62px; } .tm-member.player { background: var(--me-row); border-color: var(--red); } .tm-member.open { background: transparent; border: 2px dashed var(--line-strong); cursor: default; }
+.tm-bars { max-width: 100%; height: auto; display: block; } .tm-bar-v { font: 700 14px var(--body); fill: var(--ink); } .tm-bar-l { font: 600 12px var(--body); fill: var(--muted); }
+.tm-pill { display: inline-block; min-width: 40px; text-align: center; padding: 1px 6px; font-weight: 700; background: var(--panel-2); } .tm-pill.p1 { background: #F5C400; color: #2A2200; } .tm-pill.pod { background: #C9CCD2; color: #141519; } .tm-pill.out { background: var(--bad-soft); color: var(--bad); }
+.metric.gold { background: #F5C400; color: #2A2200; } .metric.gold span { color: #2A2200; }
+.stand-tabs { margin: 0 0 16px; } .link-btn { background: none; border: 0; padding: 0; color: inherit; font: inherit; cursor: pointer; text-align: left; } .link-btn:hover { text-decoration: underline; }
+
+.io-card { margin-top: 16px; } .io-card .btn-row { flex-wrap: wrap; }
 </style>
 </head>
 <body>
 <div id="auth-root"><div class="boot"><div class="boot-card"><span class="brand-mark big" aria-hidden="true"></span><h1>F1 SIM</h1><p>Loading…</p></div></div></div>
 <div id="app"></div>
-<script>window.F1SIM_BUILD = 'f1sim-0.27.0'; window.F1SIM_VERSION = '0.27.0';</script>
+<script>window.F1SIM_BUILD = 'f1sim-0.29.0'; window.F1SIM_VERSION = '0.29.0';</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
-<script src="config.js?v=f1sim-0.27.0"></script>
-<script src="bridge.js?v=f1sim-0.27.0"></script>
+<script src="config.js?v=f1sim-0.29.0"></script>
+<script src="bridge.js?v=f1sim-0.29.0"></script>
 <noscript>F1 SIM needs JavaScript switched on.</noscript>
 </body>
 </html>

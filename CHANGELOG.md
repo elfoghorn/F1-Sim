@@ -25,6 +25,35 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v0.29.0: JSON download and upload for characters and seasons
+
+12 November 2026. Build `f1sim-0.29.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Characters out | Download a character as JSON (Export panel), all your characters (Your characters), or every character (Race Control). The file has the details, story, flavour, career seasons, team preference, picture link and ratings, plus each character's id. |
+| Characters in | Upload a JSON file on Your characters. Each character is checked and listed before importing. Players' uploads arrive as drafts: ratings in the file are ignored (they roll on the site) and career seasons await Race Control. Keeping a character's id updates that character instead of creating a new one. Race Control can upload from the Race Control page as drafts, or approved with the ratings in the file. |
+| Character template | "Download a template": an example with every field and notes on the allowed values. |
+| Seasons out | On the Seasons page, download any season as JSON: series, name, engine era, and every round with its results (position, driver, team, points, grid, stops). |
+| Seasons in (Race Control) | Upload a past season: results are matched to drivers and teams by name, points are filled in from the series' points tables when missing, and new names are added to the record as drivers. Problems (an unknown track or team) are listed and stop the import. The season becomes a catalogued season: on the Seasons page, in Teams' previous championships, and in the all-time and career standings. Uploading a season with the same name again replaces it. A file for the current season only sets its engine era and round dates. |
+| Season template | "Download a template": an example season with notes on tracks, engines, sessions and teams. |
+
+---
+
+## v0.28.0: Teams, and all-time and career standings
+
+12 November 2026. Build `f1sim-0.28.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Teams | A new menu item, open to everyone (players waiting for approval too). Every team of a series as a card in its colours: engine, championship position and points, its drivers (players tagged) with their standings, and who runs it. Tabs switch between series; a season picker goes back to previous championships ("2026: champions McLaren"), showing that season's final standings. |
+| A team's page | A banner in the team's colours (with its logo and car photo when set), and two tabs. This season: championship position, points, wins, podiums, poles and fastest laps; the line-up (drivers, team principal, race engineers; open posts shown as "Apply on the site"); points by round; race by race for both cars. Previous championships: honours (constructors' and drivers' titles, Grand Prix wins, podiums), season by season (engines, position, points, wins, podiums, drivers and their championship finishes) and everyone who has driven for the team. |
+| Team card | "Export the team card": an image of the team this season (position, points, wins, podiums, both drivers with portraits, principal and engineers, honours, points by round) to download, or for Race Control to post to Discord. |
+| Championship: all-time | A new view: every F1 SIM season of the series added up, for drivers (seasons, starts, wins, podiums, poles, points, titles) and constructors (seasons, wins, podiums, points, titles). Titles count once a season is catalogued. |
+| Championship: career | A new view across every championship: F1 SIM races in every series plus each driver's canon seasons in other championships (Formula 2, F1 Academy, WEC and so on), ranked by titles, wins and podiums, with the titles listed. |
+
+---
+
 ## v0.27.0: flavour on the character sheet, and Connections
 
 12 November 2026. Build `f1sim-0.27.0`. **No database update.**

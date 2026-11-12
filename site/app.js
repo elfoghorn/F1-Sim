@@ -1,4 +1,4 @@
-/* F1 SIM v0.27.0 (build f1sim-0.27.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v0.29.0 (build f1sim-0.29.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -5845,7 +5845,7 @@ DRAWERS.sheet = function () {
     ${x.url ? `<img class="card-preview tx-preview" src="${x.url}" alt="${esc(c.name)}’s ${x.kind === 'accepted' ? 'acceptance card' : 'character sheet'}">` : '<p class="muted">Drawing the card…</p>'}
     <div class="btn-row"><button class="btn primary" data-act="sheet-png" ${x.url ? '' : 'disabled'}>Download the card</button>${S.isGm ? `<button class="btn" data-act="sheet-discord" ${x.url ? '' : 'disabled'}>Post to Discord${x.kind === 'accepted' && c.discord ? ` mentioning @${esc(c.discord)}` : ''}</button>` : ''}${x.posted ? `<span class="tag player">Posted to #${esc(x.posted)}</span>` : ''}</div>
     <h3>Google Doc</h3><p class="small">A styled document of the whole sheet: particulars, ratings, story, career record, relationships and recent diary entries.</p>
-    <div class="btn-row"><button class="btn" data-act="sheet-docx">Download for Google Docs (.docx)</button></div>
+    <div class="btn-row"><button class="btn" data-act="sheet-docx">Download for Google Docs (.docx)</button><button class="btn ghost" data-act="io-ch-one" data-id="${esc(c.id)}">Download as JSON</button></div>
     <p class="muted small">To open it in Google Docs: in Google Drive choose <b>New</b>, then <b>File upload</b>, pick the file, then open it with <b>Google Docs</b>. It opens in Word too.</p></div>`;
 };
 ACTIONS['sheet-png'] = () => { const x = S.ui.sheet; if (!x || !x.url) return; const c = get('characters', x.cid), a = document.createElement('a'); a.href = x.url; a.download = `${fileSafe(c && c.name)}-${x.kind === 'accepted' ? 'acceptance' : 'sheet'}.png`; document.body.appendChild(a); a.click(); a.remove(); };
@@ -6507,6 +6507,470 @@ route('connections', 'Connections', function () {
   return h;
 });
 (() => { const i = NAV.findIndex(x => x[0] === 'people'); if (i !== -1 && !NAV.some(x => x[0] === 'connections')) NAV.splice(i + 1, 0, ['connections', 'users', 'Connections']); })();
+
+/* =====================================================================
+   F1 SIM — Teams, and all-time and career standings.
+   Teams: every team of a series in a season (this one or an earlier,
+   catalogued one), and each team's page: the season (stats, line-up,
+   points by round, race by race) and its previous championships
+   (honours, season by season, everyone who has driven for it), with a
+   team card to download or post to Discord. Open to everyone.
+   Championship: as well as this season, all-time in F1 SIM (every season
+   of the series added up) and career (F1 SIM plus each driver's canon
+   seasons in other championships).
+   ===================================================================== */
+'use strict';
+
+/* ---------------------------------------------------------------- seasons and standings */
+function seriesSeasons(sid) {
+  const out = list('f1_seasons').filter(s => (s.seriesId || 'f1') === sid);
+  const cur = seasonDoc(curSeasonId(sid)); if (!out.some(s => s.id === cur.id)) out.push(cur);
+  return out.sort((a, b) => String(b.startedAt || b.name).localeCompare(String(a.startedAt || a.name)));
+}
+const teamSeasonWeekends = (sid, sea) => list('f1_weekends').filter(w => w.status === 'finished' && wSeries(w) === sid && wSeason(w) === sea && w.session !== 'test');
+function standingsFor(sid, sea) {
+  const drivers = new Map(), teams = new Map();
+  teamSeasonWeekends(sid, sea).sort((a, b) => String(a.finishedAt).localeCompare(String(b.finishedAt))).forEach(w => (w.results || []).forEach(r => {
+    const d = drivers.get(r.personId) || { personId: r.personId, name: r.name, teamId: r.teamId, charId: r.charId, pts: 0, wins: 0, podiums: 0, starts: 0, best: 99 };
+    d.pts += r.points || 0; d.teamId = r.teamId; d.name = r.name;
+    if (w.session !== 'sprint') { d.starts += 1; if (r.position === 1) d.wins += 1; if (r.position && r.position <= 3) d.podiums += 1; if (r.position) d.best = Math.min(d.best, r.position); }
+    drivers.set(r.personId, d);
+    const t = teams.get(r.teamId) || { teamId: r.teamId, pts: 0, wins: 0, podiums: 0 }; t.pts += r.points || 0;
+    if (w.session !== 'sprint' && r.position === 1) t.wins += 1; if (w.session !== 'sprint' && r.position && r.position <= 3) t.podiums += 1; teams.set(r.teamId, t);
+  }));
+  const order = (a, b) => b.pts - a.pts || b.wins - a.wins || (a.best || 99) - (b.best || 99);
+  return { drivers: [...drivers.values()].sort(order), teams: [...teams.values()].sort(order) };
+}
+const seasonDone = sea => seasonDoc(sea).status === 'archived';
+const teamEngine = (teamId, sid, sea) => { const cfg = engineConfig(sid, sea), f = ENGINE_FORMULAS[cfg.formula]; return `${supplierOf(teamId, cfg)} ${f ? f.short : ''}`.trim(); };
+const ordinalPos = n => n ? `P${n}` : '–';
+const roundsOf = sid => (seriesDoc(sid).calendar || []).length || list('f1_tracks').length;
+
+/* ---------------------------------------------------------------- the Teams index */
+ACTIONS['teams-series'] = d => { S.ui.teamsSeries = d.id; S.ui.teamsSeason = null; render(); };
+CHANGES['teams-season'] = v => { S.ui.teamsSeason = v; render(); };
+ACTIONS['team-open'] = d => { S.ui.teamView = d.id; S.ui.teamTab = d.tab || 'season'; go('teamview'); };
+ACTIONS['team-tab'] = d => { S.ui.teamTab = d.tab; render(); };
+function teamsCtx() {
+  const sid = S.ui.teamsSeries || curSeriesId(), seasons = seriesSeasons(sid), sea = S.ui.teamsSeason && seasons.some(s => s.id === S.ui.teamsSeason) ? S.ui.teamsSeason : curSeasonId(sid);
+  return { sid, sea, seasons, current: sea === curSeasonId(sid) };
+}
+function teamDrivers(t, sid, sea, st) {
+  if (sea === curSeasonId(sid)) return list('f1_seats').filter(s => s.teamId === t.id && s.role === 'driver').sort((a, b) => (a.car || 0) - (b.car || 0)).map(s => {
+    const c = s.holderCharId ? get('characters', s.holderCharId) : null, p = c ? F1.person(f1PcId(c.id)) : F1.person(s.defaultPersonId) || {}, pid = c ? f1PcId(c.id) : s.defaultPersonId;
+    const i = st.drivers.findIndex(d => d.personId === pid); return { pid, name: c ? c.name : p.name || 'Open seat', num: c ? c.number : p.num, player: !!c, c, pos: i + 1, pts: i >= 0 ? st.drivers[i].pts : 0 }; });
+  return st.drivers.map((d, i) => Object.assign({}, d, { pos: i + 1 })).filter(d => d.teamId === t.id).slice(0, 3).map(d => ({ pid: d.personId, name: d.name, num: (F1.person(d.personId) || {}).num, player: !!d.charId, c: d.charId ? get('characters', d.charId) : null, pos: d.pos, pts: d.pts }));
+}
+function teamStaffLine(t) {
+  const seats = list('f1_seats').filter(s => s.teamId === t.id), tp = seats.find(s => s.role === 'principal'), eng = seats.filter(s => s.role === 'engineer');
+  const tpName = tp ? (tp.holderCharId ? (get('characters', tp.holderCharId) || {}).name : (F1.person(tp.defaultPersonId) || {}).name || 'computer-run') : '';
+  const engNames = eng.filter(s => s.holderCharId).map(s => (get('characters', s.holderCharId) || {}).name);
+  return [tpName ? `Principal: ${tpName}` : '', engNames.length ? `Engineer${engNames.length > 1 ? 's' : ''}: ${engNames.join(', ')}` : ''].filter(Boolean).join(' · ');
+}
+route('teams', 'Teams', function () {
+  const { sid, sea, seasons, current } = teamsCtx(), st = standingsFor(sid, sea), s = seriesDoc(sid), done = teamSeasonWeekends(sid, sea).filter(w => w.session === 'gp').length;
+  const teams = list('f1_teams').filter(t => (t.seriesId || 'f1') === sid).sort((a, b) => { const pa = st.teams.findIndex(x => x.teamId === a.id), pb = st.teams.findIndex(x => x.teamId === b.id); return (pa < 0 ? 99 : pa) - (pb < 0 ? 99 : pb) || (a.order || 0) - (b.order || 0); });
+  const champ = sea => { const t = standingsFor(sid, sea).teams[0]; return t ? (get('f1_teams', t.teamId) || {}).name : ''; };
+  const series = allSeries().filter(x => list('f1_teams').some(t => (t.seriesId || 'f1') === x.id));
+  const card = t => { const i = st.teams.findIndex(x => x.teamId === t.id), row = st.teams[i] || { pts: 0 }, col = f1Colour(t.id), ink = inkOn(col), ds = teamDrivers(t, sid, sea, st);
+    return `<button class="tm-card" data-act="team-open" data-id="${esc(t.id)}" aria-label="Open ${esc(t.name)}">
+      <span class="tm-band" style="background:${esc(col)};color:${ink}"><span><b>${esc(t.name)}</b><br><small>${esc(teamEngine(t.id, sid, sea))}</small></span><span class="tm-pos"><b>${i >= 0 ? `P${i + 1}` : '–'}</b><br><small>${row.pts} pts</small></span></span>
+      <span class="tm-drivers">${ds.map(d => `<span class="tm-driver"><span class="tm-face" style="${d.player ? `background:${esc(col)};color:${ink}` : ''}">${d.c && d.c.portraitUrl ? `<img src="${esc(d.c.portraitUrl)}" alt="">` : esc(initials(d.name))}</span>
+        <span><b>${esc(d.name)}</b>${d.player ? ' <span class="tag player">Player</span>' : ''}<br><small class="muted">${d.pos ? `P${d.pos}, ${d.pts} pts` : 'No points yet'}</small></span><span class="tm-num">${esc(d.num || '')}</span></span>`).join('') || '<span class="muted small">No results this season.</span>'}</span>
+      <span class="tm-foot"><span>${current ? esc(teamStaffLine(t)) : ''}</span><b>Open team ›</b></span></button>`; };
+  return `<div class="page-head"><div><p class="eyebrow">${esc(s.name)} · ${esc(seasonDoc(sea).name)} season · ${current ? `after round ${done} of ${roundsOf(sid)}` : 'final standings'}</p><h1>Teams</h1></div>
+      <div class="btn-row">${series.length > 1 ? `<div class="seg" role="tablist" aria-label="Series">${series.map(x => `<button role="tab" aria-selected="${x.id === sid}" data-act="teams-series" data-id="${esc(x.id)}">${esc(x.name)}</button>`).join('')}</div>` : ''}
+      <label class="sr-only" for="teams-season">Season</label><select id="teams-season" data-change="teams-season">${seasons.map(x => `<option value="${esc(x.id)}" ${x.id === sea ? 'selected' : ''}>${esc(x.name)}${x.id === curSeasonId(sid) ? ' (this season)' : champ(x.id) && seasonDone(x.id) ? `: champions ${esc(champ(x.id))}` : ''}</option>`).join('')}</select></div></div>
+    <div class="tm-grid">${teams.map(card).join('')}</div>`;
+});
+const inkOn = hexc => { const h = String(hexc || '#888').replace('#', ''), n = parseInt(h.length === 3 ? h.split('').map(x => x + x).join('') : h, 16); const r = n >> 16 & 255, g = n >> 8 & 255, b = n & 255; return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#141519' : '#FFFFFF'; };
+
+/* ---------------------------------------------------------------- a team's page */
+function teamSeasonData(tid, sid, sea) {
+  const st = standingsFor(sid, sea), i = st.teams.findIndex(x => x.teamId === tid), row = st.teams[i] || { pts: 0, wins: 0, podiums: 0 };
+  const ws = teamSeasonWeekends(sid, sea).sort((a, b) => String(a.finishedAt).localeCompare(String(b.finishedAt)));
+  const gps = ws.filter(w => w.session === 'gp'); let poles = 0, fls = 0;
+  gps.forEach(w => { const mine = (w.results || []).filter(r => r.teamId === tid).map(r => r.id); if (w.quali && w.quali.grid && mine.indexOf(w.quali.grid[0]) !== -1) poles++; if (w.state && w.state.fastest && mine.indexOf(w.state.fastest.id) !== -1) fls++; });
+  const rounds = gps.map(w => { const t = get('f1_tracks', w.trackId) || {}, rs = (w.results || []).filter(r => r.teamId === tid);
+    const sprintPts = ws.filter(x => x.session === 'sprint' && x.trackId === w.trackId).reduce((s, x) => s + (x.results || []).filter(r => r.teamId === tid).reduce((a, r) => a + (r.points || 0), 0), 0);
+    return { round: t.round, name: t.name || w.trackId, code: (t.name || w.trackId).slice(0, 3).toUpperCase(), cars: rs.map(r => ({ name: r.name, pos: r.position })), pts: rs.reduce((a, r) => a + (r.points || 0), 0) + sprintPts }; });
+  return { pos: i + 1, pts: row.pts, wins: row.wins, podiums: row.podiums, poles, fls, rounds, st };
+}
+function teamHistoryData(tid, sid) {
+  const seasons = seriesSeasons(sid).slice().reverse(), rows = [], people = new Map(); let titles = 0, dTitles = [], wins = 0, podiums = 0, starts = 0;
+  seasons.forEach(sea => {
+    const st = standingsFor(sid, sea.id), i = st.teams.findIndex(x => x.teamId === tid); if (i < 0) return;
+    const done = seasonDone(sea.id), t = st.teams[i], drivers = st.drivers.map((d, k) => Object.assign({}, d, { pos: k + 1 })).filter(d => d.teamId === tid);
+    if (done && i === 0) titles++; if (done && st.drivers[0] && st.drivers[0].teamId === tid) dTitles.push(`${st.drivers[0].name}, ${sea.name}`);
+    wins += t.wins; podiums += t.podiums;
+    rows.push({ season: sea.name, done, pos: i + 1, pts: t.pts, wins: t.wins, podiums: t.podiums, engines: (ENGINE_FORMULAS[engineConfig(sid, sea.id).formula] || {}).short || '', drivers: drivers.map(d => `${d.name} (${done && d.pos === 1 ? 'Champion' : 'P' + d.pos})`).join(', ') });
+    teamSeasonWeekends(sid, sea.id).filter(w => w.session === 'gp').forEach(w => (w.results || []).filter(r => r.teamId === tid).forEach(r => {
+      starts++; const p = people.get(r.personId) || { pid: r.personId, name: r.name, charId: r.charId, starts: 0, wins: 0, seasons: new Set(), champ: [] };
+      p.starts++; if (r.position === 1) p.wins++; p.seasons.add(sea.name); people.set(r.personId, p); }));
+    if (done && st.drivers[0] && st.drivers[0].teamId === tid && people.get(st.drivers[0].personId)) people.get(st.drivers[0].personId).champ.push(sea.name);
+  });
+  return { rows: rows.reverse(), titles, dTitles, wins, podiums, starts, people: [...people.values()].sort((a, b) => b.wins - a.wins || b.starts - a.starts) };
+}
+function teamLineup(t) {
+  const seats = list('f1_seats').filter(s => s.teamId === t.id).sort((a, b) => ({ driver: 0, principal: 1, engineer: 2 }[a.role] - { driver: 0, principal: 1, engineer: 2 }[b.role]) || (a.car || 0) - (b.car || 0));
+  return seats.map(s => { const c = s.holderCharId ? get('characters', s.holderCharId) : null, p = !c && s.defaultPersonId ? F1.person(s.defaultPersonId) : null;
+    const role = s.role === 'driver' ? `Driver, car ${s.car || 1}` : s.role === 'principal' ? 'Team principal' : `Race engineer${s.car ? `, car ${s.car}` : ''}`;
+    return { role, c, pid: c ? f1PcId(c.id) : p ? p.id : null, name: c ? c.name : p ? p.name : 'Open post', player: !!c, open: !c && !p, num: c ? c.number : p ? p.num : '' }; });
+}
+route('teamview', 'Team', function () {
+  const t = get('f1_teams', S.ui.teamView); if (!t) return '<div class="empty">Choose a team from Teams.</div>';
+  const sid = t.seriesId || 'f1', { sea } = (S.ui.teamsSeries === sid ? teamsCtx() : { sea: curSeasonId(sid) }), tab = S.ui.teamTab || 'season', col = f1Colour(t.id), ink = inkOn(col), br = teamBrand(t.id) || {};
+  const hist = teamHistoryData(t.id, sid);
+  let h = `<button class="btn ghost small" data-act="nav" data-route="teams">‹ All teams</button>
+    <section class="tm-banner" style="background:${esc(col)};color:${ink}"><div><p>${esc(seriesDoc(sid).name)} · ${esc(teamEngine(t.id, sid, sea))}</p><h1>${br.logo ? `<img class="team-logo" src="${esc(br.logo)}" alt="">` : ''}${esc(t.name)}</h1>
+      <p>${hist.titles ? `Constructors’ champions ${hist.rows.filter(r => r.done && r.pos === 1).map(r => esc(r.season)).join(', ')}. ` : ''}${esc(seasonDoc(sea).name)} season.</p></div>
+      ${br.car ? `<img class="tm-car" src="${esc(br.car)}" alt="${esc(t.name)}’s car">` : ''}</section>
+    <div class="tm-tabs"><div class="seg" role="tablist" aria-label="Team page"><button role="tab" aria-selected="${tab === 'season'}" data-act="team-tab" data-tab="season">${esc(seasonDoc(sea).name)} season</button><button role="tab" aria-selected="${tab === 'history'}" data-act="team-tab" data-tab="history">Previous championships</button></div>
+      <button class="btn" data-act="tcard-open" data-id="${esc(t.id)}">Export the team card</button></div>`;
+  if (tab === 'season') {
+    const d = teamSeasonData(t.id, sid, sea), maxP = Math.max(1, ...d.rounds.map(r => r.pts));
+    h += `<div class="metrics tm-stats">${[[d.pos ? `P${d.pos}` : '–', 'Constructors’ championship'], [d.pts, 'Points'], [d.wins, 'Wins'], [d.podiums, 'Podiums'], [d.poles, 'Poles'], [d.fls, 'Fastest laps']].map(([v, k]) => `<div class="metric"><b>${esc(v)}</b><span>${esc(k)}</span></div>`).join('')}</div>`;
+    if (sea === curSeasonId(sid)) h += `<section class="card"><h2>Line-up</h2><div class="tm-lineup">${teamLineup(t).map(m => `<${m.pid ? `button data-act="career" data-id="${esc(m.pid)}"` : 'div'} class="tm-member ${m.player ? 'player' : m.open ? 'open' : ''}">
+        <span class="tm-face" style="${m.player ? `background:${esc(col)};color:${ink}` : ''}">${m.c && m.c.portraitUrl ? `<img src="${esc(m.c.portraitUrl)}" alt="">` : m.open ? '+' : esc(initials(m.name))}</span>
+        <span><small class="muted">${esc(m.role)}</small><br><b>${esc(m.name)}</b>${m.player ? ' <span class="tag player">Player</span>' : ''}<br><small class="muted">${m.open ? 'Apply on the site' : m.num ? '#' + esc(m.num) : m.player ? '' : 'Computer-run'}</small></span></${m.pid ? 'button' : 'div'}>`).join('')}</div></section>`;
+    h += d.rounds.length ? `<section class="card"><h2>Points by round</h2><p class="muted small">Both cars together, sprints included.</p>
+        <svg class="tm-bars" viewBox="0 0 ${Math.max(360, d.rounds.length * 56 + 40)} 200" width="${Math.max(360, d.rounds.length * 56 + 40)}" height="200" role="img" aria-label="${esc(t.name)} points by round: ${d.rounds.map(r => r.pts).join(', ')}">
+        <line x1="20" y1="168" x2="${d.rounds.length * 56 + 30}" y2="168" stroke="var(--line)"></line>${d.rounds.map((r, i) => { const hh = r.pts / maxP * 130; return `<rect x="${30 + i * 56}" y="${168 - hh}" width="40" height="${hh}" fill="${esc(col)}"></rect><text x="${50 + i * 56}" y="${160 - hh}" text-anchor="middle" class="tm-bar-v">${r.pts}</text><text x="${50 + i * 56}" y="188" text-anchor="middle" class="tm-bar-l">${esc(r.code)}</text>`; }).join('')}</svg></section>
+      <section class="card"><h2>Race by race</h2><div class="scroll-x"><table class="data"><thead><tr><th>Round</th><th>Grand Prix</th><th>Cars</th><th class="num">Points</th></tr></thead><tbody>${d.rounds.map(r => `<tr><td class="muted">R${esc(r.round)}</td><td><b>${esc(r.name)}</b></td><td>${r.cars.map(c => `<span class="tm-pill ${c.pos === 1 ? 'p1' : c.pos && c.pos <= 3 ? 'pod' : !c.pos ? 'out' : ''}">${c.pos ? 'P' + c.pos : 'Out'}</span> ${esc(c.name)}`).join(' &nbsp; ')}</td><td class="num"><b>${r.pts}</b></td></tr>`).join('')}</tbody></table></div></section>`
+      : '<p class="muted">No races yet this season.</p>';
+  } else {
+    h += `<section class="card"><h2>Honours</h2><div class="metrics tm-honours"><div class="metric ${hist.titles ? 'gold' : ''}"><b>${hist.titles}</b><span>Constructors’ titles</span></div><div class="metric ${hist.dTitles.length ? 'gold' : ''}"><b>${hist.dTitles.length}</b><span>Drivers’ titles${hist.dTitles.length ? `: ${esc(hist.dTitles.join('; '))}` : ''}</span></div><div class="metric"><b>${hist.wins}</b><span>Grand Prix wins</span></div><div class="metric"><b>${hist.podiums}</b><span>Podiums in ${hist.starts ? Math.round(hist.starts / 2) : 0} Grands Prix</span></div></div></section>
+      <section class="card"><h2>Season by season</h2>${hist.rows.length ? `<div class="scroll-x"><table class="data"><thead><tr><th>Season</th><th>Engines</th><th>Constructors’</th><th class="num">Points</th><th class="num">Wins</th><th class="num">Podiums</th><th>Drivers (championship)</th></tr></thead><tbody>${hist.rows.map(r => `<tr><td><b>${esc(r.season)}</b>${r.done ? '' : ' <span class="muted small">so far</span>'}</td><td class="muted">${esc(r.engines)}</td><td>${r.done && r.pos === 1 ? '<span class="tag trophy">Champions</span>' : `P${r.pos}`}</td><td class="num"><b>${r.pts}</b></td><td class="num">${r.wins}</td><td class="num">${r.podiums}</td><td>${esc(r.drivers)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">No seasons yet.</p>'}</section>
+      <section class="card"><h2>Everyone who has driven for ${esc(t.name)}</h2>${hist.people.length ? `<div class="tm-lineup">${hist.people.map(p => { const c = p.charId ? get('characters', p.charId) : null;
+        return `<button class="tm-member" data-act="career" data-id="${esc(p.pid)}"><span class="tm-face" style="${c ? `background:${esc(col)};color:${ink}` : ''}">${c && c.portraitUrl ? `<img src="${esc(c.portraitUrl)}" alt="">` : esc(initials(p.name))}</span><span><b>${esc(p.name)}</b>${p.champ.length ? ` <span class="tag trophy">Champion ${esc(p.champ.join(', '))}</span>` : ''}<br><small class="muted">${esc([...p.seasons].join(', '))} · ${plural(p.starts, 'start')} · ${plural(p.wins, 'win')}${c ? ' · player' : ''}</small></span></button>`; }).join('')}</div>` : '<p class="muted">Nobody yet.</p>'}</section>`;
+  }
+  return h;
+});
+['teams', 'teamview'].forEach(r => { if (LIMITED_ROUTES.indexOf(r) === -1) LIMITED_ROUTES.push(r); });
+(() => { const i = NAV.findIndex(x => x[0] === 'grid'); if (i !== -1 && !NAV.some(x => x[0] === 'teams')) NAV.splice(i + 1, 0, ['teams', 'flag', 'Teams']); })();
+
+/* ---------------------------------------------------------------- the team card */
+async function drawTeamCard(tid) {
+  const t = get('f1_teams', tid); if (!t) return null;
+  const sid = t.seriesId || 'f1', sea = curSeasonId(sid), d = teamSeasonData(tid, sid, sea), hist = teamHistoryData(tid, sid), col = f1Colour(tid), ink = inkOn(col);
+  const W = 1080, H = 1350, cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d'), T = EXP_THEMES.dark;
+  try { await Promise.all(['700 100px "Titillium Web"', '900 100px "Titillium Web"', '600 30px "Titillium Web"'].map(f => document.fonts.load(f))); } catch (e) { /* fall back */ }
+  g.fillStyle = '#1C1D22'; g.fillRect(0, 0, W, H); g.fillStyle = col; g.fillRect(0, 0, W, 300);
+  g.fillStyle = ink === '#FFFFFF' ? 'rgba(255,255,255,0.14)' : 'rgba(20,21,25,0.14)'; g.font = cond(900, 340); g.textAlign = 'right'; g.fillText(d.pos ? `P${d.pos}` : '', W + 10, 270); g.textAlign = 'left';
+  g.fillStyle = ink; g.font = cond(700, 26); g.fillText(`F1 SIM · ${seriesDoc(sid).name} · ${seasonDoc(sea).name} season`, 56, 80);
+  fitText(g, t.name, z => cond(900, z), 118, W - 112); g.fillText(t.name, 52, 200);
+  g.font = cond(700, 26); g.fillText(`${teamEngine(tid, sid, sea)} · ${d.pos ? `P${d.pos} after round ${d.rounds.length} of ${roundsOf(sid)}` : 'Season to start'}`, 56, 250);
+  [[d.pos ? `P${d.pos}` : '–', 'Constructors’'], [String(d.pts), 'Points'], [String(d.wins), 'Wins'], [String(d.podiums), 'Podiums']].forEach(([v, k], i) => { const x = 56 + i * 246; g.fillStyle = T.panel; g.fillRect(x, 340, 230, 120); g.fillStyle = '#FFFFFF'; g.font = cond(900, 56); g.fillText(v, x + 18, 405); g.font = bodyF(500, 20); g.fillStyle = T.muted; g.fillText(k, x + 18, 440); });
+  const lu = teamLineup(t), drivers = lu.filter(m => /^Driver/.test(m.role)).slice(0, 2), imgs = await Promise.all(drivers.map(m => loadImg(m.c && m.c.portraitUrl)));
+  drivers.forEach((m, i) => { const x = 56 + i * 492, y = 500, w = 476, hh = 200, row = d.st.drivers.findIndex(x2 => x2.personId === m.pid);
+    g.fillStyle = m.player ? '#3A1D20' : T.panel; g.fillRect(x, y, w, hh); if (m.player) { g.strokeStyle = '#E10600'; g.lineWidth = 3; g.strokeRect(x + 1.5, y + 1.5, w - 3, hh - 3); }
+    if (m.num) { g.fillStyle = 'rgba(255,255,255,0.07)'; g.font = cond(900, 170); g.textAlign = 'right'; g.fillText(String(m.num), x + w - 10, y + hh - 6); g.textAlign = 'left'; }
+    drawPhoto(g, imgs[i], x + 18, y + 22, 120, 156, 4, { name: m.name }, T);
+    g.fillStyle = m.player ? '#FF8A80' : T.muted; g.font = bodyF(600, 19); g.fillText(m.player ? `Player · car ${i + 1}` : `Car ${i + 1}`, x + 158, y + 60);
+    g.fillStyle = '#FFFFFF'; fitText(g, m.name, z => cond(900, z), 36, w - 176); g.fillText(m.name, x + 158, y + 104);
+    g.fillStyle = '#C9CCD2'; g.font = bodyF(500, 20); g.fillText(row >= 0 ? `P${row + 1} · ${d.st.drivers[row].pts} pts` : 'No points yet', x + 158, y + 140); });
+  const tp = lu.find(m => m.role === 'Team principal'), engs = lu.filter(m => /^Race engineer/.test(m.role));
+  [[`Team principal`, tp ? tp.name : '–'], ['Race engineers', engs.filter(m => !m.open).map(m => m.name).join(', ') || 'Open posts']].forEach(([k, v], i) => { const x = 56 + i * 492; g.fillStyle = T.panel; g.fillRect(x, 730, 476, 96); g.fillStyle = T.muted; g.font = bodyF(500, 18); g.fillText(k, x + 18, 766); g.fillStyle = '#FFFFFF'; fitText(g, v, z => cond(700, z), 26, 440); g.fillText(v, x + 18, 804); });
+  if (hist.titles || hist.dTitles.length) { g.fillStyle = '#F5C400'; g.fillRect(56, 856, W - 112, 84); g.fillStyle = '#2A2200'; g.font = cond(900, 30); g.fillText('Honours', 76, 908);
+    const txt = [hist.titles ? `Constructors’ champions ${hist.rows.filter(r => r.done && r.pos === 1).map(r => r.season).join(', ')}` : '', hist.dTitles.length ? `Drivers’ champion: ${hist.dTitles.join('; ')}` : ''].filter(Boolean).join(' · ');
+    fitText(g, txt, z => bodyF(600, z), 22, W - 112 - 200); g.fillText(txt, 230, 906); }
+  const rs = d.rounds.slice(-8), maxP = Math.max(1, ...rs.map(r => r.pts));
+  if (rs.length) { g.fillStyle = T.muted; g.font = bodyF(600, 20); g.fillText('Points by round', 56, 990); rs.forEach((r, i) => { const x = 56 + i * 120, hh = r.pts / maxP * 118; g.fillStyle = col; g.fillRect(x, 1170 - hh, 84, hh); g.fillStyle = '#FFFFFF'; g.font = cond(700, 22); g.textAlign = 'center'; g.fillText(String(r.pts), x + 42, 1162 - hh); g.fillStyle = T.muted; g.font = bodyF(600, 18); g.fillText(r.code, x + 42, 1198); g.textAlign = 'left'; }); }
+  g.fillStyle = T.muted; g.font = bodyF(500, 18); g.fillText(`Updated ${fmtDate(nowIso())}`, 56, H - 50); g.textAlign = 'right'; g.fillText('F1 SIM', W - 56, H - 50); g.textAlign = 'left';
+  g.fillStyle = col; g.fillRect(0, H - 16, W, 16);
+  return new Promise(ok => cv.toBlob(ok, 'image/png'));
+}
+ACTIONS['tcard-open'] = d => { S.ui.tcard = { tid: d.id, url: null, blob: null }; openDrawer('tcard'); (async () => { const x = S.ui.tcard, blob = await drawTeamCard(d.id); if (S.ui.tcard !== x || !blob) return; x.blob = blob; x.url = URL.createObjectURL(blob); renderOverlay(); })(); if (S.isGm) discordChannels().then(() => renderOverlay()).catch(() => {}); };
+DRAWERS.tcard = function () { const x = S.ui.tcard || {}, t = get('f1_teams', x.tid) || {};
+  return `<header><div><h2>${esc(t.name || '')} team card</h2><p>Download it, or post it to Discord.</p></div><button class="btn ghost" data-act="close-drawer">Close</button></header>
+    <div class="body">${x.url ? `<img class="card-preview tx-preview" src="${x.url}" alt="${esc(t.name || '')} team card">` : '<p class="muted">Drawing the card…</p>'}
+    <div class="btn-row"><button class="btn primary" data-act="tcard-png" ${x.url ? '' : 'disabled'}>Download</button>${S.isGm ? `<button class="btn" data-act="tcard-discord" ${x.url ? '' : 'disabled'}>Post to Discord</button>` : ''}${x.posted ? `<span class="tag player">Posted to #${esc(x.posted)}</span>` : ''}</div></div>`; };
+ACTIONS['tcard-png'] = () => { const x = S.ui.tcard; if (!x || !x.url) return; const t = get('f1_teams', x.tid) || {}, a = document.createElement('a'); a.href = x.url; a.download = `${fileSafe(t.name)}-team-card.png`; document.body.appendChild(a); a.click(); a.remove(); };
+ACTIONS['tcard-discord'] = () => { const x = S.ui.tcard; if (!x || !x.blob) return; const t = get('f1_teams', x.tid) || {};
+  run(async () => { x.posted = await discordSend('standings', { content: `**${t.name}**: ${seriesDoc(t.seriesId || 'f1').name}, ${seasonDoc(curSeasonId(t.seriesId || 'f1')).name} season` }, { blob: x.blob, name: `${fileSafe(t.name)}-team-card.png` }); }, 'Posted to Discord.'); };
+
+/* ---------------------------------------------------------------- all-time and career standings */
+ACTIONS['stand-view'] = d => { S.ui.standView = d.v; render(); };
+function allTimeData(sid) {
+  const seasons = seriesSeasons(sid), drivers = new Map(), teams = new Map();
+  seasons.forEach(sea => { const st = standingsFor(sid, sea.id), done = seasonDone(sea.id);
+    st.drivers.forEach((d, i) => { const o = drivers.get(d.personId) || { personId: d.personId, name: d.name, charId: d.charId, teamId: d.teamId, seasons: 0, starts: 0, wins: 0, podiums: 0, pts: 0, titles: [] };
+      o.seasons++; o.starts += d.starts; o.wins += d.wins; o.podiums += d.podiums; o.pts += d.pts; o.teamId = d.teamId; o.name = d.name; if (done && i === 0) o.titles.push(sea.name); drivers.set(d.personId, o); });
+    st.teams.forEach((t, i) => { const o = teams.get(t.teamId) || { teamId: t.teamId, seasons: 0, wins: 0, podiums: 0, pts: 0, titles: [] }; o.seasons++; o.wins += t.wins; o.podiums += t.podiums; o.pts += t.pts; if (done && i === 0) o.titles.push(sea.name); teams.set(t.teamId, o); });
+    teamSeasonWeekends(sid, sea.id).filter(w => w.session === 'gp' && w.quali && w.quali.grid).forEach(w => { const pole = (w.results || []).find(r => r.id === w.quali.grid[0]); if (pole && drivers.get(pole.personId)) drivers.get(pole.personId).poles = (drivers.get(pole.personId).poles || 0) + 1; });
+  });
+  const order = (a, b) => b.titles.length - a.titles.length || b.wins - a.wins || b.podiums - a.podiums || b.pts - a.pts;
+  return { drivers: [...drivers.values()].sort(order), teams: [...teams.values()].sort(order), seasons };
+}
+function careerData() {
+  const people = new Map();
+  list('f1_weekends').filter(w => w.status === 'finished' && w.session !== 'test').forEach(w => (w.results || []).forEach(r => { if (!people.has(r.personId)) people.set(r.personId, { pid: r.personId, name: r.name, charId: r.charId }); }));
+  list('characters').filter(c => !c.retired && charApproved(c) && c.role === 'driver').forEach(c => { const pid = f1PcId(c.id); if (!people.has(pid)) people.set(pid, { pid, name: c.name, charId: c.id }); });
+  return [...people.values()].map(x => { const p = F1.person(x.pid) || { id: x.pid, name: x.name }, c = x.charId ? get('characters', x.charId) : null, rows = winsByChampionship(p, c);
+    const titles = []; careerRows(c).filter(r => r.status === 'canon' && String(r.pos) === '1').forEach(r => titles.push(`${seriesLabel(r)} ${r.years}`));
+    seriesIdsAll().forEach(sid => seriesSeasons(sid).filter(s => seasonDone(s.id)).forEach(s => { const st = standingsFor(sid, s.id); if (st.drivers[0] && st.drivers[0].personId === x.pid) titles.push(`F1 SIM ${seriesDoc(sid).short || seriesDoc(sid).name} ${s.name}`); }));
+    return { pid: x.pid, name: p.name || x.name, c, titles, wins: rows.reduce((s, r) => s + r.wins, 0), podiums: rows.reduce((s, r) => s + r.podiums, 0), champs: rows.length, list: rows.map(r => r.name) }; })
+    .filter(x => x.wins || x.podiums || x.titles.length || x.c).sort((a, b) => b.titles.length - a.titles.length || b.wins - a.wins || b.podiums - a.podiums || a.name.localeCompare(b.name));
+}
+const seriesIdsAll = () => [...new Set(list('f1_teams').map(t => t.seriesId || 'f1'))];
+const _standingsViewTeams = ROUTES.standings.view;
+ROUTES.standings.view = function () {
+  const v = S.ui.standView || 'season', sid = curSeriesId(), s = seriesDoc(sid);
+  const tabs = `<div class="seg stand-tabs" role="tablist" aria-label="Standings">${[['season', `${seasonDoc(curSeasonId(sid)).name} season`], ['alltime', 'All-time in F1 SIM'], ['career', 'Career: every championship']].map(([k, l]) => `<button role="tab" aria-selected="${v === k}" data-act="stand-view" data-v="${k}">${esc(l)}</button>`).join('')}</div>`;
+  if (v === 'season') { const h = _standingsViewTeams(), i = h.indexOf('</div></div>'); return i < 0 ? tabs + h : h.slice(0, i + 12) + tabs + h.slice(i + 12); }
+  const head = `<div class="page-head"><div><h1>Championship</h1><p>${v === 'alltime' ? `${esc(s.name)}: every F1 SIM season added up, from the first to this one. Titles count once a season is catalogued.` : 'Every driver’s whole career: their F1 SIM races in every series, and their canon seasons in other championships before it (Formula 2, F1 Academy, WEC and the rest). Only seasons Race Control has accepted count.'}</p></div></div>${tabs}`;
+  if (v === 'alltime') {
+    const a = allTimeData(sid);
+    return head + `<div class="cols2" style="align-items:start"><section class="card"><h2>Drivers</h2><div class="scroll-x"><table class="data"><thead><tr><th>Pos</th><th>Driver</th><th class="num">Seasons</th><th class="num">Starts</th><th class="num">Wins</th><th class="num">Podiums</th><th class="num">Poles</th><th class="num">Points</th><th>Titles</th></tr></thead><tbody>${a.drivers.map((d, i) => `<tr${S.charId && d.charId === S.charId ? ' class="me"' : ''}><td><b>${i + 1}</b></td><td>${careerLink(d.personId, d.name)}${d.charId ? ' <span class="tag player">Player</span>' : ''}</td><td class="num">${d.seasons}</td><td class="num">${d.starts}</td><td class="num">${d.wins}</td><td class="num">${d.podiums}</td><td class="num">${d.poles || 0}</td><td class="num"><b>${d.pts}</b></td><td>${d.titles.map(x => `<span class="tag trophy">${esc(x)}</span>`).join(' ')}</td></tr>`).join('')}</tbody></table></div></section>
+      <section class="card"><h2>Constructors</h2><div class="scroll-x"><table class="data"><thead><tr><th>Pos</th><th>Team</th><th class="num">Seasons</th><th class="num">Wins</th><th class="num">Podiums</th><th class="num">Points</th><th>Titles</th></tr></thead><tbody>${a.teams.map((t, i) => `<tr><td><b>${i + 1}</b></td><td><button class="link-btn" data-act="team-open" data-id="${esc(t.teamId)}" data-tab="history"><span class="f1-bar" style="background:${esc(f1Colour(t.teamId))}"></span>${esc((get('f1_teams', t.teamId) || {}).name || t.teamId)}</button></td><td class="num">${t.seasons}</td><td class="num">${t.wins}</td><td class="num">${t.podiums}</td><td class="num"><b>${t.pts}</b></td><td>${t.titles.map(x => `<span class="tag trophy">${esc(x)}</span>`).join(' ')}</td></tr>`).join('')}</tbody></table></div></section></div>
+      <p class="muted small">${plural(a.seasons.length, 'season')}: ${a.seasons.slice().reverse().map(x => esc(x.name) + (seasonDone(x.id) ? '' : ' (this season)')).join(', ')}.</p>`;
+  }
+  const cd = careerData();
+  return head + `<section class="card"><h2>Career standings</h2><div class="scroll-x"><table class="data"><thead><tr><th>Pos</th><th>Driver</th><th class="num">Titles</th><th class="num">Wins</th><th class="num">Podiums</th><th class="num">Championships</th><th>Titles won</th></tr></thead><tbody>${cd.map((d, i) => `<tr${S.charId && d.c && d.c.id === S.charId ? ' class="me"' : ''}><td><b>${i + 1}</b></td><td>${careerLink(d.pid, d.name)}${d.c ? ' <span class="tag player">Player</span>' : ''}<div class="muted small">${esc(d.list.join(', '))}</div></td><td class="num"><b>${d.titles.length}</b></td><td class="num">${d.wins}</td><td class="num">${d.podiums}</td><td class="num">${d.champs}</td><td>${d.titles.map(x => `<span class="tag trophy">${esc(x)}</span>`).join(' ')}</td></tr>`).join('')}</tbody></table></div>
+    <p class="muted small">F1 SIM races count automatically. Seasons in other championships come from each driver’s canon career record.</p></section>`;
+};
+
+/* =====================================================================
+   F1 SIM — JSON download and upload, for characters and seasons.
+   Characters: download one, yours, or (Race Control) everyone's; upload
+   to create drafts (players; ratings in the file are ignored and career
+   seasons await approval) or, for Race Control, approved characters with
+   the file's ratings. A character's own id in the file updates it.
+   Seasons: download any season with every result; Race Control uploads
+   past seasons (results matched to drivers and teams by name, points
+   filled in from the points table, new names added as drivers), which
+   become catalogued seasons. A file for the current season only sets its
+   engine era and round dates. Every upload is checked and previewed first.
+   ===================================================================== */
+'use strict';
+
+const IO_CH = 'f1sim-characters', IO_SEASON = 'f1sim-season';
+const slugOf = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'x';
+function downloadJson(name, obj) {
+  const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' }), url = URL.createObjectURL(blob), a = document.createElement('a');
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+function readJsonFile(el) {
+  return new Promise((ok, bad) => { const f = el.files && el.files[0]; if (!f) return bad(new Error('No file chosen.'));
+    if (f.size > 5e6) return bad(new Error('That file is over 5 MB.'));
+    const r = new FileReader(); r.onload = () => { try { ok(JSON.parse(String(r.result))); } catch (e) { bad(new Error('That isn’t valid JSON: ' + e.message)); } }; r.onerror = () => bad(new Error('The file couldn’t be read.')); r.readAsText(f); });
+}
+
+/* ---------------------------------------------------------------- characters out */
+const CH_TEXT = ['name', 'role', 'nationality', 'code', 'discord', 'faceclaim', 'portraitUrl', 'nickname', 'birthplace', 'bio', 'junior', 'helmet'];
+const RATING_KEYS = ['pace', 'consistency', 'wet', 'overtaking', 'defense', 'experience', 'mental', 'years', 'style'];
+function charToJson(c) {
+  const o = { id: c.id, status: charStatus(c) };
+  CH_TEXT.concat(FLAVOUR.map(f => f[0])).forEach(k => { if (c[k] != null && c[k] !== '') o[k] = c[k]; });
+  if (c.number) o.number = c.number;
+  if (careerRows(c).length) o.career = careerRows(c).map(r => ({ years: r.years, series: r.series, other: r.other || undefined, team: r.team || undefined, wins: r.wins === '' ? undefined : r.wins, podiums: r.podiums === '' ? undefined : r.podiums, poles: r.poles === '' ? undefined : r.poles, pos: r.pos || undefined, notes: r.notes || undefined, status: r.status || 'pending' }));
+  if (c.teamPref && (c.teamPref.first || c.teamPref.any)) o.teamPref = { first: c.teamPref.first || undefined, second: c.teamPref.second || undefined, why: c.teamPref.why || undefined, any: !!c.teamPref.any };
+  if (c.role === 'driver') { const p = F1.person(f1PcId(c.id)), r = p && p.approved ? f1DevApply(Object.assign({}, F1_ROOKIE, p), c.id) : rolledRatings(c);
+    if (r) { o.ratings = {}; RATING_KEYS.forEach(k => { if (r[k] != null) o.ratings[k] = r[k]; }); } }
+  return o;
+}
+const chBundle = cs => ({ format: IO_CH, version: 1, exportedAt: nowIso(), characters: cs.map(charToJson) });
+ACTIONS['io-ch-one'] = d => { const c = get('characters', d.id); if (c) downloadJson(`${fileSafe(c.name)}.json`, chBundle([c])); };
+ACTIONS['io-ch-mine'] = () => { const cs = myChars().filter(c => !c.retired); if (!cs.length) { toast('No characters to download yet.', true); return; } downloadJson('my-characters.json', chBundle(cs)); };
+ACTIONS['io-ch-all'] = () => { if (!S.isGm) return; downloadJson(`all-characters-${new Date().toISOString().slice(0, 10)}.json`, chBundle(list('characters').filter(c => !c.retired))); };
+ACTIONS['io-ch-template'] = () => downloadJson('character-template.json', { format: IO_CH, version: 1, characters: [{
+  name: 'Amelia Hart', role: 'driver', nationality: 'Scottish', code: 'HAR', number: 28, discord: 'amelia.hart', faceclaim: 'Who the picture shows', nickname: 'The Dundee Dart', birthplace: 'Dundee',
+  bio: 'Who they are: background, personality, how they got into the paddock.', junior: 'Karting and junior series.', helmet: 'Saltire blue with a gold stripe',
+  goals: 'Optional', fears: 'Optional', appearance: 'Optional', habits: 'Optional', hobbies: 'Optional', likes: 'Optional', dislikes: 'Optional', skills: 'Optional', family: 'Optional',
+  career: [{ years: '2025', series: 'Formula 2', team: 'ART', wins: 5, podiums: 11, poles: 4, pos: '1', notes: 'Optional' }, { years: '2024', series: 'Other', other: 'Super GT', team: 'Team Le Mans', wins: 1, podiums: 2, pos: '9' }],
+  teamPref: { first: 'mclaren', second: 'williams', why: 'Optional', any: false },
+  ratings: { pace: 82, consistency: 80, wet: 78, overtaking: 81, defense: 79, experience: 50, mental: 7, years: 4, style: 'technical' } }],
+  notes: { role: CHAR_ROLES.map(r => r[0]).join(', '), series: CAREER_GROUPS.flatMap(g => g[1]).join(', '), pos: '1 = champion, 2 to 10, 11 = lower, 0 = part season', style: F1_STYLES.map(s => s[0]).join(', '),
+    ratings: 'Used only when Race Control imports characters as approved. Players roll their ratings on the site.', teams: 'teamPref takes team ids or names.' } });
+
+/* ---------------------------------------------------------------- characters in */
+const capStr = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
+const teamIdOf = v => { const s = String(v || '').trim().toLowerCase(); if (!s) return ''; const t = list('f1_teams').find(x => x.id === s || String(x.name || '').toLowerCase() === s); return t ? t.id : null; };
+function normaliseChar(x, i, problems) {
+  const where = `Character ${i + 1}${x && x.name ? ` (${x.name})` : ''}`;
+  if (!x || typeof x !== 'object') { problems.push(`${where}: not an object.`); return null; }
+  const name = capStr(x.name, 60); if (!name) { problems.push(`${where}: needs a name.`); return null; }
+  const roles = CHAR_ROLES.map(r => r[0]), role = roles.indexOf(x.role) !== -1 ? x.role : 'driver';
+  if (x.role && roles.indexOf(x.role) === -1) problems.push(`${where}: role “${x.role}” isn’t one of ${roles.join(', ')}; using driver.`);
+  const o = { id: typeof x.id === 'string' ? x.id : null, name, role };
+  ['nationality', 'discord', 'faceclaim', 'nickname', 'birthplace', 'helmet'].forEach(k => { if (x[k]) o[k] = capStr(x[k], 120); });
+  ['bio', 'junior'].concat(FLAVOUR.map(f => f[0])).forEach(k => { if (x[k]) o[k] = capStr(x[k], 4000); });
+  if (x.code) o.code = String(x.code).toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
+  if (x.number != null && x.number !== '') { const n = Math.round(Number(x.number)); if (n >= 1 && n <= 99) o.number = n; else problems.push(`${where}: car number must be 1 to 99.`); }
+  if (x.portraitUrl && /^https?:\/\//.test(String(x.portraitUrl))) o.portraitUrl = String(x.portraitUrl).slice(0, 500);
+  if (x.discord) o.discord = String(x.discord).trim().replace(/^@+/, '').replace(/\s+/g, '').slice(0, 40);
+  const series = CAREER_GROUPS.flatMap(g => g[1]), num = v => v === '' || v == null || isNaN(Number(v)) ? '' : Math.max(0, Math.round(Number(v)));
+  o.career = (Array.isArray(x.career) ? x.career : []).slice(0, 40).map((r, j) => { if (!r || !r.years) { problems.push(`${where}, career season ${j + 1}: needs years.`); return null; }
+    const known = series.indexOf(r.series) !== -1, row = { years: capStr(r.years, 20), series: known ? r.series : 'Other', other: known ? capStr(r.other, 60) : capStr(r.other || r.series, 60), team: capStr(r.team, 60), wins: num(r.wins), podiums: num(r.podiums), poles: num(r.poles), pos: String(r.pos == null ? '' : r.pos), notes: capStr(r.notes, 200), status: ['canon', 'notcanon', 'pending'].indexOf(r.status) !== -1 ? r.status : 'pending' };
+    if (row.wins !== '' && row.podiums !== '' && row.wins > row.podiums) problems.push(`${where}, ${row.years} ${row.series}: more wins than podiums.`);
+    return row; }).filter(Boolean);
+  if (x.teamPref && typeof x.teamPref === 'object') { const f = teamIdOf(x.teamPref.first), s = teamIdOf(x.teamPref.second);
+    if (f === null) problems.push(`${where}: team “${x.teamPref.first}” isn’t on the grid.`); if (s === null) problems.push(`${where}: team “${x.teamPref.second}” isn’t on the grid.`);
+    o.teamPref = { first: f || '', second: s || '', why: capStr(x.teamPref.why, 200), any: !!x.teamPref.any }; }
+  if (x.ratings && typeof x.ratings === 'object' && role === 'driver') { const r = {};
+    ['pace', 'consistency', 'wet', 'overtaking', 'defense', 'experience'].forEach(k => { if (x.ratings[k] != null) r[k] = Math.max(1, Math.min(99, Math.round(Number(x.ratings[k]) || 0))); });
+    if (x.ratings.mental != null) r.mental = Math.max(1, Math.min(10, Math.round(Number(x.ratings.mental) || 5)));
+    if (x.ratings.years != null) r.years = Math.max(0, Math.min(40, Math.round(Number(x.ratings.years) || 0)));
+    if (x.ratings.style && F1_STYLES.some(s => s[0] === x.ratings.style)) r.style = x.ratings.style;
+    o.ratings = r; }
+  const existing = o.id ? get('characters', o.id) : null;
+  o.update = !!(existing && (existing.userId === S.uid || S.isGm)); if (!o.update) o.id = null;
+  return o;
+}
+CHANGES['io-ch-file'] = (v, d, el) => {
+  readJsonFile(el).then(j => {
+    const arr = j && j.format === IO_CH && Array.isArray(j.characters) ? j.characters : Array.isArray(j) ? j : j && j.name ? [j] : null;
+    if (!arr) throw new Error('This isn’t an F1 SIM characters file. Download the template to see the layout.');
+    const problems = [], items = arr.slice(0, 100).map((x, i) => normaliseChar(x, i, problems)).filter(Boolean);
+    S.ui.io = { kind: 'ch', items, problems, mode: 'draft' }; openDrawer('io');
+  }).catch(e => toast(e.message || String(e), true));
+  el.value = '';
+};
+CHANGES['io-mode'] = v => { if (S.ui.io) { S.ui.io.mode = v; renderOverlay(); } };
+ACTIONS['io-ch-run'] = () => {
+  const x = S.ui.io; if (!x || x.kind !== 'ch' || !x.items.length) return; const approve = S.isGm && x.mode === 'approved';
+  run(async () => {
+    let made = 0, updated = 0;
+    for (const it of x.items) {
+      const { update, ratings, career, ...fields } = it, id = update ? it.id : newId('ch'), prev = update ? get('characters', id) : null;
+      const rows = career.map(r => Object.assign({ id: newId('cr'), at: nowIso() }, r, { status: S.isGm ? (approve && r.status === 'pending' ? 'canon' : r.status) : 'pending' }));
+      const doc = Object.assign({}, prev ? clone(S.store.characters[id]) : { createdAt: nowIso(), userId: S.uid, status: 'draft' }, fields, { career: rows, updatedAt: nowIso() });
+      delete doc.update; delete doc.ratings; doc.id = undefined; delete doc.id;
+      if (approve && !(prev && charStatus(prev) === 'approved')) {
+        const pid = f1PcId(id), base = fields.role === 'driver' ? Object.assign({}, F1_ROOKIE, ratings || {}) : {};
+        await Data.put('f1_people', pid, Object.assign(base, { kind: ['principal', 'engineer', 'driver'].indexOf(fields.role) !== -1 ? fields.role : fields.role, charId: id, name: fields.name, abbr: fields.code || f1Code(fields.name), num: fields.number || null, flag: '', approved: true, imported: true, approvedAt: nowIso() }));
+        Object.assign(doc, { status: 'approved', decidedAt: nowIso(), gen: Object.assign({}, doc.gen || {}, { imported: true, style: (ratings || {}).style || 'technical' }) });
+      }
+      await Data.put('characters', id, doc); if (update) updated++; else made++;
+    }
+    await Data.audit('io.characters', `Imported characters: ${made} new, ${updated} updated${approve ? ', as approved' : ''}`);
+    closeDrawer();
+    toast(`${plural(made, 'character')} created${updated ? `, ${updated} updated` : ''}${approve ? ', approved' : ' as drafts'}.`);
+  });
+};
+
+/* ---------------------------------------------------------------- seasons out */
+function seasonToJson(sid, sea) {
+  const sd = seasonDoc(sea), cfg = engineConfig(sid, sea), s = seriesDoc(sid);
+  const ws = list('f1_weekends').filter(w => w.status === 'finished' && wSeries(w) === sid && wSeason(w) === sea && w.session !== 'test').sort((a, b) => String(a.finishedAt).localeCompare(String(b.finishedAt)));
+  return { format: IO_SEASON, version: 1, exportedAt: nowIso(), series: sid, seriesName: s.name, season: { name: sd.name, status: sd.status === 'archived' ? 'archived' : 'current', engine: cfg.formula },
+    rounds: ws.map(w => { const t = get('f1_tracks', w.trackId) || {}, grid = (w.quali && w.quali.grid) || [];
+      return { track: w.trackId, trackName: t.name || '', session: w.session, date: String(w.finishedAt || w.createdAt || '').slice(0, 10) || ((s.dates || {})[w.trackId] || ''),
+        results: (w.results || []).slice().sort((a, b) => (a.position || 99) - (b.position || 99)).map(r => ({ position: r.position || null, driver: r.name, code: r.id, team: r.teamId, teamName: (get('f1_teams', r.teamId) || {}).name || '', points: r.points || 0, grid: r.grid || (grid.indexOf(r.id) + 1) || null, stops: r.stops, status: r.position ? 'finished' : (r.gap || 'out') })) }; }),
+    dates: sd.status === 'archived' ? undefined : (s.dates || {}) };
+}
+CHANGES['io-season-pick'] = v => { S.ui.ioSeason = v; };
+ACTIONS['io-season-down'] = () => { const sid = curSeriesId(), sea = S.ui.ioSeason || curSeasonId(sid); downloadJson(`${sid}-${fileSafe(seasonDoc(sea).name)}-season.json`, seasonToJson(sid, sea)); };
+ACTIONS['io-season-template'] = () => downloadJson('season-template.json', { format: IO_SEASON, version: 1, series: curSeriesId(), season: { name: '2025', status: 'archived', engine: 'hybrid14' },
+  rounds: [{ track: 'australia', session: 'gp', date: '2025-03-16', results: [{ position: 1, driver: 'Lando Norris', team: 'mclaren', grid: 1 }, { position: 2, driver: 'Max Verstappen', team: 'redbull', grid: 3 }, { position: null, driver: 'Charles Leclerc', team: 'ferrari', status: 'Accident' }] },
+    { track: 'china', session: 'sprint', date: '2025-03-22', results: [{ position: 1, driver: 'Lewis Hamilton', team: 'ferrari' }] }],
+  notes: { status: 'archived = a past season (results become history); current = only sets this season’s engine era and dates', engine: ENGINE_ORDER.join(', '), track: list('f1_tracks').map(t => t.id).join(', '), session: 'gp or sprint',
+    team: 'team id or name in this series', points: 'optional: filled in from the points table by position', driver: 'matched by name; new names are added as drivers on the record' } });
+
+/* ---------------------------------------------------------------- seasons in (Race Control) */
+function checkSeason(j) {
+  const problems = [], warn = [];
+  if (!j || j.format !== IO_SEASON) return { problems: ['This isn’t an F1 SIM season file. Download the template to see the layout.'] };
+  const sid = j.series || curSeriesId(); if (!allSeries().some(s => s.id === sid)) problems.push(`Series “${sid}” doesn’t exist.`);
+  const name = capStr((j.season || {}).name, 40); if (!name) problems.push('The season needs a name.');
+  const status = (j.season || {}).status === 'current' ? 'current' : 'archived', engine = ENGINE_FORMULAS[(j.season || {}).engine] ? j.season.engine : null;
+  if ((j.season || {}).engine && !engine) problems.push(`Engine era “${j.season.engine}” isn’t one of ${ENGINE_ORDER.join(', ')}.`);
+  if (status === 'archived' && seriesSeasons(sid).some(s => s.name === name && !s.imported)) problems.push(`${name} is already a season of this series; give the imported season another name.`);
+  const tracks = list('f1_tracks'), trackOf = v => { const s = String(v || '').toLowerCase(); return tracks.find(t => t.id === s || String(t.name || '').toLowerCase() === s || String(t.circuit || '').toLowerCase() === s); };
+  const teams = list('f1_teams').filter(t => (t.seriesId || 'f1') === sid), teamOf = v => { const s = String(v || '').toLowerCase(); return teams.find(t => t.id === s || String(t.name || '').toLowerCase() === s); };
+  const people = list('f1_people'), newDrivers = new Set();
+  const rounds = (Array.isArray(j.rounds) ? j.rounds : []).slice(0, 60).map((r, i) => {
+    const t = trackOf(r.track || r.trackName), where = `Round ${i + 1}`; if (!t) { problems.push(`${where}: track “${r.track || r.trackName}” isn’t known.`); return null; }
+    const session = r.session === 'sprint' ? 'sprint' : 'gp', res = (Array.isArray(r.results) ? r.results : []).map((x, k) => {
+      const team = teamOf(x.team || x.teamName); if (!team) { problems.push(`${where} (${t.name}): team “${x.team || x.teamName}” isn’t in this series.`); return null; }
+      const dn = capStr(x.driver, 60); if (!dn) { problems.push(`${where} (${t.name}), result ${k + 1}: needs a driver.`); return null; }
+      const p = people.find(pp => String(pp.name || '').toLowerCase() === dn.toLowerCase()); if (!p) newDrivers.add(dn);
+      const pos = x.position == null || x.position === '' ? null : Math.round(Number(x.position)); return { pos, driver: dn, person: p || null, team: team.id, points: x.points, grid: x.grid, stops: x.stops, status: x.status, code: x.code };
+    }).filter(Boolean);
+    if (!res.length && status === 'archived') warn.push(`${where} (${t.name}) has no results.`);
+    return { track: t.id, name: t.name, session, date: /^\d{4}-\d{2}-\d{2}$/.test(String(r.date || '')) ? r.date : '', res };
+  }).filter(Boolean);
+  if (status === 'archived' && !rounds.length) problems.push('There are no rounds to import.');
+  return { problems, warn, sid, name, status, engine, rounds, newDrivers: [...newDrivers], dates: j.dates && typeof j.dates === 'object' ? j.dates : null };
+}
+CHANGES['io-season-file'] = (v, d, el) => {
+  if (!S.isGm) return;
+  readJsonFile(el).then(j => { S.ui.io = Object.assign({ kind: 'season' }, checkSeason(j)); openDrawer('io'); }).catch(e => toast(e.message || String(e), true));
+  el.value = '';
+};
+ACTIONS['io-season-run'] = () => {
+  const x = S.ui.io; if (!S.isGm || !x || x.kind !== 'season' || x.problems.length) return;
+  run(async () => {
+    if (x.status === 'current') {
+      const s = seriesDoc(x.sid), sea = curSeasonId(x.sid), dates = Object.assign({}, s.dates || {});
+      x.rounds.forEach(r => { if (r.date) dates[r.track] = r.date; }); if (x.dates) Object.keys(x.dates).forEach(k => { if (/^\d{4}-\d{2}-\d{2}$/.test(x.dates[k])) dates[k] = x.dates[k]; });
+      await Data.put('f1_series', x.sid, Object.assign(get('f1_series', x.sid) ? clone(S.store.f1_series[x.sid]) : { template: x.sid, activeSeason: sea }, { dates }));
+      if (x.engine) { const cur = get('f1_seasons', sea) ? clone(S.store.f1_seasons[sea]) : Object.assign({}, seasonDoc(sea)); delete cur.implicit; cur.engine = Object.assign({}, engineConfig(x.sid, sea), cur.engine || {}, { formula: x.engine }); await Data.put('f1_seasons', sea, cur); }
+      await Data.audit('io.season', `${seriesDoc(x.sid).name}: this season's dates${x.engine ? ' and engines' : ''} imported`); closeDrawer(); toast('This season’s dates and engines are updated.'); return;
+    }
+    const sea = `${x.sid}-imp-${slugOf(x.name)}`, rules = seriesRules(seriesDoc(x.sid)), sprintPts = rules.sprintPoints || [8, 7, 6, 5, 4, 3, 2, 1];
+    for (const w of list('f1_weekends').filter(w => wSeason(w) === sea && w.imported)) await Data.remove('f1_weekends', w.id);
+    const made = {};
+    for (const dn of x.newDrivers) { const id = `imp-${slugOf(dn)}`; if (!F1.person(id)) await Data.put('f1_people', id, Object.assign({}, F1_ROOKIE, { kind: 'driver', name: dn, abbr: f1Code(dn), approved: true, imported: true })); made[dn.toLowerCase()] = id; }
+    const ws = [];
+    x.rounds.forEach((r, i) => {
+      const day = r.date || `${x.name.replace(/\D/g, '').slice(0, 4) || '2000'}-01-${String(Math.min(28, i + 1)).padStart(2, '0')}`;
+      const results = r.res.slice().sort((a, b) => (a.pos || 99) - (b.pos || 99)).map(e => { const pid = e.person ? e.person.id : made[e.driver.toLowerCase()], p = e.person || {};
+        const pts = e.points != null && e.points !== '' ? Number(e.points) || 0 : e.pos ? ((r.session === 'sprint' ? sprintPts : rules.points)[e.pos - 1] || 0) : 0;
+        return { id: e.code || p.abbr || f1Code(e.driver), personId: pid, name: e.driver, teamId: e.team, charId: p.charId || null, position: e.pos, points: pts, grid: e.grid || null, stops: e.stops || 0, gap: e.pos ? null : (e.status || 'Out') }; });
+      const grid = results.filter(e => e.grid).sort((a, b) => a.grid - b.grid).map(e => e.id);
+      ws.push({ id: newId('f1w'), seriesId: x.sid, seasonId: sea, trackId: r.track, session: r.session, status: 'finished', imported: true, createdAt: `${day}T12:00:00.000Z`, finishedAt: `${day}T15:00:00.000Z`, results, quali: grid.length ? { grid } : null });
+    });
+    for (const w of ws) await Data.put('f1_weekends', w.id, w);
+    const st = standingsOf(ws), snap = { drivers: st.drivers.map(d => ({ personId: d.personId, name: d.name, teamId: d.teamId, teamName: (get('f1_teams', d.teamId) || {}).name || '', charId: d.charId || null, pts: d.pts, wins: d.wins, podiums: d.podiums })),
+      teams: st.teams.map(t => ({ teamId: t.teamId, name: t.name || (get('f1_teams', t.teamId) || {}).name, pts: t.pts, wins: t.wins })), races: ws.filter(w => w.session === 'gp').length, sprints: ws.filter(w => w.session === 'sprint').length };
+    await Data.put('f1_seasons', sea, { seriesId: x.sid, name: x.name, status: 'archived', imported: true, startedAt: ws[0] ? ws[0].createdAt : nowIso(), endedAt: ws.length ? ws[ws.length - 1].finishedAt : nowIso(), engine: { formula: x.engine || 'hybrid26', teams: {}, ratings: {} }, archive: snap });
+    await Data.audit('io.season', `${seriesDoc(x.sid).name} ${x.name} imported: ${plural(ws.length, 'round')}, ${x.newDrivers.length} new drivers`);
+    closeDrawer(); toast(`${x.name} imported: ${plural(ws.length, 'round')}${x.newDrivers.length ? `, ${plural(x.newDrivers.length, 'new driver')} on the record` : ''}.`);
+  });
+};
+
+/* ---------------------------------------------------------------- the preview */
+DRAWERS.io = function () {
+  const x = S.ui.io || {}, bad = (x.problems || []).length;
+  const probs = bad ? `<div class="card notice warn"><b>${plural(bad, 'thing')} to fix in the file:</b><ul>${x.problems.slice(0, 30).map(p => `<li>${esc(p)}</li>`).join('')}</ul></div>` : '';
+  if (x.kind === 'ch') {
+    const blocking = x.items.length === 0;
+    return `<header><div><h2>Import characters</h2><p>${plural(x.items.length, 'character')} in the file. Check them, then import.</p></div><button class="btn ghost" data-act="close-drawer">Close</button></header>
+      <div class="body">${probs}<div class="scroll-x"><table class="data compact"><thead><tr><th>Name</th><th>Role</th><th class="num">Career seasons</th><th>Flavour</th><th></th></tr></thead><tbody>${x.items.map(it => `<tr><td><b>${esc(it.name)}</b>${it.code ? ` <span class="muted small">${esc(it.code)}${it.number ? ' #' + it.number : ''}</span>` : ''}</td><td>${esc(charRoleName(it.role))}</td><td class="num">${it.career.length}</td><td>${flavourCount(it)} of ${FLAVOUR.length}</td><td>${it.update ? '<span class="tag open">Updates yours</span>' : '<span class="tag">New</span>'}</td></tr>`).join('')}</tbody></table></div>
+      ${S.isGm ? `<label class="field" style="max-width:420px">Import as<select data-change="io-mode"><option value="draft" ${x.mode === 'draft' ? 'selected' : ''}>Drafts (they roll and send their applications)</option><option value="approved" ${x.mode === 'approved' ? 'selected' : ''}>Approved, with the ratings in the file</option></select></label>` : '<p class="muted small">They arrive as drafts: roll the ratings and send each application as usual. Career seasons wait for Race Control.</p>'}
+      <div class="btn-row"><button class="btn primary" data-act="io-ch-run" ${blocking ? 'disabled' : ''}>Import ${plural(x.items.length, 'character')}</button></div></div>`;
+  }
+  if (x.kind === 'season') {
+    const results = (x.rounds || []).reduce((s, r) => s + r.res.length, 0);
+    return `<header><div><h2>Import a season</h2><p>${esc(seriesDoc(x.sid || 'f1').name)}, ${esc(x.name || '')}: ${x.status === 'current' ? 'this season’s engines and dates only' : 'a past season, catalogued'}.</p></div><button class="btn ghost" data-act="close-drawer">Close</button></header>
+      <div class="body">${probs}${(x.warn || []).length ? `<p class="small muted">${x.warn.map(esc).join(' ')}</p>` : ''}
+      <div class="metrics"><div class="metric"><b>${(x.rounds || []).filter(r => r.session === 'gp').length}</b><span>Grands Prix</span></div><div class="metric"><b>${(x.rounds || []).filter(r => r.session === 'sprint').length}</b><span>Sprints</span></div><div class="metric"><b>${results}</b><span>Results</span></div><div class="metric"><b>${(x.newDrivers || []).length}</b><span>New drivers</span></div></div>
+      ${x.engine ? `<p>Engines: <b>${esc(ENGINE_FORMULAS[x.engine].label)}</b>.</p>` : ''}
+      ${(x.newDrivers || []).length ? `<p class="small">Added to the record as drivers: ${x.newDrivers.map(esc).join(', ')}.</p>` : ''}
+      ${x.status === 'archived' ? '<p class="muted small">It becomes a catalogued season: on the Seasons page, in Teams’ previous championships, and in the all-time and career standings. Importing a season with the same name again replaces it.</p>' : ''}
+      <div class="btn-row"><button class="btn primary" data-act="io-season-run" ${bad ? 'disabled' : ''}>${x.status === 'current' ? 'Update this season' : 'Import the season'}</button></div></div>`;
+  }
+  return '';
+};
+
+/* ---------------------------------------------------------------- where the buttons live */
+const ioChCard = () => `<section class="card io-card"><h2>Import and export</h2><p class="muted small">Download characters as JSON to keep or edit, or upload a file to create them. Uploaded characters arrive as drafts; keep a character’s id in the file to update it.</p>
+  <div class="btn-row"><button class="btn" data-act="io-ch-mine">Download my characters</button><label class="btn file-btn">Upload characters<input type="file" accept="application/json,.json" class="sr-only" data-change="io-ch-file"></label><button class="btn ghost" data-act="io-ch-template">Download a template</button></div></section>`;
+const _charactersViewIo = ROUTES.characters.view;
+ROUTES.characters.view = function () { return _charactersViewIo() + ioChCard(); };
+const _seasonsViewIo = ROUTES.seasons.view;
+ROUTES.seasons.view = function () {
+  const sid = curSeriesId(), ss = seriesSeasons(sid);
+  return _seasonsViewIo() + `<section class="card io-card"><h2>Seasons as JSON</h2><p class="muted small">Download any season with every result. ${S.isGm ? 'Upload a past season to add it to the history, or a file for this season to set its engines and round dates.' : ''}</p>
+    <div class="btn-row"><label class="sr-only" for="io-season-pick">Season</label><select id="io-season-pick" data-change="io-season-pick">${ss.map(s => `<option value="${esc(s.id)}" ${s.id === (S.ui.ioSeason || curSeasonId(sid)) ? 'selected' : ''}>${esc(s.name)}${s.id === curSeasonId(sid) ? ' (this season)' : s.imported ? ' (imported)' : ''}</option>`).join('')}</select>
+      <button class="btn" data-act="io-season-down">Download the season</button>${S.isGm ? '<label class="btn file-btn">Upload a season<input type="file" accept="application/json,.json" class="sr-only" data-change="io-season-file"></label><button class="btn ghost" data-act="io-season-template">Download a template</button>' : ''}</div></section>`;
+};
+const _controlViewIo = ROUTES.control.view;
+ROUTES.control.view = function () {
+  return _controlViewIo() + `<section class="card io-card"><h2>Characters as JSON</h2><p class="muted small">Download every character, or upload a file: as drafts, or approved with the ratings in the file (handy for established drivers).</p>
+    <div class="btn-row"><button class="btn" data-act="io-ch-all">Download all characters</button><label class="btn file-btn">Upload characters<input type="file" accept="application/json,.json" class="sr-only" data-change="io-ch-file"></label><button class="btn ghost" data-act="io-ch-template">Download a template</button></div></section>`;
+};
 
 /* start-up: every part has registered its routes, drawers and actions */
 init();
