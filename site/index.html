@@ -646,15 +646,29 @@ table.data tr.me td, table.data tr.picked td, .data tr.me { background: var(--me
 .invite-new { margin: 12px 0; padding: 14px 16px; background: var(--panel-2); border: 1px solid var(--line); border-left: 4px solid var(--red); } .invite-code { display: block; margin: 6px 0 10px; font: 700 34px/1.1 ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.18em; color: var(--ink); user-select: all; }
 
 .pics-box summary { cursor: pointer; } .pics-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; } .pics-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 12px; align-items: center; } .pics-row .tm-face { width: 44px; height: 50px; }
+
+/* ---------- championship hub ---------- */
+.hub-tabs { margin: 0 0 14px; } .chance-key { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+.champ-card { background: var(--panel); border: 1px solid var(--line); border-top: 6px solid var(--cc, var(--red)); margin: 0 0 16px; }
+.champ-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; padding: 14px 18px 8px; } .champ-head h2 { display: inline; margin: 0 8px 0 0; font-size: 26px; font-style: italic; }
+.champ-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; } .champ-me { margin: 0; padding: 0 18px 6px; color: var(--ink); }
+.champ-card .scroll-x { padding: 0 18px; } .champ-prizes td, .champ-prizes th { vertical-align: top; } .champ-foot { margin: 0; padding: 8px 18px 14px; }
+.tag.league { background: var(--red); color: #FFFFFF; }
+.chance { display: inline-block; padding: 2px 10px; font-weight: 700; font-size: 13.5px; white-space: nowrap; }
+.chance.won { background: #F5C400; color: #2A2200; } .chance.contention { background: #1F3A2B; color: #7CD69C; } .chance.reach { background: #0E1A2B; color: #8CC2FF; }
+.chance.long { background: var(--panel-2); color: var(--ink); } .chance.out { background: #3D2321; color: #FFB3AD; } .chance.na { background: var(--panel-2); color: var(--muted); }
+.champ-years { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; } .champ-years li { padding: 6px 0; border-bottom: 1px solid var(--line); } .champ-years b { display: inline-block; min-width: 64px; }
+
+.hub-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 14px; } .hub-bar .hub-tabs { margin: 0; } .stand-tabs { display: flex; width: fit-content; flex-wrap: wrap; }
 </style>
 </head>
 <body>
 <div id="auth-root"><div class="boot"><div class="boot-card"><span class="brand-mark big" aria-hidden="true"></span><h1>F1 SIM</h1><p>Loading…</p></div></div></div>
 <div id="app"></div>
-<script>window.F1SIM_BUILD = 'f1sim-0.37.1'; window.F1SIM_VERSION = '0.37.1';</script>
+<script>window.F1SIM_BUILD = 'f1sim-0.38.0'; window.F1SIM_VERSION = '0.38.0';</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
-<script src="config.js?v=f1sim-0.37.1"></script>
-<script src="bridge.js?v=f1sim-0.37.1"></script>
+<script src="config.js?v=f1sim-0.38.0"></script>
+<script src="bridge.js?v=f1sim-0.38.0"></script>
 <noscript>F1 SIM needs JavaScript switched on.</noscript>
 </body>
 </html>

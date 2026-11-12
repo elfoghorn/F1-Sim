@@ -1,4 +1,4 @@
-/* F1 SIM v0.37.1 (build f1sim-0.37.1): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v0.38.0 (build f1sim-0.38.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -7752,6 +7752,173 @@ ROUTES.career.view = function () {
   const ctl = `<div class="btn-row char-actions">${picControls(p.id, !!p.portraitUrl)}</div>`;
   return at < 0 ? h : h.slice(0, at) + ctl + h.slice(at);
 };
+
+/* =====================================================================
+   F1 SIM — the championship hub.
+   The front of the Championship page: a card per championship (the
+   league's series, and every championship in canon career records) with
+   its prizes, who's leading, who last won each, and the character's
+   chance of each, worked out from the standings and the races left.
+   Each card opens that championship's own leaderboards.
+   ===================================================================== */
+'use strict';
+
+const CHANCE = { won: ['Won', 'won'], contention: ['In contention', 'contention'], reach: ['In reach', 'reach'], long: ['Long shot', 'long'], out: ['Out of reach', 'out'], role: ['Not for your role', 'na'], na: ['Not racing here', 'na'], record: ['On the record', 'reach'] };
+const chip = (k, why) => `<span class="chance ${CHANCE[k][1]}">${CHANCE[k][0]}</span>${why ? ` <span class="muted small">${esc(why)}</span>` : ''}`;
+const leagueSeriesIds = () => allSeries().filter(x => list('f1_teams').some(t => (t.seriesId || 'f1') === x.id)).map(x => x.id);
+function lastDone(sid) { return seriesSeasons(sid).filter(s => seasonDone(s.id))[0] || null; }
+function myRole(c) { return !c ? null : c.role === 'driver' ? 'driver' : c.role === 'principal' ? 'principal' : c.role === 'engineer' ? 'engineer' : 'other'; }
+
+/* ---------------------------------------------------------------- a league championship's prizes */
+function leagueCard(sid, c) {
+  const s = seriesDoc(sid), sea = curSeasonId(sid), st = standingsFor(sid, sea), rules = seriesRules(s), win = (rules.points || [25])[0] || 25;
+  const ws = teamSeasonWeekends(sid, sea).sort((a, b) => String(a.finishedAt).localeCompare(String(b.finishedAt))), gps = ws.filter(w => w.session === 'gp');
+  const total = roundsOf(sid), left = Math.max(0, total - gps.length), maxLeft = left * win, last = lastDone(sid), lastSt = last ? standingsFor(sid, last.id) : null;
+  const seat = c ? list('f1_seats').find(x => x.holderCharId === c.id && ((get('f1_teams', x.teamId) || {}).seriesId || 'f1') === sid) : null;
+  const role = myRole(c), pid = c ? f1PcId(c.id) : null, teamId = seat ? seat.teamId : null, car = seat ? seat.car : null;
+  /* What counts as "mine": the driver's own results, the principal's team, or the engineer's car. */
+  const mineR = r => role === 'driver' ? r.personId === pid : role === 'principal' ? r.teamId === teamId : role === 'engineer' ? r.teamId === teamId && String(r.car || 1) === String(car || 1) : false;
+  const myRes = gps.flatMap(w => (w.results || []).filter(mineR)), best = Math.min(99, ...myRes.map(r => r.position || 99));
+  const count = f => myRes.filter(f).length, poles = gps.filter(w => w.quali && w.quali.grid && (w.results || []).some(r => r.id === w.quali.grid[0] && mineR(r))).length;
+  const fls = gps.filter(w => w.state && w.state.fastest && (w.results || []).some(r => r.id === w.state.fastest.id && mineR(r))).length;
+  const name = id => (F1.person(id) || {}).name || id, tname = id => (get('f1_teams', id) || {}).name || id;
+  const by = (f) => { const m = new Map(); gps.forEach(w => (w.results || []).forEach(r => { if (f(r, w)) m.set(r.personId, (m.get(r.personId) || 0) + 1); })); return [...m.entries()].sort((a, b) => b[1] - a[1]); };
+  const lastGp = gps[gps.length - 1], lastWin = lastGp && (lastGp.results || []).find(r => r.position === 1), lastPole = lastGp && lastGp.quali && lastGp.quali.grid && (lastGp.results || []).find(r => r.id === lastGp.quali.grid[0]);
+  const trackName = w => (F1.track(w.trackId) || {}).name || '';
+  const notHere = !seat, nonRacing = role === 'other' || !c;
+  const titleChance = (rows, key, mineId, perRace) => {
+    if (!c) return '';
+    if (nonRacing) return chip('role'); if (notHere) return chip('na');
+    const i = rows.findIndex(x => x[key] === mineId), me = rows[i]; if (!gps.length) return chip('reach', 'The season hasn’t started: everyone starts level');
+    if (!me) return chip(perRace * left > (rows[0] || { pts: 0 }).pts ? 'long' : 'out', 'No points yet');
+    const gap = rows[0].pts - me.pts, room = perRace * left;
+    if (i === 0) return chip('contention', `Leading by ${rows[1] ? rows[0].pts - rows[1].pts : rows[0].pts} points`);
+    if (gap > room) return chip('out', `${gap} points behind; ${room} left to win`);
+    if (gap <= perRace) return chip('contention', `P${i + 1}, ${gap} behind`);
+    if (gap <= room * 0.35) return chip('reach', `P${i + 1}, ${gap} behind`);
+    return chip('long', `P${i + 1}, ${gap} behind`);
+  };
+  const raceChance = (got, near, what, none) => { if (!c) return ''; if (nonRacing) return chip('role'); if (notHere) return chip('na');
+    if (got) return chip('won', `${got} this season${role === 'principal' ? ' (the team)' : role === 'engineer' ? ' (your car)' : ''}`);
+    const why = none || (best < 99 ? `Best finish so far: P${best}` : what); return near ? chip('reach', why) : chip('long', why); };
+  const drv = st.drivers, tms = st.teams, winners = by(r => r.position === 1), podders = by(r => r.position && r.position <= 3);
+  const prizes = [
+    ['Drivers’ title', drv[0] ? `${drv[0].name}, ${drv[0].pts} pts` : 'Not started', lastSt && lastSt.drivers[0] ? `${lastSt.drivers[0].name}, ${last.name}` : '–',
+      role === 'driver' ? titleChance(drv, 'personId', pid, win) : role === 'engineer' && seat ? chip(drv.findIndex(x => x.teamId === teamId) === 0 ? 'contention' : 'long', 'Shared if your driver wins it') : c ? chip(nonRacing ? 'role' : notHere ? 'na' : 'role', role === 'principal' ? 'The drivers win this one' : '') : ''],
+    ['Constructors’ title', tms[0] ? `${tname(tms[0].teamId)}, ${tms[0].pts} pts` : 'Not started', lastSt && lastSt.teams[0] ? `${tname(lastSt.teams[0].teamId)}, ${last.name}` : '–',
+      role === 'principal' ? titleChance(tms, 'teamId', teamId, win + Math.round(win * 0.72)) : c && seat ? chip('role', `${tname(teamId)} are ${tms.findIndex(x => x.teamId === teamId) >= 0 ? 'P' + (tms.findIndex(x => x.teamId === teamId) + 1) : 'not on the board yet'}: your results count`) : c ? chip(nonRacing ? 'role' : 'na') : ''],
+    ['Grand Prix win', winners.length ? `${plural(winners.length, 'different winner')}; most: ${name(winners[0][0])} (${winners[0][1]})` : 'No races yet', lastWin ? `${lastWin.name}, ${trackName(lastGp)}` : '–', raceChance(count(r => r.position === 1), best <= 3, 'No results yet')],
+    ['Pole position', (() => { const m = new Map(); gps.forEach(w => { const r = w.quali && w.quali.grid && (w.results || []).find(x => x.id === w.quali.grid[0]); if (r) m.set(r.name, (m.get(r.name) || 0) + 1); }); const top = [...m.entries()].sort((a, b) => b[1] - a[1])[0]; return top ? `${top[0]} (${top[1]})` : 'No qualifying yet'; })(), lastPole ? `${lastPole.name}, ${trackName(lastGp)}` : '–', raceChance(poles, best <= 5, 'No results yet', 'No poles yet')],
+    ['Podium', podders.length ? `${plural(podders.length, 'driver')} have one; most: ${name(podders[0][0])} (${podders[0][1]})` : 'No races yet', lastGp ? (lastGp.results || []).filter(r => r.position && r.position <= 3).sort((a, b) => a.position - b.position).map(r => r.name.split(' ').pop()).join(', ') : '–', raceChance(count(r => r.position && r.position <= 3), best <= 6, 'No results yet')],
+    ['Points finish', `${plural(drv.filter(d => d.pts > 0).length, 'driver')} have scored`, '–', raceChance(count(r => (r.points || 0) > 0), best <= 13, 'No results yet')],
+    ['Fastest lap', (() => { const m = new Map(); gps.forEach(w => { const f = w.state && w.state.fastest, r = f && (w.results || []).find(x => x.id === f.id); if (r) m.set(r.name, (m.get(r.name) || 0) + 1); }); const top = [...m.entries()].sort((a, b) => b[1] - a[1])[0]; return top ? `${top[0]} (${top[1]})` : 'No races yet'; })(), (() => { const f = lastGp && lastGp.state && lastGp.state.fastest, r = f && (lastGp.results || []).find(x => x.id === f.id); return r ? `${r.name}, ${trackName(lastGp)}` : '–'; })(), raceChance(fls, best <= 10, 'No results yet', 'No fastest laps yet')]];
+  /* Titles in the same championship from career records (before F1 SIM). */
+  const canon = canonChamps().find(o => o.name === s.name);
+  if (canon) { const ts = canon.rows.filter(y => String(y.r.pos) === '1').sort((a, b) => String(b.r.years).localeCompare(String(a.r.years))), mineT = c ? ts.filter(y => y.c.id === c.id) : [];
+    prizes.push(['Title before F1 SIM', `${plural(ts.length, 'title')} on career records`, ts[0] ? `${ts[0].c.name}, ${ts[0].r.years}` : '–', !c ? '' : mineT.length ? chip('won', `Champion ${mineT.map(y => y.r.years).join(', ')} (career record)`) : chip('na', 'Not on the record')]); }
+  const status = gps.length ? `${seasonDoc(sea).name} season · ${gps.length} of ${total} rounds run · ${plural(left, 'Grand Prix', 'Grands Prix')} left` : `${seasonDoc(sea).name} season · not started · ${total} rounds`;
+  const me = !c ? '' : seat ? `${c.name} races here: ${seatTitle(seat).toLowerCase()}, ${tname(teamId)}` : '';
+  const foot = gps.length ? `About ${maxLeft} points are still to be won by one driver (${left} × ${win} for a win).` : 'Nobody has scored yet: every prize is open.';
+  return { kind: 'league', key: sid, name: s.name, col: (s.color || '#E10600'), status, me, mine: !!seat || !!(canon && c && canon.rows.some(y => y.c.id === c.id)), seated: !!seat, prizes, foot };
+}
+
+/* ---------------------------------------------------------------- championships from career records */
+function canonChamps() {
+  const m = new Map();
+  list('characters').filter(c => !c.retired && charApproved(c)).forEach(c => careerRows(c).filter(r => r.status === 'canon' && (r.role || 'driver') === 'driver').forEach(r => {
+    const k = seriesLabel(r), o = m.get(k) || { name: k, rows: [] }; o.rows.push({ c, r }); m.set(k, o); }));
+  return [...m.values()].sort((a, b) => b.rows.filter(x => String(x.r.pos) === '1').length - a.rows.filter(x => String(x.r.pos) === '1').length || a.name.localeCompare(b.name));
+}
+function canonCard(o, c) {
+  const titles = o.rows.filter(x => String(x.r.pos) === '1').sort((a, b) => String(b.r.years).localeCompare(String(a.r.years)));
+  const lb = canonBoard(o), mine = c ? o.rows.filter(x => x.c.id === c.id) : [], myTitles = mine.filter(x => String(x.r.pos) === '1');
+  const chance = !c ? '' : myTitles.length ? chip('won', `Champion ${myTitles.map(x => x.r.years).join(', ')}`) : mine.length ? chip('record', `${plural(mine.length, 'season')} on the record`) : chip('na', 'Not on the record');
+  return { kind: 'canon', key: o.name, name: o.name, col: '#565A63', status: `${plural(lb.length, 'character')} with seasons here`, me: '', mine: mine.length > 0,
+    prizes: [['Title', lb[0] && lb[0].titles ? `Most: ${lb[0].name} (${lb[0].titles})` : '–', titles[0] ? `${titles[0].c.name}, ${titles[0].r.years}` : 'No titles on record yet', chance],
+      ['Wins', lb.slice().sort((a, b) => b.wins - a.wins)[0] && lb.slice().sort((a, b) => b.wins - a.wins)[0].wins ? `Most: ${lb.slice().sort((a, b) => b.wins - a.wins)[0].name}` : '–', '–', !c ? '' : mine.some(x => Number(x.r.wins) > 0) ? chip('won', `${mine.reduce((s, x) => s + (Number(x.r.wins) || 0), 0)} on the record`) : chip('na')]],
+    foot: 'Not raced in the league: titles here come from canon career seasons.' };
+}
+function canonBoard(o) {
+  const m = new Map(); o.rows.forEach(({ c, r }) => { const x = m.get(c.id) || { pid: f1PcId(c.id), c, name: c.name, seasons: 0, titles: 0, wins: 0, podiums: 0, best: 99, years: [], roles: new Set() };
+    x.seasons++; if (String(r.pos) === '1') { x.titles++; x.years.push(r.years); } x.wins += Number(r.wins) || 0; x.podiums += Number(r.podiums) || 0; x.best = Math.min(x.best, Number(r.pos) || 99); x.roles.add(careerRoleName(r.role)); m.set(c.id, x); });
+  return [...m.values()].sort((a, b) => b.titles - a.titles || b.wins - a.wins || b.podiums - a.podiums || a.best - b.best);
+}
+
+/* ---------------------------------------------------------------- the hub */
+ACTIONS['hub-tab'] = d => { S.ui.hubTab = d.t; render(); };
+ACTIONS['champ-open'] = d => { S.ui.champ = { kind: d.kind, key: d.key }; S.ui.champTab = null; go('champ'); };
+function cardHtml(x, showChance) {
+  return `<section class="champ-card" style="--cc:${esc(x.col)}"><div class="champ-head"><div><h2>${esc(x.name)}</h2><span class="tag ${x.kind === 'league' ? 'league' : ''}">${x.kind === 'league' ? 'Raced in F1 SIM' : 'Career records'}</span>${x.seated && showChance ? ' <span class="tag player">You’re here</span>' : x.mine && showChance ? ' <span class="tag trophy">On your record</span>' : ''}</div>
+      <div class="champ-meta"><span class="muted">${esc(x.status)}</span><button class="btn small" data-act="champ-open" data-kind="${x.kind}" data-key="${esc(x.key)}">Leaderboards ›</button></div></div>
+    ${x.me && showChance ? `<p class="small champ-me">${esc(x.me)}</p>` : ''}
+    <div class="scroll-x"><table class="data champ-prizes"><thead><tr><th>Prize</th><th>Leading now</th><th>Last won by</th>${showChance ? '<th>Your chance</th>' : ''}</tr></thead><tbody>
+      ${x.prizes.map(p => `<tr><td><b>${esc(p[0])}</b></td><td>${esc(p[1])}</td><td class="muted">${esc(p[2])}</td>${showChance ? `<td>${p[3] || ''}</td>` : ''}</tr>`).join('')}</tbody></table></div>
+    <p class="muted small champ-foot">${esc(x.foot)}</p></section>`;
+}
+function hubHtml() {
+  const c = currentChar(), tab = S.ui.hubTab || (c ? 'me' : 'all');
+  const league = leagueSeriesIds().map(sid => leagueCard(sid, c)), lnames = new Set(league.map(x => x.name)), canon = canonChamps().filter(o => !lnames.has(o.name)).map(o => canonCard(o, c));
+  const tabs = `<div class="hub-bar"><span class="muted small">Show</span><div class="seg hub-tabs" role="tablist" aria-label="Show">${(c ? [['me', `For ${c.name.split(' ')[0]}`]] : []).concat([['all', 'Every championship'], ['records', 'Records']]).map(([k, l]) => `<button role="tab" aria-selected="${tab === k}" data-act="hub-tab" data-t="${k}">${esc(l)}</button>`).join('')}</div></div>`;
+  const key = `<div class="chance-key">${['won', 'contention', 'reach', 'long', 'out', 'na'].map(k => chip(k)).join(' ')}</div>`;
+  let body;
+  if (tab === 'records') {
+    const recs = leagueSeriesIds().map(sid => { const a = allTimeData(sid), s = seriesDoc(sid), byWins = a.drivers.slice().sort((x, y) => y.wins - x.wins)[0], byT = a.drivers[0];
+      return [s.name, byT && byT.titles.length ? `${byT.name} (${byT.titles.length})` : '–', byWins && byWins.wins ? `${byWins.name} (${byWins.wins})` : '–', a.teams[0] && a.teams[0].titles.length ? `${(get('f1_teams', a.teams[0].teamId) || {}).name} (${a.teams[0].titles.length})` : '–', 'league', sid]; })
+      .concat(canonChamps().filter(o => !leagueSeriesIds().some(sid => seriesDoc(sid).name === o.name)).map(o => { const b = canonBoard(o), w = b.slice().sort((x, y) => y.wins - x.wins)[0]; return [o.name, b[0] && b[0].titles ? `${b[0].name} (${b[0].titles})` : '–', w && w.wins ? `${w.name} (${w.wins})` : '–', '–', 'canon', o.name]; }));
+    body = `<section class="card"><h2>Records in every championship</h2><div class="scroll-x"><table class="data"><thead><tr><th>Championship</th><th>Most titles</th><th>Most wins</th><th>Most constructors’ titles</th><th></th></tr></thead><tbody>${recs.map(r => `<tr><td><b>${esc(r[0])}</b></td><td>${esc(r[1])}</td><td>${esc(r[2])}</td><td>${esc(r[3])}</td><td><button class="btn small" data-act="champ-open" data-kind="${r[4]}" data-key="${esc(r[5])}">Leaderboards ›</button></td></tr>`).join('')}</tbody></table></div></section>`;
+  } else {
+    const cards = tab === 'me' ? league.filter(x => x.mine).concat(canon.filter(x => x.mine)).concat(league.filter(x => !x.mine)) : league.concat(canon);
+    body = (tab === 'me' && c ? `<p class="muted">${esc(c.name)}: ${esc(charRoleName(c.role).toLowerCase())}. ${myRole(c) === 'principal' ? 'Chances are the team’s.' : myRole(c) === 'engineer' ? 'Chances are your car’s.' : myRole(c) === 'other' ? 'Racing prizes aren’t open to this role.' : ''}</p>${key}` : tab === 'all' && c ? key : '')
+      + cards.map(x => cardHtml(x, !!c)).join('') || '<p class="muted">No championships yet.</p>';
+  }
+  return `<div class="page-head"><div><h1>Championship</h1><p>Every prize in every championship, who’s leading, and ${c ? `${esc(c.name.split(' ')[0])}’s chance of each` : 'who won them last'}. Open a championship for its leaderboards.</p></div></div>`
+    + `<div class="seg stand-tabs" role="tablist" aria-label="Standings"><button role="tab" aria-selected="true" data-act="stand-view" data-v="hub">What’s up for grabs</button><button role="tab" aria-selected="false" data-act="stand-view" data-v="season">This season</button><button role="tab" aria-selected="false" data-act="stand-view" data-v="alltime">All-time in F1 SIM</button><button role="tab" aria-selected="false" data-act="stand-view" data-v="career">Career: every championship</button></div>`
+    + tabs + body;
+}
+const _standingsViewHub = ROUTES.standings.view;
+ROUTES.standings.view = function () {
+  if (!S.ui.standView) S.ui.standView = 'hub';
+  if (S.ui.standView === 'hub') return hubHtml();
+  return _standingsViewHub().replace('<div class="seg stand-tabs" role="tablist" aria-label="Standings">', '<div class="seg stand-tabs" role="tablist" aria-label="Standings"><button role="tab" aria-selected="false" data-act="stand-view" data-v="hub">What’s up for grabs</button>');
+};
+
+/* ---------------------------------------------------------------- one championship's leaderboards */
+ACTIONS['champ-tab'] = d => { S.ui.champTab = d.t; render(); };
+const lbTable = (head, rows) => `<div class="scroll-x"><table class="data"><thead><tr>${head.map(h => `<th${/^(Pts|Points|Wins|Podiums|Poles|Seasons|Starts|Races|Titles)$/.test(h) ? ' class="num"' : ''}>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('') || `<tr><td colspan="${head.length}" class="muted">Nobody yet.</td></tr>`}</tbody></table></div>`;
+const tagP = c => c ? ' <span class="tag player">Player</span>' : '';
+route('champ', 'Championship', function () {
+  const x = S.ui.champ; if (!x) { go('standings'); return ''; }
+  const back = '<button class="btn ghost small" data-act="nav" data-route="standings">‹ All championships</button>';
+  if (x.kind === 'canon') {
+    const o = canonChamps().find(y => y.name === x.key) || { name: x.key, rows: [] }, b = canonBoard(o);
+    const titles = o.rows.filter(y => String(y.r.pos) === '1').sort((a, z) => String(z.r.years).localeCompare(String(a.r.years)));
+    return `${back}<div class="page-head"><div><p class="eyebrow">Career records</p><h1>${esc(o.name)}</h1><p>Not raced in the league. Seasons and titles come from characters’ canon career records.</p></div></div>
+      <section class="card"><h2>Leaderboard</h2>${lbTable(['Pos', 'Character', 'Titles', 'Wins', 'Podiums', 'Seasons', 'Best', 'Role'], b.map((r, i) => `<tr><td><b>${i + 1}</b></td><td>${careerLink(r.pid, r.name)}</td><td class="num">${r.titles ? `<span class="tag trophy">${r.titles}</span>` : 0}</td><td class="num">${r.wins}</td><td class="num">${r.podiums}</td><td class="num">${r.seasons}</td><td>${r.best === 1 ? 'Champion' : r.best < 99 ? ordinal(r.best) : '–'}</td><td class="muted">${esc([...r.roles].join(', '))}</td></tr>`))}</section>
+      <section class="card"><h2>Champions by year</h2>${titles.length ? `<ul class="champ-years">${titles.map(y => `<li><b>${esc(y.r.years)}</b> ${careerLink(f1PcId(y.c.id), y.c.name)}${y.r.team ? ` <span class="muted">· ${esc(y.r.team)}</span>` : ''}${(y.r.role || 'driver') !== 'driver' ? ` <span class="muted">(${esc(careerRoleName(y.r.role).toLowerCase())})</span>` : ''}</li>`).join('')}</ul>` : '<p class="muted">No titles on record yet.</p>'}</section>`;
+  }
+  const sid = x.key, s = seriesDoc(sid), sea = curSeasonId(sid), tab = S.ui.champTab || 'season', tname = id => (get('f1_teams', id) || {}).name || id;
+  const tabs = `<div class="seg" role="tablist" aria-label="Leaderboards">${[['season', `${seasonDoc(sea).name} season`], ['alltime', 'All-time'], ['champions', 'Champions']].map(([k, l]) => `<button role="tab" aria-selected="${tab === k}" data-act="champ-tab" data-t="${k}">${esc(l)}</button>`).join('')}</div>`;
+  let body = '';
+  if (tab === 'season') {
+    const st = standingsFor(sid, sea);
+    body = `<div class="cols2" style="align-items:start"><section class="card"><h2>Drivers</h2>${lbTable(['Pos', 'Driver', 'Team', 'Wins', 'Podiums', 'Pts'], st.drivers.map((d, i) => `<tr${S.charId && d.charId === S.charId ? ' class="me"' : ''}><td><b>${i + 1}</b></td><td>${careerLink(d.personId, d.name)}${tagP(d.charId)}</td><td><span class="f1-bar" style="background:${esc(f1Colour(d.teamId))}"></span>${esc(tname(d.teamId))}</td><td class="num">${d.wins}</td><td class="num">${d.podiums}</td><td class="num"><b>${d.pts}</b></td></tr>`))}</section>
+      <section class="card"><h2>Constructors</h2>${lbTable(['Pos', 'Team', 'Wins', 'Podiums', 'Pts'], st.teams.map((t, i) => `<tr><td><b>${i + 1}</b></td><td><button class="link-btn" data-act="team-open" data-id="${esc(t.teamId)}"><span class="f1-bar" style="background:${esc(f1Colour(t.teamId))}"></span>${esc(tname(t.teamId))}</button></td><td class="num">${t.wins}</td><td class="num">${t.podiums}</td><td class="num"><b>${t.pts}</b></td></tr>`))}</section></div>`;
+  } else if (tab === 'alltime') {
+    const a = allTimeData(sid), tp = staffStats(sid, 'principal'), eng = staffStats(sid, 'engineer');
+    const staffRows = rows => rows.map((o, i) => `<tr><td><b>${i + 1}</b></td><td>${careerLink(o.pid, o.name)}${tagP(o.charId)}</td><td class="num">${o.races}</td><td class="num">${o.wins}</td><td class="num">${o.podiums}</td><td>${o.titles.map(t => `<span class="tag trophy">${esc(t)}</span>`).join(' ')}</td></tr>`);
+    body = `<div class="cols2" style="align-items:start"><section class="card"><h2>Drivers</h2>${lbTable(['Pos', 'Driver', 'Seasons', 'Wins', 'Podiums', 'Points', 'Titles'], a.drivers.map((d, i) => `<tr><td><b>${i + 1}</b></td><td>${careerLink(d.personId, d.name)}${tagP(d.charId)}</td><td class="num">${d.seasons}</td><td class="num">${d.wins}</td><td class="num">${d.podiums}</td><td class="num"><b>${d.pts}</b></td><td>${d.titles.map(t => `<span class="tag trophy">${esc(t)}</span>`).join(' ')}</td></tr>`))}</section>
+      <section class="card"><h2>Constructors</h2>${lbTable(['Pos', 'Team', 'Seasons', 'Wins', 'Points', 'Titles'], a.teams.map((t, i) => `<tr><td><b>${i + 1}</b></td><td>${esc(tname(t.teamId))}</td><td class="num">${t.seasons}</td><td class="num">${t.wins}</td><td class="num"><b>${t.pts}</b></td><td>${t.titles.map(z => `<span class="tag trophy">${esc(z)}</span>`).join(' ')}</td></tr>`))}</section></div>
+      <div class="cols2" style="align-items:start"><section class="card"><h2>Team principals</h2><p class="muted small">Their team’s results while in charge.</p>${lbTable(['Pos', 'Principal', 'Races', 'Wins', 'Podiums', 'Titles'], staffRows(tp))}</section>
+      <section class="card"><h2>Race engineers</h2><p class="muted small">Their car’s results.</p>${lbTable(['Pos', 'Engineer', 'Races', 'Wins', 'Podiums', 'Titles'], staffRows(eng))}</section></div>`;
+  } else {
+    const seasons = seriesSeasons(sid).filter(z => seasonDone(z.id)), canon = canonChamps().find(o => o.name === s.name);
+    const ct = canon ? canon.rows.filter(y => String(y.r.pos) === '1').sort((a, z) => String(z.r.years).localeCompare(String(a.r.years))) : [];
+    body = `<section class="card"><h2>F1 SIM champions</h2>${seasons.length ? lbTable(['Season', 'Drivers’ champion', 'Constructors’ champions'], seasons.map(z => { const st = standingsFor(sid, z.id); return `<tr><td><b>${esc(z.name)}</b>${z.imported ? ' <span class="muted small">imported</span>' : ''}</td><td>${st.drivers[0] ? careerLink(st.drivers[0].personId, st.drivers[0].name) + tagP(st.drivers[0].charId) : '–'}</td><td>${st.teams[0] ? esc(tname(st.teams[0].teamId)) : '–'}</td></tr>`; })) : '<p class="muted">No season catalogued yet. The current season’s champions appear here once it’s catalogued.</p>'}</section>
+      ${ct.length ? `<section class="card"><h2>${esc(s.name)} champions before F1 SIM</h2><p class="muted small">From characters’ canon career records.</p><ul class="champ-years">${ct.map(y => `<li><b>${esc(y.r.years)}</b> ${careerLink(f1PcId(y.c.id), y.c.name)}${y.r.team ? ` <span class="muted">· ${esc(y.r.team)}</span>` : ''}</li>`).join('')}</ul></section>` : ''}`;
+  }
+  return `${back}<div class="page-head"><div><p class="eyebrow">Raced in F1 SIM</p><h1>${esc(s.name)}</h1><p>${esc(leagueCard(sid, null).status)}</p></div></div>${tabs}${body}`;
+});
+if (LIMITED_ROUTES.indexOf('champ') === -1) LIMITED_ROUTES.push('champ');
 
 /* start-up: every part has registered its routes, drawers and actions */
 init();

@@ -25,6 +25,20 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v0.38.0: the championship hub
+
+12 November 2026. Build `f1sim-0.38.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| What's up for grabs | The new front of the Championship page. A card for every championship: the league's series (Formula 1, Formula 2, Formula 3) and every championship in canon career records (WRC and so on). Each lists its prizes (drivers' title, constructors' title, Grand Prix win, pole position, podium, points finish, fastest lap) with who's leading now, who won it last, and your character's chance. "Show": For your character (their championships first), Every championship, or Records (most titles and wins in each). |
+| Your chance | Worked out from the standings and the races left: Won, In contention (leading, or within one win of the lead), In reach, Long shot, Out of reach (not possible with the points left), or Not for your role / Not racing here, each with a reason ("P5, 28 behind", "Best finish so far: P4", "McLaren are P1: your results count"). Team principals see their team's chances; race engineers their car's. A line under each card says how many points are still to be won. |
+| Career records | A league championship's card also shows titles in the same series from career records ("Title before F1 SIM"). Career-record championships count driver seasons; team-role seasons stay in the role standings. |
+| Leaderboards | Each card opens that championship's page. League series: This season (drivers, constructors), All-time (drivers, constructors, team principals, race engineers) and Champions (every catalogued season, plus titles before F1 SIM from career records). Career-record championships: a leaderboard by titles, wins and podiums, and the champions by year. |
+| The other views | This season, All-time in F1 SIM and Career: every championship stay as tabs. |
+
+---
+
 ## v0.37.1: pictures for real people, and "open for players" on Teams
 
 12 November 2026. Build `f1sim-0.37.1`. **No database update.**
