@@ -1,4 +1,4 @@
-/* F1 SIM v0.37.0 (build f1sim-0.37.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v0.37.1 (build f1sim-0.37.1): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -4629,7 +4629,7 @@ route('career', 'Character', function () {
 
   let h = `<button class="linkish small" data-act="nav" data-route="people">All characters</button>
   <section class="char-hero" style="--team:${esc(color)}"><div class="char-banner">${brand.banner ? `<img src="${esc(brand.banner)}" alt="">` : ''}</div>
-    <div class="char-id"><div class="char-photo">${c && c.portraitUrl ? `<img src="${esc(c.portraitUrl)}" alt="${esc(p.name)}">` : `<span class="ppl-init" aria-hidden="true">${esc(initialsOf(p.name))}</span>`}</div>
+    <div class="char-id"><div class="char-photo">${(c && c.portraitUrl) || (!c && p.portraitUrl) ? `<img src="${esc((c && c.portraitUrl) || p.portraitUrl)}" alt="${esc(p.name)}">` : `<span class="ppl-init" aria-hidden="true">${esc(initialsOf(p.name))}</span>`}</div>
       <div class="char-name"><p class="muted">${brand.logo ? `<img class="team-logo tiny" src="${esc(brand.logo)}" alt="">` : ''}${esc(role)}${where ? `, ${esc(where)}` : ''}${c ? '' : '. Real, not a player'}</p>
         <h1>${p.flag ? esc(p.flag) + ' ' : ''}${esc(p.name)}</h1>
         <p class="muted">${[c && c.nickname ? `“${c.nickname}”` : '', p.num || (c && c.number) ? '#' + (c && c.number || p.num) : '', c && c.nationality, c && c.birthplace ? 'from ' + c.birthplace : '', years ? plural(years, 'year') + ' of experience' : '', styleLbl].filter(Boolean).map(esc).join('. ')}</p></div>
@@ -4755,7 +4755,7 @@ const fmtRaceTime = s => { const h = Math.floor(s / 3600), m = Math.floor((s % 3
 function exportRows(w, key) {
   const ents = w.entrants || f1Entrants(), info = id => { const e = ents.find(x => x.id === id) || { id, name: id };
     const c = e.charId ? get('characters', e.charId) : null, p = e.personId ? F1.person(e.personId) : null;
-    return { id, code: id, name: e.name || id, team: (get('f1_teams', e.teamId) || {}).name || '', color: f1Colour(e.teamId), num: (c && c.number) || (p && p.num) || '', portrait: c && c.portraitUrl ? c.portraitUrl : null }; };
+    return { id, code: id, name: e.name || id, team: (get('f1_teams', e.teamId) || {}).name || '', color: f1Colour(e.teamId), num: (c && c.number) || (p && p.num) || '', portrait: (c && c.portraitUrl) || (p && p.portraitUrl) || null }; };
   let rows = [];
   if (/^fp/.test(key)) {
     const s = endedSessions(w).find(x => `fp${x.n}` === key); if (!s) return [];
@@ -6614,7 +6614,7 @@ function teamsCtx() {
 function teamDrivers(t, sid, sea, st) {
   if (sea === curSeasonId(sid)) return list('f1_seats').filter(s => s.teamId === t.id && s.role === 'driver').sort((a, b) => (a.car || 0) - (b.car || 0)).map(s => {
     const c = s.holderCharId ? get('characters', s.holderCharId) : null, p = c ? F1.person(f1PcId(c.id)) : F1.person(s.defaultPersonId) || {}, pid = c ? f1PcId(c.id) : s.defaultPersonId;
-    const i = st.drivers.findIndex(d => d.personId === pid); return { pid, name: c ? c.name : p.name || 'Open seat', num: c ? c.number : p.num, player: !!c, c, pos: i + 1, pts: i >= 0 ? st.drivers[i].pts : 0 }; });
+    const i = st.drivers.findIndex(d => d.personId === pid); return { pid, name: c ? c.name : p.name || 'Open seat', num: c ? c.number : p.num, player: !!c, canon: !c && !!p.name, c, pos: i + 1, pts: i >= 0 ? st.drivers[i].pts : 0 }; });
   return st.drivers.map((d, i) => Object.assign({}, d, { pos: i + 1 })).filter(d => d.teamId === t.id).slice(0, 3).map(d => ({ pid: d.personId, name: d.name, num: (F1.person(d.personId) || {}).num, player: !!d.charId, c: d.charId ? get('characters', d.charId) : null, pos: d.pos, pts: d.pts }));
 }
 function teamStaffLine(t) {
@@ -6631,8 +6631,8 @@ route('teams', 'Teams', function () {
   const card = t => { const i = st.teams.findIndex(x => x.teamId === t.id), row = st.teams[i] || { pts: 0 }, col = f1Colour(t.id), ink = inkOn(col), ds = teamDrivers(t, sid, sea, st);
     return `<button class="tm-card" data-act="team-open" data-id="${esc(t.id)}" aria-label="Open ${esc(t.name)}">
       <span class="tm-band" style="background:${esc(col)};color:${ink}"><span><b>${esc(t.name)}</b><br><small>${esc(teamEngine(t.id, sid, sea))}</small></span><span class="tm-pos"><b>${i >= 0 ? `P${i + 1}` : '–'}</b><br><small>${row.pts} pts</small></span></span>
-      <span class="tm-drivers">${ds.map(d => `<span class="tm-driver"><span class="tm-face" style="${d.player ? `background:${esc(col)};color:${ink}` : ''}">${d.c && d.c.portraitUrl ? `<img src="${esc(d.c.portraitUrl)}" alt="">` : esc(initials(d.name))}</span>
-        <span><b>${esc(d.name)}</b>${d.player ? ' <span class="tag player">Player</span>' : ''}<br><small class="muted">${d.pos ? `P${d.pos}, ${d.pts} pts` : 'No points yet'}</small></span><span class="tm-num">${esc(d.num || '')}</span></span>`).join('') || '<span class="muted small">No results this season.</span>'}</span>
+      <span class="tm-drivers">${ds.map(d => `<span class="tm-driver"><span class="tm-face" style="${d.player ? `background:${esc(col)};color:${ink}` : ''}">${personPic(d.pid, d.c) ? `<img src="${esc(personPic(d.pid, d.c))}" alt="">` : esc(initials(d.name))}</span>
+        <span><b>${esc(d.name)}</b>${d.player ? ' <span class="tag player">Player</span>' : ''}${d.canon ? ' <span class="muted small">(open for players)</span>' : ''}<br><small class="muted">${d.pos ? `P${d.pos}, ${d.pts} pts` : 'No points yet'}</small></span><span class="tm-num">${esc(d.num || '')}</span></span>`).join('') || '<span class="muted small">No results this season.</span>'}</span>
       ${typeof teamStaffHtml === 'function' ? teamStaffHtml(t, sid, sea) : ''}
       <span class="tm-foot"><span></span><b>Open team ›</b></span></button>`; };
   return `<div class="page-head"><div><p class="eyebrow">${esc(s.name)} · ${esc(seasonDoc(sea).name)} season · ${current ? `after round ${done} of ${roundsOf(sid)}` : 'final standings'}</p><h1>Teams</h1></div>
@@ -6672,7 +6672,7 @@ function teamLineup(t) {
   const seats = list('f1_seats').filter(s => s.teamId === t.id).sort((a, b) => ({ driver: 0, principal: 1, engineer: 2 }[a.role] - { driver: 0, principal: 1, engineer: 2 }[b.role]) || (a.car || 0) - (b.car || 0));
   return seats.map(s => { const c = s.holderCharId ? get('characters', s.holderCharId) : null, p = !c && s.defaultPersonId ? F1.person(s.defaultPersonId) : null;
     const role = s.role === 'driver' ? `Driver, car ${s.car || 1}` : s.role === 'principal' ? 'Team principal' : `Race engineer${s.car ? `, car ${s.car}` : ''}`;
-    return { role, c, pid: c ? f1PcId(c.id) : p ? p.id : null, name: c ? c.name : p ? p.name : 'Open post', player: !!c, open: !c && !p, num: c ? c.number : p ? p.num : '' }; });
+    return { role, c, pid: c ? f1PcId(c.id) : p ? p.id : null, name: c ? c.name : p ? p.name : 'Open post', player: !!c, open: !c && !p, canon: !c && !!p, num: c ? c.number : p ? p.num : '' }; });
 }
 route('teamview', 'Team', function () {
   const t = get('f1_teams', S.ui.teamView); if (!t) return '<div class="empty">Choose a team from Teams.</div>';
@@ -6688,8 +6688,8 @@ route('teamview', 'Team', function () {
     const d = teamSeasonData(t.id, sid, sea), maxP = Math.max(1, ...d.rounds.map(r => r.pts));
     h += `<div class="metrics tm-stats">${[[d.pos ? `P${d.pos}` : '–', 'Constructors’ championship'], [d.pts, 'Points'], [d.wins, 'Wins'], [d.podiums, 'Podiums'], [d.poles, 'Poles'], [d.fls, 'Fastest laps']].map(([v, k]) => `<div class="metric"><b>${esc(v)}</b><span>${esc(k)}</span></div>`).join('')}</div>`;
     if (sea === curSeasonId(sid)) h += `<section class="card"><h2>Line-up</h2><div class="tm-lineup">${teamLineup(t).map(m => `<${m.pid ? `button data-act="career" data-id="${esc(m.pid)}"` : 'div'} class="tm-member ${m.player ? 'player' : m.open ? 'open' : ''}">
-        <span class="tm-face" style="${m.player ? `background:${esc(col)};color:${ink}` : ''}">${m.c && m.c.portraitUrl ? `<img src="${esc(m.c.portraitUrl)}" alt="">` : m.open ? '+' : esc(initials(m.name))}</span>
-        <span><small class="muted">${esc(m.role)}</small><br><b>${esc(m.name)}</b>${m.player ? ' <span class="tag player">Player</span>' : ''}<br><small class="muted">${m.open ? 'Apply on the site' : m.num ? '#' + esc(m.num) : m.player ? '' : 'Computer-run'}</small></span></${m.pid ? 'button' : 'div'}>`).join('')}</div></section>`;
+        <span class="tm-face" style="${m.player ? `background:${esc(col)};color:${ink}` : ''}">${personPic(m.pid, m.c) ? `<img src="${esc(personPic(m.pid, m.c))}" alt="">` : m.open ? '+' : esc(initials(m.name))}</span>
+        <span><small class="muted">${esc(m.role)}</small><br><b>${esc(m.name)}</b>${m.player ? ' <span class="tag player">Player</span>' : ''}${m.canon ? ' <span class="muted small">(open for players)</span>' : ''}<br><small class="muted">${m.open ? 'Apply on the site' : m.num ? '#' + esc(m.num) : m.player ? '' : 'Computer-run'}</small></span></${m.pid ? 'button' : 'div'}>`).join('')}</div></section>`;
     h += d.rounds.length ? `<section class="card"><h2>Points by round</h2><p class="muted small">Both cars together, sprints included.</p>
         <svg class="tm-bars" viewBox="0 0 ${Math.max(360, d.rounds.length * 56 + 40)} 200" width="${Math.max(360, d.rounds.length * 56 + 40)}" height="200" role="img" aria-label="${esc(t.name)} points by round: ${d.rounds.map(r => r.pts).join(', ')}">
         <line x1="20" y1="168" x2="${d.rounds.length * 56 + 30}" y2="168" stroke="var(--line)"></line>${d.rounds.map((r, i) => { const hh = r.pts / maxP * 130; return `<rect x="${30 + i * 56}" y="${168 - hh}" width="40" height="${hh}" fill="${esc(col)}"></rect><text x="${50 + i * 56}" y="${160 - hh}" text-anchor="middle" class="tm-bar-v">${r.pts}</text><text x="${50 + i * 56}" y="188" text-anchor="middle" class="tm-bar-l">${esc(r.code)}</text>`; }).join('')}</svg></section>
@@ -6699,7 +6699,7 @@ route('teamview', 'Team', function () {
     h += `<section class="card"><h2>Honours</h2><div class="metrics tm-honours"><div class="metric ${hist.titles ? 'gold' : ''}"><b>${hist.titles}</b><span>Constructors’ titles</span></div><div class="metric ${hist.dTitles.length ? 'gold' : ''}"><b>${hist.dTitles.length}</b><span>Drivers’ titles${hist.dTitles.length ? `: ${esc(hist.dTitles.join('; '))}` : ''}</span></div><div class="metric"><b>${hist.wins}</b><span>Grand Prix wins</span></div><div class="metric"><b>${hist.podiums}</b><span>Podiums in ${hist.starts ? Math.round(hist.starts / 2) : 0} Grands Prix</span></div></div></section>
       <section class="card"><h2>Season by season</h2>${hist.rows.length ? `<div class="scroll-x"><table class="data"><thead><tr><th>Season</th><th>Engines</th><th>Constructors’</th><th class="num">Points</th><th class="num">Wins</th><th class="num">Podiums</th><th>Drivers (championship)</th></tr></thead><tbody>${hist.rows.map(r => `<tr><td><b>${esc(r.season)}</b>${r.done ? '' : ' <span class="muted small">so far</span>'}</td><td class="muted">${esc(r.engines)}</td><td>${r.done && r.pos === 1 ? '<span class="tag trophy">Champions</span>' : `P${r.pos}`}</td><td class="num"><b>${r.pts}</b></td><td class="num">${r.wins}</td><td class="num">${r.podiums}</td><td>${esc(r.drivers)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">No seasons yet.</p>'}</section>
       <section class="card"><h2>Everyone who has driven for ${esc(t.name)}</h2>${hist.people.length ? `<div class="tm-lineup">${hist.people.map(p => { const c = p.charId ? get('characters', p.charId) : null;
-        return `<button class="tm-member" data-act="career" data-id="${esc(p.pid)}"><span class="tm-face" style="${c ? `background:${esc(col)};color:${ink}` : ''}">${c && c.portraitUrl ? `<img src="${esc(c.portraitUrl)}" alt="">` : esc(initials(p.name))}</span><span><b>${esc(p.name)}</b>${p.champ.length ? ` <span class="tag trophy">Champion ${esc(p.champ.join(', '))}</span>` : ''}<br><small class="muted">${esc([...p.seasons].join(', '))} · ${plural(p.starts, 'start')} · ${plural(p.wins, 'win')}${c ? ' · player' : ''}</small></span></button>`; }).join('')}</div>` : '<p class="muted">Nobody yet.</p>'}</section>`;
+        return `<button class="tm-member" data-act="career" data-id="${esc(p.pid)}"><span class="tm-face" style="${c ? `background:${esc(col)};color:${ink}` : ''}">${personPic(p.pid, c) ? `<img src="${esc(personPic(p.pid, c))}" alt="">` : esc(initials(p.name))}</span><span><b>${esc(p.name)}</b>${p.champ.length ? ` <span class="tag trophy">Champion ${esc(p.champ.join(', '))}</span>` : ''}<br><small class="muted">${esc([...p.seasons].join(', '))} · ${plural(p.starts, 'start')} · ${plural(p.wins, 'win')}${c ? ' · player' : ''}</small></span></button>`; }).join('')}</div>` : '<p class="muted">Nobody yet.</p>'}</section>`;
   }
   return h;
 });
@@ -6718,16 +6718,16 @@ async function drawTeamCard(tid) {
   fitText(g, t.name, z => cond(900, z), 118, W - 112); g.fillText(t.name, 52, 200);
   g.font = cond(700, 26); g.fillText(`${teamEngine(tid, sid, sea)} · ${d.pos ? `P${d.pos} after round ${d.rounds.length} of ${roundsOf(sid)}` : 'Season to start'}`, 56, 250);
   [[d.pos ? `P${d.pos}` : '–', 'Constructors’'], [String(d.pts), 'Points'], [String(d.wins), 'Wins'], [String(d.podiums), 'Podiums']].forEach(([v, k], i) => { const x = 56 + i * 246; g.fillStyle = T.panel; g.fillRect(x, 340, 230, 120); g.fillStyle = '#FFFFFF'; g.font = cond(900, 56); g.fillText(v, x + 18, 405); g.font = bodyF(500, 20); g.fillStyle = T.muted; g.fillText(k, x + 18, 440); });
-  const lu = teamLineup(t), drivers = lu.filter(m => /^Driver/.test(m.role)).slice(0, 2), imgs = await Promise.all(drivers.map(m => loadImg(m.c && m.c.portraitUrl)));
+  const lu = teamLineup(t), drivers = lu.filter(m => /^Driver/.test(m.role)).slice(0, 2), imgs = await Promise.all(drivers.map(m => loadImg(personPic(m.pid, m.c) || null)));
   drivers.forEach((m, i) => { const x = 56 + i * 492, y = 500, w = 476, hh = 200, row = d.st.drivers.findIndex(x2 => x2.personId === m.pid);
     g.fillStyle = m.player ? '#3A1D20' : T.panel; g.fillRect(x, y, w, hh); if (m.player) { g.strokeStyle = '#E10600'; g.lineWidth = 3; g.strokeRect(x + 1.5, y + 1.5, w - 3, hh - 3); }
     if (m.num) { g.fillStyle = 'rgba(255,255,255,0.07)'; g.font = cond(900, 170); g.textAlign = 'right'; g.fillText(String(m.num), x + w - 10, y + hh - 6); g.textAlign = 'left'; }
     drawPhoto(g, imgs[i], x + 18, y + 22, 120, 156, 4, { name: m.name }, T);
-    g.fillStyle = m.player ? '#FF8A80' : T.muted; g.font = bodyF(600, 19); g.fillText(m.player ? `Player · car ${i + 1}` : `Car ${i + 1}`, x + 158, y + 60);
+    g.fillStyle = m.player ? '#FF8A80' : T.muted; g.font = bodyF(600, 19); g.fillText(m.player ? `Player · car ${i + 1}` : m.canon ? `Car ${i + 1} · open for players` : `Car ${i + 1}`, x + 158, y + 60);
     g.fillStyle = '#FFFFFF'; fitText(g, m.name, z => cond(900, z), 36, w - 176); g.fillText(m.name, x + 158, y + 104);
     g.fillStyle = '#C9CCD2'; g.font = bodyF(500, 20); g.fillText(row >= 0 ? `P${row + 1} · ${d.st.drivers[row].pts} pts` : 'No points yet', x + 158, y + 140); });
   const tp = lu.find(m => m.role === 'Team principal'), engs = lu.filter(m => /^Race engineer/.test(m.role));
-  [[`Team principal`, tp ? `${tp.name}${tp.player ? ' (player)' : tp.open ? '' : ''}` : '–'], ['Race engineers', engs.map((m, k) => `Car ${k + 1}: ${m.open ? 'open' : m.name + (m.player ? ' (player)' : '')}`).join(' · ') || 'Open posts']].forEach(([k, v], i) => { const x = 56 + i * 492; g.fillStyle = T.panel; g.fillRect(x, 730, 476, 96); g.fillStyle = T.muted; g.font = bodyF(500, 18); g.fillText(k, x + 18, 766); g.fillStyle = '#FFFFFF'; fitText(g, v, z => cond(700, z), 26, 440); g.fillText(v, x + 18, 804); });
+  [[`Team principal`, tp ? `${tp.name}${tp.player ? ' (player)' : tp.canon ? ' (open for players)' : ''}` : '–'], ['Race engineers', engs.map((m, k) => `Car ${k + 1}: ${m.open ? 'open' : m.name + (m.player ? ' (player)' : '')}`).join(' · ') || 'Open posts']].forEach(([k, v], i) => { const x = 56 + i * 492; g.fillStyle = T.panel; g.fillRect(x, 730, 476, 96); g.fillStyle = T.muted; g.font = bodyF(500, 18); g.fillText(k, x + 18, 766); g.fillStyle = '#FFFFFF'; fitText(g, v, z => cond(700, z), 26, 440); g.fillText(v, x + 18, 804); });
   if (hist.titles || hist.dTitles.length) { g.fillStyle = '#F5C400'; g.fillRect(56, 856, W - 112, 84); g.fillStyle = '#2A2200'; g.font = cond(900, 30); g.fillText('Honours', 76, 908);
     const txt = [hist.titles ? `Constructors’ champions ${hist.rows.filter(r => r.done && r.pos === 1).map(r => r.season).join(', ')}` : '', hist.dTitles.length ? `Drivers’ champion: ${hist.dTitles.join('; ')}` : ''].filter(Boolean).join(' · ');
     fitText(g, txt, z => bodyF(600, z), 22, W - 112 - 200); g.fillText(txt, 230, 906); }
@@ -7655,9 +7655,9 @@ function staffAt(tid, sid, sea) {
 }
 function teamStaffHtml(t, sid, sea) {
   let rows;
-  if (sea === curSeasonId(sid)) rows = teamLineup(t).filter(m => !/^Driver/.test(m.role)).map(m => [m.role, m.name, m.player, m.open]);
+  if (sea === curSeasonId(sid)) rows = teamLineup(t).filter(m => !/^Driver/.test(m.role)).map(m => [m.role, m.name, m.player, m.open, m.canon]);
   else { const s = staffAt(t.id, sid, sea); if (!s) return ''; rows = [['Team principal', s.principal ? s.principal.name : '–', s.principal && s.principal.player, !s.principal]].concat(s.engineers.map(e => [`Race engineer, car ${e.car}`, e.name, e.player, false])); }
-  return `<span class="tm-staff">${rows.map(([r, n, pl, open]) => `<span class="tm-staff-row"><span class="muted">${esc(r)}</span><b class="${open ? 'muted' : ''}">${esc(open ? 'Open' : n)}</b>${pl ? '<span class="tag player">Player</span>' : ''}</span>`).join('')}</span>`;
+  return `<span class="tm-staff">${rows.map(([r, n, pl, open, canon]) => `<span class="tm-staff-row"><span class="muted">${esc(r)}</span><b class="${open ? 'muted' : ''}">${esc(open ? 'Open' : n)}${canon ? ' <span class="muted" style="font-weight:400">(open for players)</span>' : ''}</b>${pl ? '<span class="tag player">Player</span>' : ''}</span>`).join('')}</span>`;
 }
 function teamStaffHistory(tid, sid) {
   const out = { principal: new Map(), engineer: new Map() };
@@ -7706,6 +7706,51 @@ discordSend = function (purpose, payload, file, chosen) {
   const unix = Math.floor(Date.now() / 1000), p = Object.assign({}, payload || {});
   p.content = `${p.content ? p.content + '\n' : ''}-# As of <t:${unix}:f>`;
   return _discordSendStamp(purpose, p, file, chosen);
+};
+
+/* =====================================================================
+   F1 SIM — pictures for real people, and canon people in open seats.
+   Race Control can add a picture for any real driver or team principal
+   (on their page, or from a team's page). Pictures are used wherever a
+   face is shown: the Teams pages, the team card, timing exports and the
+   character page. A real person sitting in a seat players can take is
+   marked "(open for players)".
+   ===================================================================== */
+'use strict';
+
+function personPic(pid, c) { return (c && c.portraitUrl) || ((pid && F1.person(pid)) || {}).portraitUrl || ''; }
+CHANGES['person-portrait'] = (v, d, el) => {
+  const file = el.files && el.files[0], p = get('f1_people', d.id); if (!file || !p || !S.isGm) return;
+  if (!/^image\//.test(file.type)) { toast('Choose a picture: a JPEG, PNG or WebP.', true); return; }
+  run(async () => {
+    const blob = await shrinkImage(file, 900), assets = await window.claude.use('assets'), up = await assets.upload(blob, { type: 'image/jpeg' });
+    await Data.put('f1_people', d.id, Object.assign(clone(S.store.f1_people[d.id]), { portraitUrl: up.url }));
+    await Data.audit('person.picture', `Picture added for ${p.name}`);
+  }, `Picture saved for ${p.name}.`);
+  el.value = '';
+};
+ACTIONS['person-portrait-remove'] = d => { const p = get('f1_people', d.id); if (!p || !S.isGm) return;
+  run(async () => { const doc = clone(S.store.f1_people[d.id]); delete doc.portraitUrl; await Data.put('f1_people', d.id, doc); }, 'Picture removed.'); };
+const picControls = (pid, has) => `<label class="btn small file-btn">${has ? 'Change the picture' : 'Add a picture'}<input type="file" accept="image/*" class="sr-only" data-change="person-portrait" data-id="${esc(pid)}"></label>${has ? `<button class="btn small ghost" data-act="person-portrait-remove" data-id="${esc(pid)}">Remove</button>` : ''}`;
+
+/* On a team's page, Race Control can add pictures for the real people in its seats. */
+const _teamviewPics = ROUTES.teamview.view;
+ROUTES.teamview.view = function () {
+  const h = _teamviewPics(), t = get('f1_teams', S.ui.teamView); if (!t || !S.isGm || (S.ui.teamTab || 'season') !== 'season') return h;
+  const canon = teamLineup(t).filter(m => m.canon);
+  if (!canon.length) return h;
+  const box = `<details class="card pics-box"><summary><b>Pictures for real people</b> <span class="muted small">${canon.filter(m => personPic(m.pid)).length} of ${canon.length} have one</span></summary>
+    <div class="pics-list">${canon.map(m => { const pic = personPic(m.pid); return `<div class="pics-row"><span class="tm-face">${pic ? `<img src="${esc(pic)}" alt="">` : esc(initials(m.name))}</span><span><b>${esc(m.name)}</b><br><small class="muted">${esc(m.role)}</small></span><div class="btn-row">${picControls(m.pid, !!pic)}</div></div>`; }).join('')}</div>
+    <p class="muted small">Players’ characters use their own portraits. Pictures for real people are added by Race Control and show on the Teams pages, team cards and timing exports.</p></details>`;
+  const i = h.indexOf('<section class="card"><h2>Points by round</h2>'); return i < 0 ? h + box : h.slice(0, i) + box + h.slice(i);
+};
+/* On a real person's page: their picture, and the controls for Race Control. */
+const _careerViewPics = ROUTES.career.view;
+ROUTES.career.view = function () {
+  const h = _careerViewPics(), p = F1.person(S.ui.career); if (!p || p.charId || !S.isGm) return h;
+  const i = h.indexOf('<div class="char-actions'), at = i >= 0 ? i : h.indexOf('</div></div>', h.indexOf('class="char-id"'));
+  const ctl = `<div class="btn-row char-actions">${picControls(p.id, !!p.portraitUrl)}</div>`;
+  return at < 0 ? h : h.slice(0, at) + ctl + h.slice(at);
 };
 
 /* start-up: every part has registered its routes, drawers and actions */

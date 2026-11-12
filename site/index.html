@@ -644,15 +644,17 @@ table.data tr.me td, table.data tr.picked td, .data tr.me { background: var(--me
 .tm-staff { display: flex; flex-direction: column; gap: 3px; padding: 8px 14px; border-top: 1px solid var(--line); font-size: 13.5px; } .tm-staff-row { display: grid; grid-template-columns: 150px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
 
 .invite-new { margin: 12px 0; padding: 14px 16px; background: var(--panel-2); border: 1px solid var(--line); border-left: 4px solid var(--red); } .invite-code { display: block; margin: 6px 0 10px; font: 700 34px/1.1 ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.18em; color: var(--ink); user-select: all; }
+
+.pics-box summary { cursor: pointer; } .pics-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; } .pics-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 12px; align-items: center; } .pics-row .tm-face { width: 44px; height: 50px; }
 </style>
 </head>
 <body>
 <div id="auth-root"><div class="boot"><div class="boot-card"><span class="brand-mark big" aria-hidden="true"></span><h1>F1 SIM</h1><p>Loading…</p></div></div></div>
 <div id="app"></div>
-<script>window.F1SIM_BUILD = 'f1sim-0.37.0'; window.F1SIM_VERSION = '0.37.0';</script>
+<script>window.F1SIM_BUILD = 'f1sim-0.37.1'; window.F1SIM_VERSION = '0.37.1';</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
-<script src="config.js?v=f1sim-0.37.0"></script>
-<script src="bridge.js?v=f1sim-0.37.0"></script>
+<script src="config.js?v=f1sim-0.37.1"></script>
+<script src="bridge.js?v=f1sim-0.37.1"></script>
 <noscript>F1 SIM needs JavaScript switched on.</noscript>
 </body>
 </html>
