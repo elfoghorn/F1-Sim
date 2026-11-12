@@ -1,4 +1,4 @@
-/* F1 SIM v0.29.0 (build f1sim-0.29.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v0.29.1 (build f1sim-0.29.1): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -1144,7 +1144,7 @@ async function init() {
 }
 
 /* ---------------------------------------------------------------- Your characters */
-const CHAR_BLANK = { name: '', code: '', number: '', nationality: '', role: 'driver', bio: '', discord: '', faceclaim: '', portraitUrl: null, nickname: '', birthplace: '', junior: '', helmet: '' };
+const CHAR_BLANK = { name: '', code: '', number: '', nationality: '', role: 'driver', bio: '', discord: '', faceclaim: '', personality: '', portraitUrl: null, nickname: '', birthplace: '', junior: '', helmet: '' };
 ACTIONS['char-new'] = () => { S.ui.form.ch = Object.assign({}, CHAR_BLANK); openDrawer('char'); };
 ACTIONS['char-edit'] = d => { const c = get('characters', d.id); if (!c) return; S.ui.form.ch = Object.assign({}, CHAR_BLANK, clone(S.store.characters[d.id]), { id: d.id }); openDrawer('char'); };
 ACTIONS['char-play'] = d => { S.charId = d.id; lsSet('f1sim.char', d.id); toast('Now playing as ' + ((get('characters', d.id) || {}).name || 'this character') + '.'); render(); };
@@ -1163,7 +1163,8 @@ function charFormFields(f) {
       ${txt('discord', 'Discord username (for @mentions)', 'autocomplete="off" placeholder="e.g. amelia.hart"')}
       ${txt('nickname', 'Nickname (optional)')}${txt('birthplace', 'Where they’re from (optional)')}
     </div>
-    <label class="field">About them<textarea id="ch-bio" rows="6" data-bind="ui/form/ch/bio" placeholder="Background, personality, how they got into the paddock">${esc(f.bio || '')}</textarea></label>
+    <label class="field">Personality<textarea id="ch-personality" rows="4" maxlength="4000" data-bind="ui/form/ch/personality" placeholder="How they come across: temperament, quirks, how they handle pressure, the media and their team-mate">${esc(f.personality || '')}</textarea></label>
+    <label class="field">Backstory<textarea id="ch-bio" rows="6" data-bind="ui/form/ch/bio" placeholder="Where they come from and how they got into the paddock">${esc(f.bio || '')}</textarea></label>
     ${f.role === 'driver' ? `<label class="field">Before Formula 1 (optional)<textarea id="ch-junior" rows="3" data-bind="ui/form/ch/junior" placeholder="Karting, junior series, titles, the one that got away">${esc(f.junior || '')}</textarea></label>
     ${txt('helmet', 'Helmet design (optional)', 'placeholder="e.g. Saltire blue with a gold stripe"')}` : ''}
 
@@ -2556,7 +2557,7 @@ route('character', 'Character', function () {
   if (st === 'returned' && c.rcNote) h += `<div class="card notice warn"><b>Race Control’s note:</b> ${esc(c.rcNote)}</div>`;
   h += offersHtml(c.id);
   if (S.ui.charInline === c.id) h += charInlineHtml(c);
-  else h += `<section class="card"><h2>Who they are</h2>${c.bio ? paras(c.bio) : '<p class="muted">No background written yet. Use Edit details.</p>'}
+  else h += `<section class="card"><h2>Who they are</h2>${c.personality ? `<h3 class="wt-h">Personality</h3>${paras(c.personality)}` : ''}${c.bio ? `${c.personality ? '<h3 class="wt-h">Backstory</h3>' : ''}${paras(c.bio)}` : '<p class="muted">No backstory written yet. Use Edit details.</p>'}
     <p class="muted small">${[c.nationality, c.code, c.number ? '#' + c.number : '', c.faceclaim ? 'Face claim: ' + c.faceclaim : '', c.discord ? 'Discord: ' + c.discord : ''].filter(Boolean).map(esc).join('. ')}</p>${c.portraitUrl ? `<img class="app-photo" src="${esc(c.portraitUrl)}" alt="${esc(c.name)}">` : ''}</section>`;
   if (S.ui.charInline !== c.id) h += flavourCardHtml(c, 'Flavour');
   h += careerAppHtml(c);
@@ -4647,7 +4648,8 @@ route('career', 'Character', function () {
       ${rivals.length ? `<h4>On track</h4><ul class="rels">${rivals.map(r => `<li>${careerLink(r.personId, r.name)} <span class="muted small">${r.won} passes for, ${r.lost} against</span></li>`).join('')}</ul>` : ''}</section></aside>`;
 
   const mid = `<div class="char-mid">
-    <section class="card"><h2>Story</h2>${c && c.bio ? paras(c.bio) : `<p class="muted">${c ? 'No story written yet.' : `${esc(p.name)} is part of today’s real grid.`}</p>`}</section>
+    ${c && c.personality ? `<section class="card"><h2>Personality</h2>${paras(c.personality)}</section>` : ''}
+    <section class="card"><h2>Backstory</h2>${c && c.bio ? paras(c.bio) : `<p class="muted">${c ? 'No story written yet.' : `${esc(p.name)} is part of today’s real grid.`}</p>`}</section>
     ${flavourCardHtml(c)}
     ${diary.length || mine ? `<section class="card"><h2>Diary</h2>${diary.length ? diary.slice(0, 8).map(d => `<article class="diary"><p class="muted small">${esc(fmtWhen(d.at))}</p><h3>${esc(d.title)}</h3>${paras(d.body)}${mine ? `<button class="btn small ghost" data-act="diary-delete" data-id="${esc(d.id)}">Delete</button>` : ''}</article>`).join('') : '<p class="muted">No entries yet. Diary entries are public.</p>'}</section>` : ''}
     <section class="card"><h2>Timeline</h2>${tl.length ? `<ol class="timeline">${tl.map(x => `<li><span class="muted small">${esc(fmtDate(x.at))}</span> ${esc(x.text)}</li>`).join('')}</ol>` : '<p class="muted small">The story starts at the first race.</p>'}</section></div>`;
@@ -5798,7 +5800,8 @@ async function sheetDocx(cid) {
         docxCell(docxPara(docxRun('█'.repeat(Math.max(1, Math.round(v / 4))), { sz: 18, color: accent }) + docxRun('█'.repeat(Math.max(0, 25 - Math.round(v / 4))), { sz: 18, color: 'E3E5E9' }), { after: 0 }), FULL - 3500, { fill: i % 2 ? 'FFFFFF' : LIGHT })]); })));
   }
   /* Story. */
-  if (c.bio) { body.push(H2('Story')); String(c.bio).split(/\n+/).filter(Boolean).forEach(t => body.push(P(t))); }
+  if (c.personality) { body.push(H2('Personality')); String(c.personality).split(/\n+/).filter(Boolean).forEach(t => body.push(P(t))); }
+  if (c.bio) { body.push(H2('Backstory')); String(c.bio).split(/\n+/).filter(Boolean).forEach(t => body.push(P(t))); }
   if (typeof FLAVOUR !== 'undefined' && flavourCount(c)) { body.push(H2('More about them')); FLAVOUR.filter(([k]) => String(c[k] || '').trim()).forEach(([k, l]) => { body.push(docxPara(docxRun(l, { b: true, sz: 21, color: accent }), { after: 40, keep: true })); String(c[k]).split(/\n+/).filter(Boolean).forEach(t => body.push(P(t))); }); }
   if (d.driver && c.junior) { body.push(H2('Before Formula 1')); String(c.junior).split(/\n+/).filter(Boolean).forEach(t => body.push(P(t))); }
   /* Career record. */
@@ -6373,7 +6376,8 @@ function decisionHtml(c) {
     <ul class="checks">
       ${check(!!c.portraitUrl, c.portraitUrl ? 'Picture added' : 'No picture')}
       ${check(!!String(c.faceclaim || '').trim(), c.faceclaim ? `Face claim: ${esc(c.faceclaim)}` : 'No face claim')}
-      ${check(!!String(c.bio || '').trim(), 'Story written')}
+      ${check(!!String(c.personality || '').trim(), String(c.personality || '').trim() ? 'Personality written' : 'No personality written')}
+      ${check(!!String(c.bio || '').trim(), String(c.bio || '').trim() ? 'Backstory written' : 'No backstory written')}
       ${PREF_ROLES.indexOf(c.role) !== -1 ? check(prefDone(c), prefLine(c) ? esc(prefLine(c)) : 'No team preference') : ''}
       ${driver ? check(!!g.rolls, g.rolls ? `${esc((bracketOf(g.bracket) || {}).name || '')}, roll ${g.rolls} of ${maxRolls(c)}${g.changes ? '; background changed once' : ''}${(g.history || []).length ? `; ${plural(g.history.length, 'earlier attempt')} below` : ''}` : 'Not rolled') : ''}
       ${check(true, `Flavour: ${flavourCount(c)} of ${FLAVOUR.length} optional sections`)}
@@ -6757,7 +6761,7 @@ function readJsonFile(el) {
 }
 
 /* ---------------------------------------------------------------- characters out */
-const CH_TEXT = ['name', 'role', 'nationality', 'code', 'discord', 'faceclaim', 'portraitUrl', 'nickname', 'birthplace', 'bio', 'junior', 'helmet'];
+const CH_TEXT = ['name', 'role', 'nationality', 'code', 'discord', 'faceclaim', 'portraitUrl', 'nickname', 'birthplace', 'personality', 'bio', 'junior', 'helmet'];
 const RATING_KEYS = ['pace', 'consistency', 'wet', 'overtaking', 'defense', 'experience', 'mental', 'years', 'style'];
 function charToJson(c) {
   const o = { id: c.id, status: charStatus(c) };
@@ -6775,7 +6779,7 @@ ACTIONS['io-ch-mine'] = () => { const cs = myChars().filter(c => !c.retired); if
 ACTIONS['io-ch-all'] = () => { if (!S.isGm) return; downloadJson(`all-characters-${new Date().toISOString().slice(0, 10)}.json`, chBundle(list('characters').filter(c => !c.retired))); };
 ACTIONS['io-ch-template'] = () => downloadJson('character-template.json', { format: IO_CH, version: 1, characters: [{
   name: 'Amelia Hart', role: 'driver', nationality: 'Scottish', code: 'HAR', number: 28, discord: 'amelia.hart', faceclaim: 'Who the picture shows', nickname: 'The Dundee Dart', birthplace: 'Dundee',
-  bio: 'Who they are: background, personality, how they got into the paddock.', junior: 'Karting and junior series.', helmet: 'Saltire blue with a gold stripe',
+  personality: 'How they come across: temperament, quirks, how they handle pressure.', bio: 'Backstory: where they come from and how they got into the paddock.', junior: 'Karting and junior series.', helmet: 'Saltire blue with a gold stripe',
   goals: 'Optional', fears: 'Optional', appearance: 'Optional', habits: 'Optional', hobbies: 'Optional', likes: 'Optional', dislikes: 'Optional', skills: 'Optional', family: 'Optional',
   career: [{ years: '2025', series: 'Formula 2', team: 'ART', wins: 5, podiums: 11, poles: 4, pos: '1', notes: 'Optional' }, { years: '2024', series: 'Other', other: 'Super GT', team: 'Team Le Mans', wins: 1, podiums: 2, pos: '9' }],
   teamPref: { first: 'mclaren', second: 'williams', why: 'Optional', any: false },
@@ -6794,7 +6798,7 @@ function normaliseChar(x, i, problems) {
   if (x.role && roles.indexOf(x.role) === -1) problems.push(`${where}: role “${x.role}” isn’t one of ${roles.join(', ')}; using driver.`);
   const o = { id: typeof x.id === 'string' ? x.id : null, name, role };
   ['nationality', 'discord', 'faceclaim', 'nickname', 'birthplace', 'helmet'].forEach(k => { if (x[k]) o[k] = capStr(x[k], 120); });
-  ['bio', 'junior'].concat(FLAVOUR.map(f => f[0])).forEach(k => { if (x[k]) o[k] = capStr(x[k], 4000); });
+  ['personality', 'bio', 'junior'].concat(FLAVOUR.map(f => f[0])).forEach(k => { if (x[k]) o[k] = capStr(x[k], 4000); });
   if (x.code) o.code = String(x.code).toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
   if (x.number != null && x.number !== '') { const n = Math.round(Number(x.number)); if (n >= 1 && n <= 99) o.number = n; else problems.push(`${where}: car number must be 1 to 99.`); }
   if (x.portraitUrl && /^https?:\/\//.test(String(x.portraitUrl))) o.portraitUrl = String(x.portraitUrl).slice(0, 500);

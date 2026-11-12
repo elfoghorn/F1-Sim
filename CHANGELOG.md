@@ -25,6 +25,17 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v0.29.1: Personality on the character sheet
+
+12 November 2026. Build `f1sim-0.29.1`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Personality | A new Personality field in the main part of the character form, just before the backstory (both when creating a character and inline on the application). "About them" is now labelled Backstory. |
+| Where it shows | Under "Who they are" on the application (Personality, then Backstory), as a Personality card before the Backstory card on the character page, in Race Control's decision checklist, and as its own section before the backstory in the Google Doc. JSON downloads and uploads include it. |
+
+---
+
 ## v0.29.0: JSON download and upload for characters and seasons
 
 12 November 2026. Build `f1sim-0.29.0`. **No database update.**
