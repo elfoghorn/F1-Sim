@@ -78,6 +78,7 @@ Race Control can post race results, timing exports, announcements and driver car
 | `DISCORD_WEBHOOK_CALENDAR` | The season calendar. |
 | `DISCORD_WEBHOOK_STANDINGS` | Drivers' and constructors' championship standings. |
 | `DISCORD_WEBHOOK_APPROVALS` | Acceptance cards when Race Control approves a character, @mentioning the player. |
+| `DISCORD_WEBHOOK_TRANSFERS` | Transfer cards when Race Control moves a character to another team, @mentioning the player. |
 
 For a separate channel per series, put the series code first: `DISCORD_WEBHOOK_F2_RESULTS`, `DISCORD_WEBHOOK_F3_TIMING`. A post tries the series channel, then the general one, then `DISCORD_WEBHOOK`. When exporting timing, Race Control can also pick any channel by hand.
 

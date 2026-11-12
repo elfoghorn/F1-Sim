@@ -608,15 +608,39 @@ table.data tr.me td, table.data tr.picked td, .data tr.me { background: var(--me
 .io-card { margin-top: 16px; } .io-card .btn-row { flex-wrap: wrap; }
 
 .wt-h { margin: 6px 0 4px; font-size: 15px; font-style: normal; color: var(--muted); }
+
+/* ---------- home and connections on the sheet ---------- */
+.conn-sheet { margin-top: 16px; } .conn-sheet-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; } .conn-sheet-head h2 { margin: 0; }
+.conn-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 6px 22px; margin-top: 10px; } .conn-group h3 { display: flex; align-items: center; gap: 8px; margin: 8px 0 4px; font-size: 16px; } .conn-group h3 .conn-dot { margin: 0; }
+.conn-sheet .conn-row { grid-template-columns: 0 minmax(0, 1fr) auto; } .conn-add { margin-top: 12px; padding: 10px 12px; background: var(--panel-2); border: 1px solid var(--line); } .conn-add summary { cursor: pointer; }
+.home-wk { border-top: 6px solid var(--team, var(--red)); } .home-wk.rc { --team: var(--red); }
+.home-wk-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 14px; } .home-wk-head h2 { margin: 2px 0 2px; font-size: 32px; }
+.home-wk .stat-strip { margin: 0; } .home-todo { margin: 10px 0; }
+.home-podium ol { margin: 4px 0 8px; padding-left: 22px; } .home-podium li { margin: 2px 0; }
+.home-alerts { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; } .home-alerts p { margin: 0; padding: 10px 14px; background: var(--panel); border-left: 4px solid var(--flag); }
+.home-sheet { margin-top: 22px; } .home-sheet-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding-bottom: 8px; margin-bottom: 12px; border-bottom: 2px solid var(--red); } .home-sheet-head h2 { margin: 0; }
+.home-sheet .page-head { margin-top: 0; }
+.season-bar { height: 6px; background: var(--panel-2); margin: 0 0 16px; } .season-bar span { display: block; height: 100%; background: var(--red); }
+.rc-home { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; } .rc-main, .rc-side { display: flex; flex-direction: column; gap: 16px; } .rc-main > .card, .rc-side > .card { margin: 0; }
+@media (max-width: 1000px) { .rc-home { grid-template-columns: minmax(0, 1fr); } }
+.activity { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; } .activity li { padding: 4px 0; border-bottom: 1px solid var(--line); }
+.rc-side .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+/* ---------- managing characters ---------- */
+.chm { margin-top: 16px; } .chm-tools { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 12px; } .chm-tools input { flex: 1 1 240px; min-height: 40px; } .chm-tools select { min-height: 40px; }
+.chm-acts { white-space: nowrap; } .chm-acts .btn { margin-left: 4px; }
+.rc-danger { margin-top: 16px; border-left: 4px solid var(--bad); }
+
+.approve-seat select { max-width: 520px; } .transfer-bar { margin: 0 0 12px; padding: 8px 12px; background: var(--panel); border: 1px solid var(--line); }
 </style>
 </head>
 <body>
 <div id="auth-root"><div class="boot"><div class="boot-card"><span class="brand-mark big" aria-hidden="true"></span><h1>F1 SIM</h1><p>Loading…</p></div></div></div>
 <div id="app"></div>
-<script>window.F1SIM_BUILD = 'f1sim-0.30.0'; window.F1SIM_VERSION = '0.30.0';</script>
+<script>window.F1SIM_BUILD = 'f1sim-0.33.0'; window.F1SIM_VERSION = '0.33.0';</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
-<script src="config.js?v=f1sim-0.30.0"></script>
-<script src="bridge.js?v=f1sim-0.30.0"></script>
+<script src="config.js?v=f1sim-0.33.0"></script>
+<script src="bridge.js?v=f1sim-0.33.0"></script>
 <noscript>F1 SIM needs JavaScript switched on.</noscript>
 </body>
 </html>

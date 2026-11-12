@@ -1,4 +1,4 @@
-/* F1 SIM v0.30.0 (build f1sim-0.30.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v0.33.0 (build f1sim-0.33.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -4633,7 +4633,7 @@ route('career', 'Character', function () {
         <h1>${p.flag ? esc(p.flag) + ' ' : ''}${esc(p.name)}</h1>
         <p class="muted">${[c && c.nickname ? `“${c.nickname}”` : '', p.num || (c && c.number) ? '#' + (c && c.number || p.num) : '', c && c.nationality, c && c.birthplace ? 'from ' + c.birthplace : '', years ? plural(years, 'year') + ' of experience' : '', styleLbl].filter(Boolean).map(esc).join('. ')}</p></div>
       ${stats.length ? `<div class="stat-strip">${stats.map(([l, v], i) => `<div><span>${esc(l)}</span><b class="${i === stats.length - 1 && isDriver ? 'hi' : ''}">${esc(v)}</b></div>`).join('')}</div>` : ''}</div>
-    ${mine ? `<div class="btn-row char-actions"><label class="btn small file-btn">Change portrait<input type="file" accept="image/*" data-change="portrait" data-id="${esc(c.id)}" class="sr-only"></label><button class="btn small" data-act="diary-new">Write in the diary</button><button class="btn small" data-act="rel-new">Add a relationship</button><button class="btn small" data-act="char-edit" data-id="${esc(c.id)}">Edit details</button></div>` : ''}</section>`;
+    ${mine ? `<div class="btn-row char-actions"><label class="btn small file-btn">Change portrait<input type="file" accept="image/*" data-change="portrait" data-id="${esc(c.id)}" class="sr-only"></label><button class="btn small" data-act="diary-new">Write in the diary</button><button class="btn small" data-act="conn-jump">Add a connection</button><button class="btn small" data-act="char-edit" data-id="${esc(c.id)}">Edit details</button></div>` : ''}</section>`;
 
   const left = `<aside class="char-left">
     <section class="card"><h2>Particulars</h2><dl class="rail-defaults">
@@ -4643,9 +4643,7 @@ route('career', 'Character', function () {
       ${seatsOfChar(cid || '').length > 1 ? `<div><dt>Also races in</dt><dd>${seatsOfChar(cid).filter(s => s.id !== seat.id).map(s => `${esc(seriesOfTeam(s.teamId).name)}, ${esc(F1.team(s.teamId).name)}`).join('<br>')}</dd></div>` : ''}
       ${c && c.faceclaim ? `<div><dt>Face claim</dt><dd>${esc(c.faceclaim)}</dd></div>` : ''}${c && c.discord ? `<div><dt>Discord</dt><dd>${esc(c.discord)}</dd></div>` : ''}
       ${!(c && (c.helmet || c.junior || c.discord || c.faceclaim)) && !k && !eng ? '<p class="muted small">Nothing more yet.</p>' : ''}</dl></section>
-    <section class="card"><h2>Relationships</h2>${rels.length ? `<ul class="rels">${rels.map(r => { const mineRel = r.personId === p.id;
-        return `<li><b>${esc(relKind(r.kind))}:</b> ${mineRel ? careerLink(r.otherId, relName(r.otherId)) : `${careerLink(r.personId, relName(r.personId))} counts them as a ${esc(relKind(r.kind).toLowerCase())}`}${r.note ? `<p class="muted small">${esc(r.note)}</p>` : ''}${mineRel && mine ? ` <button class="btn small ghost" data-act="rel-delete" data-id="${esc(r.id)}">Remove</button>` : ''}</li>`; }).join('')}</ul>` : '<p class="muted small">None declared.</p>'}
-      ${rivals.length ? `<h4>On track</h4><ul class="rels">${rivals.map(r => `<li>${careerLink(r.personId, r.name)} <span class="muted small">${r.won} passes for, ${r.lost} against</span></li>`).join('')}</ul>` : ''}</section></aside>`;
+    </aside>`;
 
   const mid = `<div class="char-mid">
     ${c && c.personality ? `<section class="card"><h2>Personality</h2>${paras(c.personality)}</section>` : ''}
@@ -4662,7 +4660,7 @@ route('career', 'Character', function () {
         return `<tr><td>${esc(t.name || '')}${x.w.session === 'sprint' ? ' sprint' : ''}${wSeries(x.w) !== 'f1' ? ` <span class="muted small">${esc(seriesDoc(wSeries(x.w)).short)}</span>` : ''}</td><td class="num">${x.r.grid}</td><td class="num">${x.r.position ? 'P' + x.r.position : 'Out'}</td><td class="num">${x.r.points || ''}</td></tr>`; }).join('')}</tbody></table></section>` : ''}
     ${isDriver ? `<button class="btn" data-act="card-open" data-id="${esc(p.id)}" data-kind="card">Make a driver card</button>` : ''}</aside>`;
   const exportBtn = c && (c.userId === S.uid || S.isGm) ? `<div class="btn-row" style="justify-content:flex-end"><button class="btn" data-act="sheet-open" data-id="${esc(c.id)}">Export the character sheet</button></div>` : '';
-  return h + exportBtn + `<div class="char-cols" style="--team:${esc(color)}">${left}${mid}${right}</div>` + careerRecordHtml(p, c) + winsHtml(p, c);
+  return h + exportBtn + `<div class="char-cols" style="--team:${esc(color)}">${left}${mid}${right}</div>` + careerRecordHtml(p, c) + winsHtml(p, c) + (typeof connectionsSheetHtml === 'function' ? connectionsSheetHtml(p, c) : '');
 });
 
 /* =====================================================================
@@ -6404,6 +6402,7 @@ function decisionHtml(c) {
       ${careerRows(c).some(r => seriesWarn(r)) ? check(false, `${plural(careerRows(c).filter(r => seriesWarn(r)).length, 'career season')} dated outside the series’ real years (see the career record)`) : ''}
       ${careerRows(c).length ? check(!waiting.some(isMajor), `${plural(careerRows(c).length, 'career season')}${waiting.length ? `, ${waiting.length} still to mark (approving makes them canon)` : ''}`) : ''}
     </ul>
+    ${typeof approvalSeatHtml === 'function' ? approvalSeatHtml(c) : ''}
     <label class="field">Note to the player (needed to return it)<textarea id="dec-${esc(c.id)}" rows="2" data-bind="ui/form/rcnote/${esc(c.id)}">${esc(((S.ui.form.rcnote || {})[c.id]) || '')}</textarea></label>
     <label class="small"><input type="checkbox" data-bind="ui/form/postAccept/${esc(c.id)}" ${((S.ui.form.postAccept || {})[c.id]) !== false ? 'checked' : ''}> Post the acceptance card to Discord${c.discord ? `, mentioning @${esc(c.discord)}` : ' (no Discord username, so no @mention)'}</label>
     <div class="btn-row"><button class="btn primary" data-act="gen-approve" data-id="${esc(c.id)}">Approve</button><button class="btn" data-act="gen-return" data-id="${esc(c.id)}">Return with the note</button>
@@ -6996,6 +6995,352 @@ const _controlViewIo = ROUTES.control.view;
 ROUTES.control.view = function () {
   return _controlViewIo() + `<section class="card io-card"><h2>Characters as JSON</h2><p class="muted small">Download every character, or upload a file: as drafts, or approved with the ratings in the file (handy for established drivers).</p>
     <div class="btn-row"><button class="btn" data-act="io-ch-all">Download all characters</button><label class="btn file-btn">Upload characters<input type="file" accept="application/json,.json" class="sr-only" data-change="io-ch-file"></label><button class="btn ghost" data-act="io-ch-template">Download a template</button></div></section>`;
+};
+
+/* =====================================================================
+   F1 SIM — Home, and connections on the character sheet.
+   Players: the current race weekend (or the next one) at the top, then
+   their character sheet. Race Control and moderators: a dashboard with
+   the weekend's state and the next step, who still has to plan, what's
+   waiting for approval, the grid, the season, Discord and recent
+   activity. Race Control members with a character can switch to the
+   player view. Connections sit at the bottom of every character sheet.
+   ===================================================================== */
+'use strict';
+
+/* ---------------------------------------------------------------- connections on the character sheet */
+ACTIONS['conn-add-for'] = d => {
+  const c = get('characters', d.cid), f = S.ui.form.conn || {}; if (!c || !(c.userId === S.uid || S.isGm)) return;
+  if (!f.otherId) { toast('Choose who the connection is with.', true); return; }
+  if (f.otherId === f1PcId(c.id)) { toast('That’s them.', true); return; }
+  run(async () => { await Data.put('f1_relations', newId('rel'), { userId: c.userId, charId: c.id, personId: f1PcId(c.id), otherId: f.otherId, kind: f.kind || 'friend', note: String(f.note || '').trim().slice(0, 600), at: nowIso() }); S.ui.form.conn = { kind: f.kind || 'friend' }; }, 'Connection added.');
+  S.ui.connOpen = false;
+};
+ACTIONS['conn-jump'] = () => { S.ui.connOpen = true; render(); setTimeout(() => { const el = document.querySelector('.conn-add'); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); const s = el.querySelector('select'); if (s) s.focus(); } }, 60); };
+function connectionsSheetHtml(p, c) {
+  if (!p) return '';
+  const own = !!(c && (c.userId === S.uid || S.isGm)), first = (p.name || '').split(' ')[0];
+  const rels = list('f1_relations').filter(r => (r.personId === p.id || r.otherId === p.id) && F1.person(r.personId === p.id ? r.otherId : r.personId));
+  const rivals = typeof trackRivals === 'function' ? trackRivals(p.id) : [];
+  const groups = REL_GROUPS.map(g => [g, rels.filter(r => relGroupOf(r.kind)[0] === g[0])]).filter(x => x[1].length);
+  const f = S.ui.form.conn = S.ui.form.conn || { kind: 'friend' };
+  if (!groups.length && !rivals.length && !own) return '';
+  return `<section class="card conn-sheet"><div class="conn-sheet-head"><h2>Connections</h2><button class="btn small ghost" data-act="nav" data-route="connections">The paddock’s connections map</button></div>
+    ${groups.length ? `<div class="conn-groups">${groups.map(([g, rs]) => `<div class="conn-group"><h3><span class="conn-dot" style="background:${g[2]}"></span>${esc(g[1])}</h3><ul class="conn-list">${rs.map(r => { const mine = r.personId === p.id, other = mine ? r.otherId : r.personId;
+        return `<li class="conn-row"><span></span><div>${mine ? `<b>${esc(relKindName(r.kind))}:</b> ${careerLink(other, personName(other))}` : `${careerLink(other, personName(other))} counts ${esc(first)} as a <b>${esc(relKindName(r.kind).toLowerCase())}</b>`}${r.note ? `<p class="muted small">${esc(r.note)}</p>` : ''}</div>${mine && own ? `<button class="btn small ghost" data-act="conn-remove" data-id="${esc(r.id)}">Remove</button>` : ''}</li>`; }).join('')}</ul></div>`).join('')}</div>` : `<p class="muted">No connections yet.</p>`}
+    ${rivals.length ? `<h3>On track</h3><ul class="conn-list">${rivals.map(r => `<li class="conn-row"><span></span><div>${careerLink(r.personId, r.name)} <span class="muted small">${r.won} passes for, ${r.lost} against</span></div></li>`).join('')}</ul>` : ''}
+    ${own && c ? `<details class="conn-add" ${S.ui.connOpen || f.otherId || f.note || (f.kind && f.kind !== 'friend') ? 'open' : ''}><summary><b>Add a connection</b></summary><div class="form-grid">
+      <label class="field">Who${sel(`conn-other-${c.id}`, 'ui/form/conn/otherId', f.otherId || '', connPeople().filter(x => x.id !== p.id).map(x => [x.id, x.name + (x.charId ? '' : ' (real driver)')]), 'Choose someone')}</label>
+      <label class="field">What they are to ${esc(first)}<select id="conn-kind-${esc(c.id)}" data-bind="ui/form/conn/kind">${REL_GROUPS.map(([, gl, , ks]) => `<optgroup label="${esc(gl)}">${ks.map(([k, l]) => `<option value="${k}" ${f.kind === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</optgroup>`).join('')}</select></label></div>
+      <label class="field">The story (optional)<textarea id="conn-note-${esc(c.id)}" rows="2" maxlength="600" data-bind="ui/form/conn/note">${esc(f.note || '')}</textarea></label>
+      <div class="btn-row"><button class="btn primary" data-act="conn-add-for" data-cid="${esc(c.id)}">Add the connection</button></div></details>` : ''}</section>`;
+}
+
+/* ---------------------------------------------------------------- shared pieces */
+const roundLabel = (w, t) => w.session === 'test' ? 'Pre-season testing' : `Round ${t.round || ''}${w.session === 'sprint' ? ', sprint' : ''}`;
+function stageWords(w) {
+  const st = w.state;
+  if (w.status === 'practice') { const n = endedSessions(w).length, N = sessionsOf(w); return n < N ? `${sessionName(w, n + 1)} is next (${n} of ${N} ${w.session === 'test' ? 'days' : 'sessions'} run)` : (w.session === 'test' ? 'All test days run' : 'Practice done: qualifying is next'); }
+  if (w.status === 'quali') return `Qualifying: Q${w.qualiStage || 1}`;
+  if (st && st.finished) return 'Race finished';
+  if (st && st.lap > 0) return `Race: lap ${st.lap} of ${st.laps}${st.sc && st.sc.type ? (st.sc.type === 'sc' ? ', safety car' : ', virtual safety car') : ''}`;
+  return 'The grid is set: the race is next';
+}
+function lastGp() { return F1.weekends().filter(w => w.status === 'finished' && w.session === 'gp').sort((a, b) => String(b.finishedAt).localeCompare(String(a.finishedAt)))[0]; }
+function podiumMini(w) {
+  if (!w) return ''; const t = F1.track(w.trackId) || {};
+  return `<div class="home-podium"><p class="muted small">Last time out: ${esc(t.name || '')}</p><ol>${(w.results || []).filter(r => r.position && r.position <= 3).sort((a, b) => a.position - b.position).map(r => `<li><span class="f1-bar" style="background:${esc(f1Colour(r.teamId))}"></span>${esc(r.name)}</li>`).join('')}</ol></div>`;
+}
+function nextWeekendHtml(gm) {
+  const next = f1NextTrack(), s = curSeries(), date = next && (s.dates || {})[next.id];
+  return `<section class="card home-wk"><p class="eyebrow">Next up</p><h2>${next ? `${esc(next.flag || '')} ${esc(next.name)}` : 'No rounds left this season'}</h2>
+    <p>${next ? `Round ${esc(next.round)} · ${esc(next.circuit || '')} · ${next.laps} laps${date ? ` · ${esc(fmtDay(date))}` : ''}` : ''}</p>
+    <p class="muted">${gm ? 'Open the weekend when the players are ready.' : 'Race Control opens the weekend; you’ll get a notification.'}</p>
+    ${podiumMini(lastGp())}
+    <div class="btn-row">${gm && next ? '<button class="btn primary" data-act="nav" data-route="weekend">Open the weekend</button>' : '<button class="btn" data-act="nav" data-route="calendar">The calendar</button>'}</div></section>`;
+}
+
+/* ---------------------------------------------------------------- the player's Home */
+function playerWeekendHtml(c) {
+  const w = F1.live(); if (!w) return nextWeekendHtml(false);
+  const t = F1.track(w.trackId) || { name: w.trackId }, cars = c ? myWeekendCars(w) : [], ent = cars[0] ? entWithV3(cars[0]) : null, col = ent ? f1Colour(ent.teamId) : 'var(--red)';
+  const todo = !ent ? 'Follow it live on the Race Weekend page.' : w.status === 'practice' ? (w.session === 'test' ? 'Plan your car’s test runs before Race Control runs the next day.' : 'Plan your car’s runs before Race Control runs the next session.')
+    : w.status === 'quali' ? 'Qualifying is under way: watch the times come in.' : w.state && w.state.lap > 0 ? 'The race is on: your pit wall has the calls.' : 'Check your race plan and triggers before the start.';
+  return `<section class="card home-wk" style="--team:${esc(col)}">
+    <div class="home-wk-head"><div><p class="eyebrow">${esc(roundLabel(w, t))} · ${esc(stageWords(w))}</p><h2>${esc(t.flag || '')} ${esc(t.name)}${w.session === 'sprint' ? ' Sprint' : w.session === 'test' ? ' testing' : ''}</h2>
+      ${ent ? `<p>${esc(ent.name)} · ${esc(F1.team(ent.teamId).name)}, car ${esc((ent.car || 1))}</p>` : ''}</div>${ent ? statStripHtml(w, ent) : ''}</div>
+    ${typeof lvStagesHtml === 'function' ? lvStagesHtml(w) : ''}
+    <p class="home-todo"><b>Now:</b> ${esc(todo)}</p>
+    <div class="btn-row"><button class="btn primary" data-act="nav" data-route="weekend">${ent ? 'Go to your pit wall' : 'Watch the weekend'}</button><button class="btn" data-act="nav" data-route="calendar">The calendar</button></div></section>`;
+}
+function playerAlertsHtml(c) {
+  const out = [];
+  if (charStatus(c) !== 'approved') out.push(`Application: <b>${esc(STATUS_TEXT[charStatus(c)].toLowerCase())}</b>. <button class="btn small" data-act="char-open" data-id="${esc(c.id)}">Open it</button>`);
+  if (typeof f1ContractOffersFor === 'function' && f1ContractOffersFor(c.id).length) out.push(`<b>${plural(f1ContractOffersFor(c.id).length, 'contract offer')}</b> waiting. <button class="btn small" data-act="char-open" data-id="${esc(c.id)}">See it</button>`);
+  if (charStatus(c) === 'approved' && !charSeat(c.id) && PREF_ROLES.indexOf(c.role) !== -1) out.push('No seat yet. <button class="btn small" data-act="nav" data-route="grid">Find an open seat</button>');
+  return out.length ? `<div class="home-alerts">${out.map(x => `<p>${x}</p>`).join('')}</div>` : '';
+}
+function playerHomeHtml(c) {
+  if (!c) return `<div class="page-head"><div><p class="eyebrow">${esc(curSeries().name)}, ${esc(curSeason().name)} season</p><h1>Welcome to the paddock</h1></div></div>${playerWeekendHtml(null)}${charPromptHtml()}`;
+  const prev = S.ui.career; let sheet = ''; S.ui.career = f1PcId(c.id);
+  try { sheet = ROUTES.career.view().replace('<button class="linkish small" data-act="nav" data-route="people">All characters</button>', ''); } catch (e) { sheet = `<p class="muted">The character sheet couldn’t be shown: ${esc(e.message || e)}</p>`; } finally { S.ui.career = prev; }
+  return `<div class="page-head"><div><p class="eyebrow">${esc(curSeries().name)}, ${esc(curSeason().name)} season</p><h1>Welcome back, ${esc(c.name.split(' ')[0])}</h1></div></div>
+    ${playerLimited() ? '<section class="card notice limited-note"><p>The rest of the site (Team HQ, Race Weekend, the Test Track, Characters and the Paddock) opens once Race Control approves your character.</p></section>' : ''}
+    ${playerAlertsHtml(c)}${playerWeekendHtml(c)}
+    <section class="home-sheet"><div class="home-sheet-head"><h2>Your character sheet</h2><div class="btn-row"><button class="btn small" data-act="char-open" data-id="${esc(c.id)}">${charStatus(c) === 'approved' ? 'Edit' : 'The application'}</button></div></div>${sheet}</section>`;
+}
+
+/* ---------------------------------------------------------------- Race Control's Home */
+ACTIONS['home-view'] = d => { S.ui.homeView = d.v; render(); };
+function rcWeekendHtml() {
+  const w = F1.live(); if (!w) return nextWeekendHtml(true);
+  const t = F1.track(w.trackId) || { name: w.trackId }, ents = w.entrants || f1Entrants(), players = ents.filter(e => e.charId);
+  let detail = '', action = '';
+  if (w.status === 'practice') {
+    const n = endedSessions(w).length, N = sessionsOf(w), sess = n + 1;
+    const planned = new Set(list('f1_runs').filter(r => r.weekendId === w.id && (r.session || 1) === sess).map(r => r.carId));
+    const waiting = players.filter(e => !planned.has(e.id));
+    detail = n < N ? `<p><b>${players.length - waiting.length} of ${players.length}</b> player cars have planned runs for ${esc(sessionName(w, sess))}.${waiting.length ? ` Waiting on: ${waiting.map(e => esc(e.name)).join(', ')}.` : ''}</p>` : '<p>All sessions are run.</p>';
+    action = n < N ? `<button class="btn primary" data-act="fp-end">Run ${esc(sessionName(w, sess))}</button>` : w.session === 'test' ? '<button class="btn primary" data-act="test-finish">Finish testing</button>' : '<button class="btn primary" data-act="f1-quali">Run qualifying</button>';
+  } else if (w.status === 'quali') { detail = `<p>Q${w.qualiStage || 1} done.</p>`; action = '<button class="btn primary" data-act="f1-quali-next">Run the next session</button>'; }
+  else { const st = w.state; detail = st && st.lap > 0 ? `<p>Lap ${st.lap} of ${st.laps}${w.live ? ', running live' : ', paused'}.${st.sc && st.sc.type ? ' Safety car out.' : ''}</p>` : `<p>${plural(players.length, 'player car')} on the grid. Start the race from the weekend page.</p>`; }
+  return `<section class="card home-wk rc"><div class="home-wk-head"><div><p class="eyebrow">${esc(roundLabel(w, t))} · ${esc(stageWords(w))}</p><h2>${esc(t.flag || '')} ${esc(t.name)}${w.session === 'sprint' ? ' Sprint' : w.session === 'test' ? ' testing' : ''}</h2></div></div>
+    ${typeof lvStagesHtml === 'function' ? lvStagesHtml(w) : ''}${detail}
+    <div class="btn-row">${action}<button class="btn" data-act="nav" data-route="weekend">Weekend controls</button></div></section>`;
+}
+function rcHomeHtml() {
+  const s = curSeries(), sea = curSeason(), done = F1.weekends().filter(w => w.status === 'finished' && w.session === 'gp').length, total = F1.tracks().length;
+  const pend = list('characters').filter(c => !c.retired && charStatus(c) === 'pending').sort((a, b) => String(a.submittedAt).localeCompare(String(b.submittedAt)));
+  const changes = list('characters').filter(c => !c.retired && charStatus(c) === 'approved' && careerRows(c).some(r => (r.status || 'pending') === 'pending'));
+  const seatApps = list('f1_applications').filter(a => a.status === 'pending');
+  const seats = list('f1_seats').filter(x => F1.teams().some(t => t.id === x.teamId)), held = seats.filter(x => x.holderCharId), st = f1Standings();
+  const audit = list('audit').sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 8);
+  const players = new Set(list('characters').filter(c => !c.retired).map(c => c.userId)).size;
+  return `<div class="page-head"><div><p class="eyebrow">${esc(s.name)}, ${esc(sea.name)} season</p><h1>Race Control</h1><p>${done} of ${plural(total, 'round')} run · ${plural(players, 'player')} · ${plural(held.length, 'seat')} held by players</p></div>
+      ${S.charId ? `<div class="seg" role="tablist" aria-label="Home"><button role="tab" aria-selected="true" data-act="home-view" data-v="rc">Race Control</button><button role="tab" aria-selected="false" data-act="home-view" data-v="player">Player view</button></div>` : ''}</div>
+    <div class="season-bar" role="img" aria-label="${done} of ${total} rounds run"><span style="width:${total ? done / total * 100 : 0}%"></span></div>
+    <div class="rc-home">
+      <div class="rc-main">${rcWeekendHtml()}
+        <section class="card"><div class="conn-sheet-head"><h2>Waiting for you ${pend.length + changes.length + seatApps.length ? `<span class="count">${pend.length + changes.length + seatApps.length}</span>` : ''}</h2><button class="btn small ghost" data-act="nav" data-route="control">Race Control page</button></div>
+          ${pend.length ? `<div class="app-list">${pend.slice(0, 5).map(c => appRowHtml(c, `Sent ${fmtWhen(c.submittedAt)}`)).join('')}</div>${pend.length > 5 ? `<p class="muted small">and ${pend.length - 5} more on the Race Control page.</p>` : ''}` : '<p class="muted">No character applications waiting.</p>'}
+          ${changes.length ? `<p><b>${plural(changes.length, 'character')}</b> with career seasons to check.</p>` : ''}
+          ${seatApps.length ? `<p><b>${plural(seatApps.length, 'seat application')}</b> to decide. <button class="btn small" data-act="nav" data-route="control">Decide</button></p>` : ''}</section>
+        <section class="card"><h2>Recent activity</h2>${audit.length ? `<ul class="activity">${audit.map(a => `<li><span class="muted small">${esc(fmtWhen(a.at))}</span> ${esc(a.summary || a.action)}${a.actor ? ` <span class="muted small">(${esc(a.actor)})</span>` : ''}</li>`).join('')}</ul>` : '<p class="muted">Nothing yet.</p>'}</section></div>
+      <aside class="rc-side">
+        <section class="card"><h2>The grid</h2><div class="metrics"><div class="metric"><b>${held.filter(x => x.role === 'driver').length}/${seats.filter(x => x.role === 'driver').length}</b><span>Driver seats</span></div><div class="metric"><b>${held.filter(x => x.role === 'principal').length}/${seats.filter(x => x.role === 'principal').length}</b><span>Principals</span></div><div class="metric"><b>${held.filter(x => x.role === 'engineer').length}/${seats.filter(x => x.role === 'engineer').length}</b><span>Engineers</span></div></div>
+          <div class="btn-row"><button class="btn small" data-act="nav" data-route="grid">The Grid</button><button class="btn small" data-act="nav" data-route="teams">Teams</button></div></section>
+        <section class="card"><h2>Championship</h2>${st.drivers.length ? `<table class="data compact"><tbody>${st.drivers.slice(0, 5).map((d, i) => `<tr><td>${i + 1}</td><td><span class="f1-bar" style="background:${esc(f1Colour(d.teamId))}"></span>${esc(d.name)}${d.charId ? ' <span class="tag player">Player</span>' : ''}</td><td class="num"><b>${d.pts}</b></td></tr>`).join('')}</tbody></table>` : '<p class="muted">No races yet.</p>'}
+          <div class="btn-row"><button class="btn small" data-act="nav" data-route="standings">Standings</button><button class="btn small ghost" data-act="share-open" data-kind="drivers">Export</button></div></section>
+        <section class="card"><h2>Discord</h2>${S.discordCh ? `<p class="small">Channels: ${S.discordCh.map(x => `<span class="tag">#${esc(x)}</span>`).join(' ') || 'none'}</p>` : '<p class="muted small">Not checked this visit.</p>'}${S.ui.dcErr ? `<p class="small warn-note">${esc(S.ui.dcErr)}</p>` : ''}
+          <div class="btn-row"><button class="btn small" data-act="discord-check">${S.discordCh ? 'Check again' : 'Check the channels'}</button><button class="btn small ghost" data-act="share-open" data-kind="calendar">Post the calendar</button></div></section>
+      </aside></div>`;
+}
+const _homeViewNew = ROUTES.home.view;
+ROUTES.home.view = function () {
+  if (!F1.teams().length || S.phase !== 'ready') return _homeViewNew();
+  if (S.isGm && !(S.charId && S.ui.homeView === 'player')) return rcHomeHtml();
+  const h = playerHomeHtml(currentChar());
+  return S.isGm ? h.replace('</h1></div></div>', `</h1></div><div class="seg" role="tablist" aria-label="Home"><button role="tab" aria-selected="false" data-act="home-view" data-v="rc">Race Control</button><button role="tab" aria-selected="true" data-act="home-view" data-v="player">Player view</button></div></div>`) : h;
+};
+
+/* =====================================================================
+   F1 SIM — managing characters (Race Control).
+   An "All characters" list on the Race Control page: search, filter by
+   status, open, retire or restore, and delete. Deleting asks for the
+   character's name to be typed, says exactly what goes, and keeps any
+   race results in the history under the character's name.
+   ===================================================================== */
+'use strict';
+
+const ownerName = uid => { const m = (S.ui.members || []).find(x => (x.user_id || x.id) === uid); return m ? m.username : ''; };
+function charFootprint(c) {
+  const pid = f1PcId(c.id), finished = list('f1_weekends').filter(w => w.status === 'finished');
+  return {
+    seats: list('f1_seats').filter(s => s.holderCharId === c.id),
+    apps: list('f1_applications').filter(a => a.charId === c.id),
+    rels: list('f1_relations').filter(r => r.charId === c.id || r.personId === pid || r.otherId === pid),
+    diary: list('f1_diary').filter(x => x.charId === c.id),
+    contracts: list('f1_contracts').filter(x => x.charId === c.id),
+    branding: list('f1_branding').filter(x => x.charId === c.id),
+    runs: list('f1_runs').filter(x => x.charId === c.id && (get('f1_weekends', x.weekendId) || {}).status !== 'finished'),
+    votes: list('f1_votes').filter(x => x.charId === c.id),
+    results: finished.reduce((n, w) => n + (w.results || []).filter(r => r.personId === pid || r.charId === c.id).length, 0),
+    live: !!(F1.live() && ((F1.live().entrants || f1Entrants()).some(e => e.charId === c.id || e.personId === pid || (e.personId && e.personId === f1PcId(c.id)))))
+  };
+}
+CHANGES['chm-q'] = v => { S.ui.chmQ = v; render(); };
+CHANGES['chm-status'] = v => { S.ui.chmStatus = v; render(); };
+function charManageHtml() {
+  if (S.ui.members === undefined && typeof loadMembers === 'function') { S.ui.members = null; setTimeout(loadMembers, 0); }
+  const q = String(S.ui.chmQ || '').trim().toLowerCase(), stf = S.ui.chmStatus || 'all';
+  const all = list('characters').slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  const rows = all.filter(c => (!q || String(c.name).toLowerCase().includes(q) || ownerName(c.userId).toLowerCase().includes(q)) && (stf === 'all' || (stf === 'retired' ? c.retired : !c.retired && charStatus(c) === stf)));
+  const statusTag = c => c.retired ? '<span class="tag">Retired</span>' : `<span class="tag ${charStatus(c) === 'approved' ? 'player' : charStatus(c) === 'pending' ? 'open' : ''}">${esc(STATUS_TEXT[charStatus(c)] || charStatus(c))}</span>`;
+  return `<section class="card chm"><h2>All characters <span class="count">${all.length}</span></h2>
+    <div class="chm-tools"><label class="sr-only" for="chm-q">Search</label><input id="chm-q" type="search" placeholder="Search by name or player" value="${esc(S.ui.chmQ || '')}" data-change="chm-q">
+      <label class="sr-only" for="chm-status">Status</label><select id="chm-status" data-change="chm-status">${[['all', 'Every status'], ['draft', 'Drafts'], ['pending', 'Waiting for Race Control'], ['returned', 'Returned'], ['approved', 'Approved'], ['retired', 'Retired']].map(([k, l]) => `<option value="${k}" ${stf === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>
+    ${rows.length ? `<div class="scroll-x"><table class="data chm-table"><thead><tr><th>Character</th><th>Player</th><th>Role</th><th>Status</th><th>Seat</th><th class="num">Results</th><th></th></tr></thead><tbody>${rows.map(c => { const fp = charFootprint(c), seat = fp.seats[0];
+      return `<tr><td><b>${esc(c.name)}</b></td><td>${esc(ownerName(c.userId) || '–')}</td><td>${esc(charRoleName(c.role))}</td><td>${statusTag(c)}</td><td>${seat ? `${esc(F1.team(seat.teamId).name)}, ${esc(seatTitle(seat).toLowerCase())}` : '<span class="muted">–</span>'}</td><td class="num">${fp.results || '–'}</td>
+        <td class="chm-acts"><button class="btn small" data-act="char-open" data-id="${esc(c.id)}">Open</button>${c.retired ? `<button class="btn small" data-act="chm-restore" data-id="${esc(c.id)}">Restore</button>` : `<button class="btn small ghost" data-act="char-retire" data-id="${esc(c.id)}">Retire</button>`}<button class="btn small danger" data-act="chdel-open" data-id="${esc(c.id)}">Delete</button></td></tr>`; }).join('')}</tbody></table></div>` : '<p class="muted">No characters match.</p>'}</section>`;
+}
+ACTIONS['chm-restore'] = d => { if (!S.isGm) return; const c = get('characters', d.id); if (!c) return;
+  run(async () => { const doc = clone(S.store.characters[d.id]); delete doc.retired; delete doc.retiredAt; await Data.put('characters', d.id, doc); await Data.audit('character.restore', `${c.name} restored by Race Control`); }, `${c.name} restored.`); };
+
+/* ---------------------------------------------------------------- deleting */
+ACTIONS['chdel-open'] = d => { if (!S.isGm) return; S.ui.chdel = { id: d.id, typed: '' }; openDrawer('chdel'); };
+DRAWERS.chdel = function () {
+  const x = S.ui.chdel || {}, c = get('characters', x.id); if (!c) return '<header><div><h2>Character not found</h2></div><button class="btn ghost" data-act="close-drawer">Close</button></header>';
+  const fp = charFootprint(c), owner = ownerName(c.userId), seat = fp.seats[0];
+  const items = [[fp.seats.length, seat ? `Their seat (${esc(F1.team(seat.teamId).name)}, ${esc(seatTitle(seat).toLowerCase())}) becomes open` : ''], [fp.apps.length, plural(fp.apps.length, 'seat application')], [fp.rels.length, plural(fp.rels.length, 'connection')], [fp.diary.length, plural(fp.diary.length, 'diary entry', 'diary entries')], [fp.contracts.length, plural(fp.contracts.length, 'contract')], [fp.branding.length, plural(fp.branding.length, 'team branding upload')], [fp.runs.length, plural(fp.runs.length, 'planned run')], [fp.votes.length, plural(fp.votes.length, 'vote')]].filter(i => i[0]);
+  return `<header><div><h2>Delete ${esc(c.name)}</h2><p>${esc(charRoleName(c.role))}${owner ? `, played by ${esc(owner)}` : ''}. This can’t be undone.</p></div><button class="btn ghost" data-act="close-drawer">Close</button></header>
+    <div class="body">${fp.live ? `<div class="card notice warn"><p><b>${esc(c.name)} is in the open weekend.</b> Finish or cancel the weekend first, then delete them.</p></div>` : ''}
+    <p>Deleting removes the character, their application and sheet${items.length ? ', and:' : '.'}</p>${items.length ? `<ul>${items.map(i => `<li>${i[1]}</li>`).join('')}</ul>` : ''}
+    <p>${fp.results ? `Their <b>${plural(fp.results, 'race result')}</b> ${fp.results === 1 ? 'stays' : 'stay'} in the history under their name, so standings and past seasons don’t change.` : 'They have no race results.'}</p>
+    <p class="muted small">Retiring instead keeps everything and can be undone.</p>
+    <label class="field"><span>Type <b>${esc(c.name)}</b> to confirm</span><input id="chdel-typed" type="text" autocomplete="off" data-bind="ui/chdel/typed" value="${esc(x.typed || '')}"></label>
+    <div class="btn-row"><button class="btn danger" data-act="chdel-run" ${fp.live ? 'disabled' : ''}>Delete permanently</button>${c.retired ? '' : `<button class="btn" data-act="char-retire" data-id="${esc(c.id)}">Retire instead</button>`}</div></div>`;
+};
+ACTIONS['chdel-run'] = () => {
+  const x = S.ui.chdel || {}, c = get('characters', x.id); if (!S.isGm || !c) return;
+  const typed = String((document.getElementById('chdel-typed') || {}).value || x.typed || '').trim();
+  if (typed.toLowerCase() !== String(c.name).trim().toLowerCase()) { toast(`Type ${c.name} exactly to confirm.`, true); return; }
+  const fp = charFootprint(c); if (fp.live) { toast('Finish or cancel the open weekend first.', true); return; }
+  const pid = f1PcId(c.id), name = c.name;
+  run(async () => {
+    for (const s of fp.seats) await Data.put('f1_seats', s.id, Object.assign(clone(S.store.f1_seats[s.id]), { holderCharId: null, holderName: null, holderSince: null }));
+    for (const [col, rows] of [['f1_applications', fp.apps], ['f1_relations', fp.rels], ['f1_diary', fp.diary], ['f1_contracts', fp.contracts], ['f1_branding', fp.branding], ['f1_runs', fp.runs], ['f1_votes', fp.votes]])
+      for (const r of rows) await Data.remove(col, r.id);
+    const p = get('f1_people', pid);
+    if (p) { if (fp.results) await Data.put('f1_people', pid, Object.assign(clone(S.store.f1_people[pid]), { charId: null, deleted: true, retired: true, approved: false }));
+      else await Data.remove('f1_people', pid); }
+    await Data.remove('characters', c.id);
+    if (S.charId === c.id) { S.charId = null; lsSet('f1sim.char', null); }
+    if (S.ui.charEdit === c.id) S.ui.charEdit = null;
+    await Data.audit('character.delete', `${name} deleted by Race Control${fp.results ? ` (${plural(fp.results, 'race result')} kept in the history)` : ''}`);
+    closeDrawer(); S.ui.chdel = null; if (S.route === 'character' || S.route === 'career') go('control');
+  }, `${name} deleted.`);
+};
+
+/* ---------------------------------------------------------------- where it shows */
+const _controlViewChm = ROUTES.control.view;
+ROUTES.control.view = function () { const h = _controlViewChm(); return S.isGm ? h + charManageHtml() : h; };
+const _characterViewChm = ROUTES.character.view;
+ROUTES.character.view = function () {
+  const h = _characterViewChm(), c = get('characters', S.ui.charEdit);
+  if (!S.isGm || !c) return h;
+  return h + `<section class="card rc-danger"><h2>Race Control</h2><p class="muted small">Delete this character and everything attached to them. Race results stay in the history.</p><div class="btn-row"><button class="btn danger" data-act="chdel-open" data-id="${esc(c.id)}">Delete this character</button></div></section>`;
+};
+
+/* =====================================================================
+   F1 SIM — teams on approval, and transfers.
+   Approving a driver, team principal or race engineer seats them too:
+   the decision card offers their first-choice team's open seat (then
+   their second choice, or any open seat if they're happy to go
+   anywhere), and the acceptance card posted to Discord names the team.
+   When Race Control moves a character from one team to another, a
+   Transfer card is posted to Discord (#transfers, or the default
+   channel), @mentioning the player. A switch on The Grid turns it off.
+   ===================================================================== */
+'use strict';
+
+if (!DISCORD_PURPOSES.some(p => p[0] === 'transfers')) DISCORD_PURPOSES.push(['transfers', 'Transfers (moves between teams, with an @mention)', 'DISCORD_WEBHOOK_TRANSFERS']);
+const teamSeriesId = tid => ((get('f1_teams', tid) || {}).seriesId || 'f1');
+const SEAT_ROLE = { driver: 'driver', principal: 'principal', engineer: 'engineer' };
+
+/* ---------------------------------------------------------------- the seat chosen on approval */
+function approvalSeats(c) {
+  const role = SEAT_ROLE[c.role]; if (!role) return [];
+  const sid = c.teamPref && c.teamPref.first ? teamSeriesId(c.teamPref.first) : curSeriesId(), teams = list('f1_teams').filter(t => (t.seriesId || 'f1') === sid).sort((a, b) => (a.order || 0) - (b.order || 0));
+  return teams.flatMap(t => list('f1_seats').filter(s => s.teamId === t.id && s.role === role).sort((a, b) => (a.car || 0) - (b.car || 0)).map(s => ({ s, t, free: !s.holderCharId || s.holderCharId === c.id })));
+}
+function defaultApprovalSeat(c) {
+  const held = list('f1_seats').find(s => s.holderCharId === c.id && SEAT_ROLE[c.role] === s.role); if (held) return held.id;
+  const opts = approvalSeats(c).filter(o => o.free), p = c.teamPref || {};
+  const pick = (p.first && opts.find(o => o.t.id === p.first)) || (p.second && opts.find(o => o.t.id === p.second)) || (p.any && opts[0]);
+  return pick ? pick.s.id : '';
+}
+const chosenApprovalSeat = c => { const f = S.ui.form.approveSeat || {}; return Object.prototype.hasOwnProperty.call(f, c.id) ? f[c.id] : defaultApprovalSeat(c); };
+CHANGES['approve-seat'] = (v, d) => { S.ui.form.approveSeat = S.ui.form.approveSeat || {}; S.ui.form.approveSeat[d.id] = v; render(); };
+function approvalSeatHtml(c) {
+  const opts = approvalSeats(c); if (!opts.length) return '';
+  const cur = chosenApprovalSeat(c), p = c.teamPref || {}, tName = id => (get('f1_teams', id) || {}).name || id;
+  const why = cur && p.first && (get('f1_seats', cur) || {}).teamId === p.first ? 'their first choice' : cur && p.second && (get('f1_seats', cur) || {}).teamId === p.second ? 'their second choice (the first has no open seat)' : cur && p.any ? 'they’re happy to go to any team' : '';
+  return `<label class="field approve-seat">Team and seat on approval<select id="aps-${esc(c.id)}" data-change="approve-seat" data-id="${esc(c.id)}"><option value="" ${!cur ? 'selected' : ''}>Don’t seat them yet</option>
+      ${[...new Set(opts.map(o => o.t.id))].map(tid => `<optgroup label="${esc(tName(tid))}${tid === p.first ? ' (first choice)' : tid === p.second ? ' (second choice)' : ''}">${opts.filter(o => o.t.id === tid).map(o => { const h = o.s.holderCharId && o.s.holderCharId !== c.id ? get('characters', o.s.holderCharId) : null;
+        return `<option value="${esc(o.s.id)}" ${cur === o.s.id ? 'selected' : ''} ${h ? 'disabled' : ''}>${esc(tName(tid))}, ${esc(seatTitle(o.s).toLowerCase())}${h ? ` (held by ${esc(h.name)})` : ''}</option>`; }).join('')}</optgroup>`).join('')}</select></label>
+    <p class="muted small">${cur ? `Chosen because ${why || 'Race Control picked it'}. The acceptance post names the team.` : (p.first ? `${esc(tName(p.first))} has no open ${esc(c.role === 'driver' ? 'race seat' : charRoleName(c.role).toLowerCase() + ' post')}. Pick another, or seat them later on The Grid.` : 'No team preference. Pick a seat, or seat them later on The Grid.')}</p>`;
+}
+const _genApproveSeat = ACTIONS['gen-approve'];
+ACTIONS['gen-approve'] = d => {
+  const c = get('characters', d.id); if (!c) return _genApproveSeat(d);
+  const seatId = SEAT_ROLE[c.role] ? chosenApprovalSeat(c) : '', already = seatId && (get('f1_seats', seatId) || {}).holderCharId === c.id;
+  if (!seatId || already) return _genApproveSeat(d);
+  const pa = S.ui.form.postAccept = S.ui.form.postAccept || {}, post = pa[d.id] !== false;
+  pa[d.id] = false;                                   /* post after seating, so the card names the team */
+  _genApproveSeat(d);
+  waitFor(() => charStatus(get('characters', d.id) || {}) === 'approved', 15000).then(async ok => {
+    pa[d.id] = post; if (!ok) return;
+    try { S.ui.noTransferPost = true; await f1Assign(seatId, d.id); } catch (e) { toast(`Approved, but the seat couldn’t be filled: ${e.message || e}`, true); } finally { S.ui.noTransferPost = false; }
+    if (!post) return;
+    const ch = await postAcceptance(d.id).catch(e => { toast(`Approved and seated, but the Discord post didn’t go: ${e.message || e}`, true); return null; });
+    if (ch) { const cc = get('characters', d.id), r = S.discordLast || {}, seat = get('f1_seats', seatId);
+      toast(`Approved and seated at ${F1.team(seat.teamId).name}. Acceptance card posted to #${ch}${cc && cc.discord ? (r.mentioned ? `, pinging @${cc.discord}` : `, with @${cc.discord} as text`) : ''}.`); }
+  });
+};
+
+/* ---------------------------------------------------------------- transfers */
+const transfersOn = () => lsGet('f1sim.postTransfers') !== 'off';
+CHANGES['transfer-toggle'] = (v, d, el) => { lsSet('f1sim.postTransfers', el && el.checked ? 'on' : 'off'); render(); };
+const _f1AssignTransfer = f1Assign;
+f1Assign = async function (seatId, charId) {
+  const seat = get('f1_seats', seatId);
+  const prev = charId && seat ? list('f1_seats').find(s => s.holderCharId === charId && s.id !== seatId && teamSeriesId(s.teamId) === teamSeriesId(seat.teamId)) : null;
+  const prevCopy = prev ? clone(prev) : null;
+  await _f1AssignTransfer(seatId, charId);
+  if (prevCopy && seat && prevCopy.teamId !== seat.teamId && S.isGm && transfersOn() && !S.ui.noTransferPost) {
+    const c = get('characters', charId); if (!c || charStatus(c) !== 'approved') return;
+    await Data.audit('character.transfer', `${c.name}: transfer from ${F1.team(prevCopy.teamId).name} to ${F1.team(seat.teamId).name}`);
+    postTransfer(charId, prevCopy, seat).then(ch => { const r = S.discordLast || {}; toast(`Transfer posted to Discord #${ch}${c.discord ? (r.mentioned ? `, pinging @${c.discord}` : `, with @${c.discord} as text`) : ''}.`); })
+      .catch(e => toast(`The move is done, but the transfer post didn’t go: ${e.message || e}`, true));
+  }
+};
+const seatLine = (seat, c) => seat.role === 'driver' ? `driver${c && c.number ? `, car #${c.number}` : seat.car ? `, car ${seat.car}` : ''}` : seat.role === 'principal' ? 'team principal' : `race engineer${seat.car ? `, car ${seat.car}` : ''}`;
+function transferText(c, from, to) { return `🔁 **Transfer:** ${c.name} moves from **${F1.team(from.teamId).name}** to **${F1.team(to.teamId).name}** as ${seatLine(to, c)}.`; }
+async function postTransfer(cid, from, to) {
+  const c = get('characters', cid), blob = await drawTransferCard(cid, from, to);
+  return discordSend('transfers', Object.assign({ content: transferText(c, from, to) }, c.discord ? { mention_username: c.discord } : {}), { blob, name: `${fileSafe(c.name)}-transfer.png` });
+}
+async function drawTransferCard(cid, from, to) {
+  const c = get('characters', cid), d = sheetData(cid), W = 1080, H = 1350, cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d');
+  try { await Promise.all(['700 200px "Titillium Web"', '600 40px "Titillium Web"'].map(f => document.fonts.load(f))); } catch (e) { /* fall back */ }
+  const T = EXP_THEMES.dark, img = await loadImg(c.portraitUrl), logo = await loadImg(leagueLogo()), fromT = F1.team(from.teamId), toT = F1.team(to.teamId), cf = f1Colour(from.teamId), ct = f1Colour(to.teamId);
+  g.fillStyle = '#1C1D22'; g.fillRect(0, 0, W, H);
+  const grad = g.createLinearGradient(0, 0, W, H); grad.addColorStop(0, cf); grad.addColorStop(0.42, '#1C1D22'); grad.addColorStop(0.58, '#1C1D22'); grad.addColorStop(1, ct); g.globalAlpha = 0.8; g.fillStyle = grad; g.fillRect(0, 0, W, H); g.globalAlpha = 1;
+  drawMark(g, 64, 64, Object.assign({}, T, { ink: '#FFFFFF' }), logo);
+  const label = 'Transfer'; g.font = cond(700, 50); const lw = g.measureText(label).width + 44; g.fillStyle = '#E10600'; g.beginPath(); g.moveTo(74, 140); g.lineTo(64 + lw + 10, 140); g.lineTo(64 + lw, 210); g.lineTo(64, 210); g.closePath(); g.fill();
+  g.fillStyle = '#FFFFFF'; g.fillText(label, 86, 193);
+  const px = 270, py = 250, pw = 540, ph = 580; drawPhoto(g, img, px, py, pw, ph, 10, { name: c.name }, T);
+  const fade = g.createLinearGradient(0, py + ph - 200, 0, py + ph); fade.addColorStop(0, 'rgba(28,29,34,0)'); fade.addColorStop(1, 'rgba(28,29,34,0.95)'); g.fillStyle = fade; g.fillRect(px, py + ph - 200, pw, 200);
+  const parts = String(c.name).split(' '), last = parts.pop(), first = parts.join(' ');
+  g.textAlign = 'center'; g.fillStyle = '#FFFFFF'; g.font = cond(600, 52); g.fillText(first, W / 2, 900);
+  let size = 130; g.font = cond(700, size); while (g.measureText(last.toUpperCase()).width > W - 120 && size > 64) { size -= 6; g.font = cond(700, size); } g.fillText(last.toUpperCase(), W / 2, 900 + size * 0.9);
+  /* From → to */
+  const y = 1080, bw = 400, bh = 120, gap = 120, x1 = W / 2 - gap / 2 - bw, x2 = W / 2 + gap / 2;
+  [[x1, 'FROM', fromT.name, cf], [x2, 'TO', toT.name, ct]].forEach(([x, k, n, col]) => {
+    g.fillStyle = 'rgba(37,39,45,0.95)'; g.fillRect(x, y, bw, bh); g.fillStyle = col; g.fillRect(x, y, 12, bh);
+    g.textAlign = 'left'; g.fillStyle = 'rgba(255,255,255,0.7)'; g.font = bodyF(600, 24); g.fillText(k, x + 34, y + 42);
+    g.fillStyle = '#FFFFFF'; fitText(g, n, z => cond(700, z), 52, bw - 50); g.fillText(n, x + 34, y + 98); });
+  g.fillStyle = '#FFFFFF'; g.beginPath(); const ax = W / 2 - 34, ay = y + bh / 2; g.moveTo(ax, ay - 8); g.lineTo(ax + 40, ay - 8); g.lineTo(ax + 40, ay - 26); g.lineTo(ax + 70, ay); g.lineTo(ax + 40, ay + 26); g.lineTo(ax + 40, ay + 8); g.lineTo(ax, ay + 8); g.closePath(); g.fill();
+  g.textAlign = 'center'; g.font = cond(600, 36); g.fillStyle = 'rgba(255,255,255,0.9)'; g.fillText(seatLine(to, c).replace(/^./, m => m.toUpperCase()), W / 2, 1258);
+  g.font = bodyF(500, 24); g.fillStyle = 'rgba(255,255,255,0.65)'; g.fillText(`${(d && d.series) || seriesDoc(teamSeriesId(to.teamId)).name} · ${fmtDate(nowIso())}`, W / 2, 1300); g.textAlign = 'left';
+  return new Promise(ok => cv.toBlob(ok, 'image/png'));
+}
+/* The switch on The Grid. */
+const _gridViewTransfers = ROUTES.grid.view;
+ROUTES.grid.view = function () {
+  const h = _gridViewTransfers(); if (!S.isGm) return h;
+  const bar = `<div class="transfer-bar"><label class="small"><input type="checkbox" data-change="transfer-toggle" ${transfersOn() ? 'checked' : ''}> Post a transfer card to Discord when I move a character to another team</label></div>`;
+  const i = h.indexOf('</div></div>'); return i < 0 ? bar + h : h.slice(0, i + 12) + bar + h.slice(i + 12);
 };
 
 /* start-up: every part has registered its routes, drawers and actions */

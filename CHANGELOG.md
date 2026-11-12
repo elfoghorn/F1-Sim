@@ -25,6 +25,43 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v0.33.0: teams on approval, and transfer posts
+
+12 November 2026. Build `f1sim-0.33.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Team on approval | The decision card for a driver, team principal or race engineer has "Team and seat on approval", filled in from their team preference: their first-choice team's open seat, then their second choice, or the first open seat anywhere if they're happy to go to any team. Seats held by other players are shown but can't be picked; "Don't seat them yet" leaves them unseated. Approving seats them first, then posts the acceptance card, so the card and the message name the team ("approved as driver for McLaren"). |
+| Transfers | When Race Control moves an approved character from one team to another (on The Grid, or by accepting a seat application), a Transfer card is posted to Discord: their portrait, FROM the old team TO the new one in the teams' colours, and the new seat, with the message "Transfer: … moves from McLaren to Red Bull as driver, car #28", @mentioning the player. Moving between seats in the same team doesn't post. A switch on The Grid turns transfer posts off. |
+| Discord | New channel `DISCORD_WEBHOOK_TRANSFERS` for transfer cards; without it they go to the default channel. Added to SETUP.md. |
+
+---
+
+## v0.32.0: managing and deleting characters
+
+12 November 2026. Build `f1sim-0.32.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| All characters | A list at the bottom of the Race Control page with every character: player, role, status, seat and race results. Search by character or player name, filter by status (drafts, waiting, returned, approved, retired), and Open, Retire, Restore or Delete each one. |
+| Deleting | Delete opens a panel that says exactly what goes: the character, their application and sheet, their seat (which becomes open), seat applications, connections, diary entries, contracts, team branding uploads, planned runs and votes. Type the character's name to confirm. Any race results stay in the history under their name, so standings and past seasons don't change. Deleting is blocked while the character is in the open weekend. "Retire instead" is offered alongside. |
+| On the application | Race Control sees "Delete this character" at the bottom of every application. |
+| Restore | Retired characters can be restored from the list. |
+
+---
+
+## v0.31.0: a new Home, and connections on the character sheet
+
+12 November 2026. Build `f1sim-0.31.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Connections on the sheet | Connections are now the last section of every character page, grouped by kind (family, friends, rivals, work, romance), with who counts the character as a connection and their on-track rivals. The owner adds a connection right there ("Add a connection" in the page's buttons jumps to it). The old Relationships card is gone; the Connections page and its map stay. |
+| Home for players | The current race weekend at the top: round, circuit and stage, the stage strip, their car's key numbers and what to do now, with a button to their pit wall (or the next round, with its date and the last podium, when no weekend is open). Below it, their character sheet in full. Application status, contract offers and "no seat yet" show as notes above. Players waiting for approval see the same, with the note about the rest of the site. |
+| Home for Race Control and moderators | A dashboard: the season's progress, the open weekend's stage with who still has to plan their runs and the next step as one button (Run FP1, Run qualifying, Run the next session…), or the next round to open; what's waiting (character applications, career seasons, seat applications); recent activity; the grid's player seats; the championship's top five; and Discord. Race Control members playing a character can switch to the player view. |
+
+---
+
 ## v0.30.0: historical series and year checks in career records
 
 12 November 2026. Build `f1sim-0.30.0`. **No database update.**
