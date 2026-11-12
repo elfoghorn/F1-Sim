@@ -1170,20 +1170,20 @@ ACTIONS['ch-pref-seat'] = d => {
 ACTIONS['ch-role-btn'] = d => {
   if (S.ui.form.ch) { S.ui.form.ch.role = d.role; renderOverlay(); if (S.ui.charInline || S.route === 'newchar') render(); }
 };
-/* The character form’s fields. skipRole=true omits the role tiles (newchar page renders them separately). */
+/* The character form's fields. skipRole=true omits the role tiles (newchar page renders them separately). */
 function charFormFields(f, skipRole) {
-  const txt = (k, label, extra) => `<label class="field">${label}<input id="ch-${k}" type="text" data-bind="ui/form/ch/${k}" value="${esc(f[k] || ‘’)}" ${extra || ‘’}></label>`;
-  return `<div class="ch-photo-row"><div class="ch-photo">${f.portraitUrl ? `<img src="${esc(f.portraitUrl)}" alt="The character’s picture">` : ‘<span class="muted small">No picture yet</span>’}</div>
-      <div><h3>Picture and face claim</h3><div class="btn-row"><label class="btn small file-btn">${f.portraitUrl ? ‘Change the picture’ : ‘Upload a picture’}<input type="file" accept="image/*" class="sr-only" data-change="ch-portrait"></label>${f.portraitUrl ? ‘<button class="btn small ghost" data-act="ch-portrait-remove">Remove</button>’ : ‘’}${S.ui.chUploading ? ‘<span class="muted small">Uploading…</span>’ : ‘’}</div>
-      <p class="muted small">JPEG, PNG or WebP; a head-and-shoulders shot works best. It’s saved with the character.</p>
-      ${txt(‘faceclaim’, ‘Face claim’, ‘placeholder="Who the picture shows, e.g. the actor or model" autocomplete="off"’)}</div></div>
+  const txt = (k, label, extra) => `<label class="field">${label}<input id="ch-${k}" type="text" data-bind="ui/form/ch/${k}" value="${esc(f[k] || '')}" ${extra || ''}></label>`;
+  return `<div class="ch-photo-row"><div class="ch-photo">${f.portraitUrl ? `<img src="${esc(f.portraitUrl)}" alt="The character's picture">` : '<span class="muted small">No picture yet</span>'}</div>
+      <div><h3>Picture and face claim</h3><div class="btn-row"><label class="btn small file-btn">${f.portraitUrl ? 'Change the picture' : 'Upload a picture'}<input type="file" accept="image/*" class="sr-only" data-change="ch-portrait"></label>${f.portraitUrl ? '<button class="btn small ghost" data-act="ch-portrait-remove">Remove</button>' : ''}${S.ui.chUploading ? '<span class="muted small">Uploading…</span>' : ''}</div>
+      <p class="muted small">JPEG, PNG or WebP; a head-and-shoulders shot works best. It's saved with the character.</p>
+      ${txt('faceclaim', 'Face claim', 'placeholder="Who the picture shows, e.g. the actor or model" autocomplete="off"')}</div></div>
     <div class="form-grid">
-      ${txt(‘name’, ‘Name’, ‘autocomplete="off" required’)}
-      ${skipRole ? ‘’ : (() => { const locked = f.id && charStatus(get(‘characters’, f.id) || {}) === ‘approved’; return `<div class="field" style="grid-column:1/-1">What they do<div class="role-tiles">${CHAR_ROLES.map(([k, l]) => locked ? `<span class="role-tile${(f.role || ‘driver’) === k ? ‘ on’ : ‘’}">${esc(l)}</span>` : `<button class="role-tile${(f.role || ‘driver’) === k ? ‘ on’ : ‘’}" data-act="ch-role-btn" data-role="${esc(k)}" type="button" aria-pressed="${(f.role || ‘driver’) === k}">${esc(l)}</button>`).join(‘’)}</div>${locked ? ‘<span class="muted small" style="margin-top:4px">Fixed once approved; ask Race Control to change it.</span>’ : ‘’}</div>`; })()}
+      ${txt('name', 'Name', 'autocomplete="off" required')}
+      ${skipRole ? '' : (() => { const locked = f.id && charStatus(get('characters', f.id) || {}) === 'approved'; return `<div class="field" style="grid-column:1/-1">What they do<div class="role-tiles">${CHAR_ROLES.map(([k, l]) => locked ? `<span class="role-tile${(f.role || 'driver') === k ? ' on' : ''}">${esc(l)}</span>` : `<button class="role-tile${(f.role || 'driver') === k ? ' on' : ''}" data-act="ch-role-btn" data-role="${esc(k)}" type="button" aria-pressed="${(f.role || 'driver') === k}">${esc(l)}</button>`).join('')}</div>${locked ? '<span class="muted small" style="margin-top:4px">Fixed once approved; ask Race Control to change it.</span>' : ''}</div>`; })()}
       ${txt('nationality', 'Nationality', 'placeholder="e.g. Scottish"')}
       ${f.role === 'driver' ? txt('code', 'Three-letter code (drivers)', 'maxlength="3" placeholder="e.g. HAR"') + `<label class="field">Car number (drivers)<input id="ch-number" type="number" min="1" max="99" data-bind="ui/form/ch/number" data-type="number" value="${esc(f.number || '')}"></label>` : ''}
       ${txt('discord', 'Discord username (for @mentions)', 'autocomplete="off" placeholder="e.g. amelia.hart"')}
-      ${txt('nickname', 'Nickname (optional)')}${txt('birthplace', 'Where they’re from (optional)')}
+      ${txt('nickname', 'Nickname (optional)')}${txt('birthplace', 'Where they're from (optional)')}
     </div>
     <label class="field">Personality<textarea id="ch-personality" rows="4" maxlength="4000" data-bind="ui/form/ch/personality" placeholder="How they come across: temperament, quirks, how they handle pressure, the media and their team-mate">${esc(f.personality || '')}</textarea></label>
     <label class="field">Backstory<textarea id="ch-bio" rows="6" data-bind="ui/form/ch/bio" placeholder="Where they come from and how they got into the paddock">${esc(f.bio || '')}</textarea></label>
