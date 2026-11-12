@@ -718,15 +718,43 @@ button.gc:hover, button.gc:focus-visible { outline: 2px solid var(--ink); outlin
 .gc-role { font-style: normal; font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; line-height: 1.2; }
 .g-driver .gc-role { color: #FF8A80; } .g-principal .gc-role { color: #F5C400; } .g-engineer .gc-role { color: #8CC2FF; }
 .gc { min-height: 52px; }
+
+/* ---------- championship history ---------- */
+.hist-tabs { margin: 0 0 12px; } .hist-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin: 0 0 12px; padding: 12px 14px; background: var(--panel); }
+.hist-f { display: flex; flex-direction: column; gap: 3px; font-size: 13px; font-weight: 600; color: var(--muted); } .hist-f select { min-width: 200px; min-height: 40px; }
+.hist-title { margin: 6px 0 8px; font-size: 24px; font-style: italic; } .gold { color: #F5C400; }
+.tl-key { display: flex; flex-wrap: wrap; gap: 14px; margin: 0 0 8px; font-size: 13px; color: var(--muted); } .tl-key span { display: inline-flex; align-items: center; gap: 6px; } .tl-key .tl-b { width: 22px; height: 14px; display: inline-block; }
+.tl-wrap { background: var(--panel); } .tl { border-collapse: collapse; min-width: 100%; }
+.tl th, .tl td { border-bottom: 1px solid var(--line); } .tl thead th { font-size: 12.5px; color: var(--muted); font-weight: 600; padding: 8px 2px; position: sticky; top: 0; background: var(--panel); }
+.tl-who { text-align: left; padding: 6px 12px !important; min-width: 210px; position: sticky; left: 0; background: var(--panel); z-index: 1; font-weight: 400; } .tl-who small { display: block; color: var(--muted); font-size: 12px; }
+.tl tr.me .tl-who { background: #3A1D20; } .tl-span { padding: 6px 8px; font-weight: 700; white-space: nowrap; font-size: 13.5px; }
+.tl-y { min-width: 46px; text-align: center; } .tl-c { padding: 3px 2px; min-width: 46px; } .tl-simstart { border-left: 3px solid var(--red) !important; }
+.tl-b { display: grid; place-items: center; height: 34px; font-weight: 800; font-size: 12.5px; color: #FFFFFF; } .tl-b.sim { background: var(--tc, #565A63); text-shadow: 0 1px 2px rgba(0,0,0,0.6); }
+.tl-b.rec { background: repeating-linear-gradient(135deg, #565A63 0 4px, #2E3037 4px 8px); } .tl-b.champ { color: #F5C400; font-size: 16px; box-shadow: inset 0 0 0 2px #F5C400; }
+.tl-group td { padding: 12px 12px 4px; font-size: 12.5px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; position: sticky; left: 0; } .tl-group.d td { color: #FF8A80; border-bottom: 2px solid var(--red); } .tl-group.s td { color: #F5C400; border-bottom: 2px solid #F5C400; }
+.cal { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; } .cal-dec { display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 10px; align-items: stretch; }
+.cal-dlabel { display: grid; place-items: center; background: var(--panel); font-size: 20px; font-weight: 900; font-style: italic; }
+.cal-years { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 6px; }
+.cal-y { display: flex; flex-direction: column; gap: 2px; min-height: 84px; padding: 8px; text-align: left; background: var(--panel); border: 1px solid var(--line); color: var(--ink); font: inherit; cursor: pointer; }
+.cal-y b { font-size: 18px; font-style: italic; } .cal-y small { color: var(--muted); font-size: 11.5px; } .cal-ch { font-size: 12.5px; font-weight: 700; color: #F5C400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-y.sim { border-top: 4px solid var(--red); } .cal-y.rec { border-top: 4px solid #565A63; background-image: repeating-linear-gradient(135deg, rgba(255,255,255,0.03) 0 6px, transparent 6px 12px); }
+.cal-y.empty { cursor: default; color: var(--line-strong); background: transparent; border-style: dashed; } .cal-y.on { outline: 3px solid var(--ink); outline-offset: -3px; } button.cal-y:hover { border-color: var(--ink); }
+.cal-dhead { display: flex; align-items: center; gap: 10px; } .cal-dhead h2 { margin: 0; } .cal-champ { margin: 6px 0 10px; } .cal-staff-h { color: #F5C400; }
+.cal-people { display: flex; flex-wrap: wrap; gap: 8px; } .cal-p { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--panel-2); border-left: 5px solid var(--tc); } .cal-p small { color: var(--muted); } .cal-p.me { background: #3A1D20; }
+@media (max-width: 900px) { .cal-years { grid-template-columns: repeat(5, minmax(0, 1fr)); } .cal-dec { grid-template-columns: minmax(0, 1fr); } .cal-dlabel { justify-content: start; padding: 4px 8px; } }
+
+.tl-group th, .tl-group td { padding: 12px 12px 4px; font-size: 12.5px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; } .tl-group.d th { color: #FF8A80; } .tl-group.s th { color: #F5C400; } .tl-group.d th, .tl-group.d td { border-bottom: 2px solid var(--red); } .tl-group.s th, .tl-group.s td { border-bottom: 2px solid #F5C400; } .tl-who small b { color: var(--ink); }
+
+.cal-ch { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.2; }
 </style>
 </head>
 <body>
 <div id="auth-root"><div class="boot"><div class="boot-card"><span class="brand-mark big" aria-hidden="true"></span><h1>F1 SIM</h1><p>Loading…</p></div></div></div>
 <div id="app"></div>
-<script>window.F1SIM_BUILD = 'f1sim-0.40.2'; window.F1SIM_VERSION = '0.40.2';</script>
+<script>window.F1SIM_BUILD = 'f1sim-0.41.0'; window.F1SIM_VERSION = '0.41.0';</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
-<script src="config.js?v=f1sim-0.40.2"></script>
-<script src="bridge.js?v=f1sim-0.40.2"></script>
+<script src="config.js?v=f1sim-0.41.0"></script>
+<script src="bridge.js?v=f1sim-0.41.0"></script>
 <noscript>F1 SIM needs JavaScript switched on.</noscript>
 </body>
 </html>

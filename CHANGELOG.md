@@ -25,6 +25,19 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v0.41.0: championship history, as a timeline and a calendar
+
+12 November 2026. Build `f1sim-0.41.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Three views | Championship → Career: every championship now has Timeline, Calendar and Standings (the career standings by role, as before). Timeline and Calendar have a Championship dropdown (the series raced in F1 SIM, then every championship on accepted career records) and Show (everyone, players only, real drivers). |
+| Timeline | Who raced in a championship, and when: a row per person and a column per year, with a block for every season: in the team's colour for F1 SIM seasons, striped for career records, showing the championship finish (P5) or ★ for a title. A red line marks where F1 SIM begins; years in progress are starred. Drivers and team roles (team principal, race engineer, sporting director, consultant…) are in separate groups. Names, years, teams and titles stay pinned on the left while the years scroll; it opens at the most recent years. Years: all, last 10 or last 20. |
+| Calendar | The years as a calendar: a row per decade, back to the earliest season on record (so a character with a 1990s career has their own row), and a tile per year with its champion (★) or current leader and how many raced, in team roles and as players. F1 SIM years have a red top, career-record years are striped. Clicking a year opens its roll call: champion, every driver with team and finish, and who ran the teams. |
+| Real-world history | Years before F1 SIM show only characters whose accepted career records include them; real-world champions of those years aren't recorded. |
+
+---
+
 ## v0.40.2: driver titles only in the drivers' career standings
 
 12 November 2026. Build `f1sim-0.40.2`. **No database update.**

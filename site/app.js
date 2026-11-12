@@ -1,4 +1,4 @@
-/* F1 SIM v0.40.2 (build f1sim-0.40.2): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v0.41.0 (build f1sim-0.41.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -8168,6 +8168,112 @@ ROUTES.champ.view = function () {
   if (!x || x.kind !== 'canon') return h;
   const note = `<div class="card notice tn-coming"><p><b>${esc(x.key)} isn’t raced in F1 SIM yet.</b> This page shows its leaderboard and champions from characters’ career records. ${catOfChamp(x.key) === 'formula' ? '' : 'Racing it in the league would need its own simulation.'}</p></div>`;
   const i = h.indexOf('<section'); return i < 0 ? h + note : h.slice(0, i) + note + h.slice(i);
+};
+
+/* =====================================================================
+   F1 SIM — championship history: who raced, and when.
+   Championship → Career: every championship has three views. Timeline:
+   a row per person and a block per season (the team's colour for F1 SIM
+   seasons, striped for career records), with finishes, titles and team
+   roles. Calendar: decades as rows and years as tiles, each with its
+   champion and how many raced; a year opens its roll call. Standings:
+   the career standings by role, as before.
+   ===================================================================== */
+'use strict';
+
+const yearsIn = txt => { const n = String(txt || '').match(/\b(19|20)\d{2}\b/g); if (!n) return []; const a = Number(n[0]), b = Number(n[n.length - 1]); const out = []; for (let y = Math.min(a, b); y <= Math.max(a, b) && out.length < 40; y++) out.push(y); return out; };
+const teamColByName = nm => { const s = String(nm || '').toLowerCase(); const t = s && list('f1_teams').find(x => s.indexOf(String(x.name).toLowerCase()) !== -1); return t ? f1Colour(t.id) : null; };
+const ROLE_SHORT = { principal: 'TP', director: 'Dir.', engineer: 'Eng.', strategist: 'Strat.', consultant: 'Cons.', other: 'Team' };
+function histChamps() {
+  const names = new Set(allSeries().map(s => s.name));
+  list('characters').filter(c => !c.retired && charApproved(c)).forEach(c => careerRows(c).filter(r => r.status === 'canon').forEach(r => names.add(seriesLabel(r))));
+  const league = allSeries().map(s => s.name);
+  return league.concat([...names].filter(n => league.indexOf(n) === -1).sort());
+}
+/* Every season anyone had in a championship: F1 SIM seasons from the results, the rest from career records. */
+function histEntries(name) {
+  const out = [], s = allSeries().find(x => x.name === name), tname = id => (get('f1_teams', id) || {}).name || '';
+  if (s) seriesSeasons(s.id).forEach(sea => {
+    const yr = parseInt(sea.name, 10); if (!yr) return;
+    const st = standingsFor(s.id, sea.id), done = seasonDone(sea.id);
+    st.drivers.forEach((d, i) => out.push({ pid: d.personId, name: d.name, charId: d.charId || null, year: yr, team: tname(d.teamId), col: f1Colour(d.teamId), role: 'driver', pos: i + 1, champ: done && i === 0, lead: !done && i === 0, src: 'sim', soFar: !done }));
+    const last = list('f1_weekends').filter(w => w.status === 'finished' && w.staff && wSeries(w) === s.id && wSeason(w) === sea.id).sort((a, b) => String(b.finishedAt).localeCompare(String(a.finishedAt)))[0];
+    if (last) Object.keys(last.staff).forEach(tid => { const x = last.staff[tid] || {}, add = (who, role, car) => { if (!who || !who.charId) return; const pid = staffPid(who);
+        out.push({ pid, name: (F1.person(pid) || {}).name || '', charId: who.charId, year: yr, team: tname(tid), col: f1Colour(tid), role, car, src: 'sim', soFar: !done }); };
+      add(x.principal, 'principal'); Object.keys(x.engineers || {}).forEach(car => add(x.engineers[car], 'engineer', car)); });
+  });
+  list('characters').filter(c => !c.retired && charApproved(c)).forEach(c => careerRows(c).filter(r => r.status === 'canon' && seriesLabel(r) === name).forEach(r => yearsIn(r.years).forEach(yr => {
+    if (out.some(e => e.pid === f1PcId(c.id) && e.year === yr && e.src === 'sim')) return;
+    const pos = String(r.pos || ''), n = Number(pos);
+    out.push({ pid: f1PcId(c.id), name: c.name, charId: c.id, year: yr, team: r.team || '', col: teamColByName(r.team), role: r.role || 'driver', pos: n >= 1 && n <= 10 ? n : null, posTxt: pos === '11' ? 'P11+' : pos === '0' ? 'Part' : '', champ: pos === '1', src: 'record' }); })));
+  return out;
+}
+const histFilter = es => { const sh = S.ui.histShow || 'all'; return es.filter(e => sh === 'all' || (sh === 'players' ? !!e.charId : !e.charId)); };
+const cellLabel = e => e.role !== 'driver' ? (ROLE_SHORT[e.role] || 'Team') : e.champ ? '★' : e.pos ? `P${e.pos}` : (e.posTxt || '•');
+
+/* ---------------------------------------------------------------- the view */
+CHANGES['hist-champ'] = v => { S.ui.histChamp = v; S.ui.histYear = null; render(); };
+CHANGES['hist-show'] = v => { S.ui.histShow = v; render(); };
+CHANGES['hist-range'] = v => { S.ui.histRange = v; render(); };
+ACTIONS['hist-tab'] = d => { S.ui.histTab = d.t; render(); };
+ACTIONS['hist-year'] = d => { S.ui.histYear = Number(d.y); render(); setTimeout(() => { const el = document.getElementById('hist-year-detail'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, 60); };
+function timelineHtml(es, name) {
+  if (!es.length) return `<p class="muted">Nobody has raced in ${esc(name)} yet, in F1 SIM or on an accepted career record.</p>`;
+  let ys = [...new Set(es.map(e => e.year))], lo = Math.min(...ys), hi = Math.max(...ys);
+  const range = S.ui.histRange || 'all'; if (range !== 'all') lo = Math.max(lo, hi - Number(range) + 1);
+  const years = []; for (let y = lo; y <= hi; y++) years.push(y);
+  const simStart = Math.min(...es.filter(e => e.src === 'sim').map(e => e.year).concat([9999]));
+  const people = new Map(); es.forEach(e => { if (e.year < lo) return; const k = `${e.pid}|${e.role === 'driver' ? 'd' : 's'}`; const p = people.get(k) || { pid: e.pid, name: e.name, charId: e.charId, staff: e.role !== 'driver', by: {}, teams: new Set(), first: e.year, last: e.year, best: 99, titles: 0 };
+    p.by[e.year] = e; if (e.team) p.teams.add(e.team); p.first = Math.min(p.first, e.year); p.last = Math.max(p.last, e.year); if (e.pos) p.best = Math.min(p.best, e.pos); if (e.champ) p.titles++; people.set(k, p); });
+  const rows = staff => [...people.values()].filter(p => p.staff === staff).sort((a, b) => a.first - b.first || b.titles - a.titles || a.name.localeCompare(b.name));
+  const cell = (p, y) => { const e = p.by[y], cls = y === simStart ? ' tl-simstart' : ''; if (!e) return `<td class="tl-c${cls}"></td>`;
+    const bg = e.src === 'record' ? '' : `style="--tc:${esc(e.col || '#565A63')}"`, label = cellLabel(e), tip = `${y}: ${e.team || ''} · ${e.role === 'driver' ? (e.champ ? 'champion' : e.pos ? 'P' + e.pos : e.posTxt || 'raced') : careerRoleName(e.role)}${e.soFar ? ' (so far)' : ''}${e.src === 'record' ? ' (career record)' : ''}`;
+    return `<td class="tl-c${cls}"><span class="tl-b ${e.src === 'record' ? 'rec' : 'sim'} ${e.champ ? 'champ' : ''}" ${bg} title="${esc(tip)}">${esc(label)}</span></td>`; };
+  const rowHtml = p => `<tr${S.charId && p.charId === S.charId ? ' class="me"' : ''}><th scope="row" class="tl-who">${careerLink(p.pid, p.name)}${p.charId ? ' <span class="tag player">Player</span>' : ''}<small><b>${p.first === p.last ? p.first : `${p.first}–${p.last}`}</b> · ${esc([...p.teams].slice(0, 2).join(', '))}${p.teams.size > 2 ? ` +${p.teams.size - 2}` : ''}${p.titles ? ` · ${plural(p.titles, 'title')}` : p.best < 99 ? ` · best P${p.best}` : ''}</small></th>${years.map(y => cell(p, y)).join('')}</tr>`;
+  const group = (title, cls, rs) => rs.length ? `<tr class="tl-group ${cls}"><th scope="rowgroup" class="tl-who">${esc(title)}</th><td colspan="${years.length}"></td></tr>${rs.map(rowHtml).join('')}` : '';
+  /* Open at the most recent years: scroll left to go back in time. */
+  setTimeout(() => { const w = document.querySelector('.tl-wrap'); if (w) w.scrollLeft = w.scrollWidth; }, 0);
+  return `<div class="tl-key"><span><i class="tl-b sim" style="--tc:#E10600"></i>F1 SIM season, in the team’s colour</span><span><i class="tl-b rec"></i>Career record (before F1 SIM)</span><span><b class="gold">★</b> Champion</span><span>P5 = championship finish · TP, Eng., Dir., Cons. = team roles</span>${years.some(y => es.some(e => e.year === y && e.soFar)) ? `<span>${hi}* = so far</span>` : ''}</div>
+    <div class="scroll-x tl-wrap"><table class="tl"><thead><tr><th class="tl-who">Name</th>${years.map(y => `<th class="tl-y${y === simStart ? ' tl-simstart' : ''}">${y}${es.some(e => e.year === y && e.soFar) ? '*' : ''}</th>`).join('')}</tr></thead>
+    <tbody>${group('Drivers', 'd', rows(false))}${group('Team principals, race engineers and other team roles', 's', rows(true))}</tbody></table></div>`;
+}
+function calendarHtml(es, name) {
+  if (!es.length) return `<p class="muted">Nobody has raced in ${esc(name)} yet, in F1 SIM or on an accepted career record.</p>`;
+  const ys = es.map(e => e.year), lo = Math.floor(Math.min(...ys) / 10) * 10, hi = Math.floor(Math.max(...ys) / 10) * 10;
+  const by = y => es.filter(e => e.year === y), sel = S.ui.histYear && ys.indexOf(S.ui.histYear) !== -1 ? S.ui.histYear : Math.max(...ys);
+  const tile = y => { const x = by(y), drv = x.filter(e => e.role === 'driver'); if (!x.length) return `<div class="cal-y empty"><b>${y}</b></div>`;
+    const sim = x.some(e => e.src === 'sim'), ch = drv.find(e => e.champ), ld = drv.find(e => e.lead), players = new Set(x.filter(e => e.charId).map(e => e.pid)).size;
+    return `<button class="cal-y ${sim ? 'sim' : 'rec'} ${y === sel ? 'on' : ''}" data-act="hist-year" data-y="${y}" aria-pressed="${y === sel}"><b>${y}${x.some(e => e.soFar) ? '*' : ''}</b>
+      <span class="cal-ch" title="${esc(ch ? ch.name : ld ? ld.name : '')}">${ch ? `★ ${esc(ch.name.split(' ').pop())}` : ld ? `Leads: ${esc(ld.name.split(' ').pop())}` : '&nbsp;'}</span><small>${[drv.length ? plural(new Set(drv.map(e => e.pid)).size, 'driver') : '', x.some(e => e.role !== 'driver') ? `${new Set(x.filter(e => e.role !== 'driver').map(e => e.pid)).size} in a team role` : '', players ? `${players} player${players === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ')}</small></button>`; };
+  const decades = []; for (let d = hi; d >= lo; d -= 10) decades.push(d);
+  const x = by(sel), drv = x.filter(e => e.role === 'driver').sort((a, b) => (a.pos || 99) - (b.pos || 99) || a.name.localeCompare(b.name)), staff = x.filter(e => e.role !== 'driver'), ch = drv.find(e => e.champ) || drv.find(e => e.lead), sim = x.some(e => e.src === 'sim');
+  const chip = e => `<span class="cal-p ${S.charId && e.charId === S.charId ? 'me' : ''}" style="--tc:${esc(e.col || '#565A63')}">${careerLink(e.pid, e.name)}<small>${esc(e.team || '–')} · ${esc(e.role === 'driver' ? (e.champ ? 'Champion' : e.pos ? 'P' + e.pos : e.posTxt || 'raced') : careerRoleName(e.role))}</small>${e.charId ? '<span class="tag player">Player</span>' : ''}</span>`;
+  return `<div class="cal">${decades.map(d => `<div class="cal-dec"><span class="cal-dlabel">${d}s</span><div class="cal-years">${Array.from({ length: 10 }, (_, i) => tile(d + i)).join('')}</div></div>`).join('')}</div>
+    <section class="card cal-detail" id="hist-year-detail"><div class="cal-dhead"><h2>${sel}${x.some(e => e.soFar) ? ' (so far)' : ''}</h2><span class="tag ${sim ? 'league' : ''}">${sim ? 'F1 SIM' : 'Career records'}</span></div>
+      ${ch ? `<p class="cal-champ"><b class="gold">★</b> <span class="muted small">${ch.champ ? 'Champion' : 'Leading'}</span> <b>${esc(ch.name)}</b> <span class="muted">${esc(ch.team || '')}</span></p>` : ''}
+      ${drv.length ? `<div class="cal-people">${drv.map(chip).join('')}</div>` : ''}
+      ${staff.length ? `<p class="small"><b class="cal-staff-h">Running the teams:</b></p><div class="cal-people">${staff.map(chip).join('')}</div>` : ''}
+      ${!sim ? '<p class="muted small">Before F1 SIM: the characters whose accepted career records include this year. Real-world champions aren’t recorded here.</p>' : ''}</section>`;
+}
+function historyViewHtml() {
+  const names = histChamps(), name = S.ui.histChamp && names.indexOf(S.ui.histChamp) !== -1 ? S.ui.histChamp : curSeries().name, tab = S.ui.histTab || 'timeline';
+  const es = histFilter(histEntries(name));
+  const sel = (id, act, val, opts, label) => `<label class="hist-f">${esc(label)}<select id="${id}" data-change="${act}">${opts.map(([v, l]) => `<option value="${esc(v)}" ${String(v) === String(val) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
+  const filters = `<div class="hist-bar">${sel('hist-champ', 'hist-champ', name, names.map(n => [n, n + (allSeries().some(s => s.name === n) ? '' : ' (career records)')]), 'Championship')}
+    ${sel('hist-show', 'hist-show', S.ui.histShow || 'all', [['all', 'Everyone'], ['players', 'Players only'], ['real', 'Real drivers']], 'Show')}
+    ${tab === 'timeline' ? sel('hist-range', 'hist-range', S.ui.histRange || 'all', [['all', 'All years'], ['10', 'Last 10 years'], ['20', 'Last 20 years']], 'Years') : ''}</div>`;
+  return `<div class="seg hist-tabs" role="tablist" aria-label="View">${[['timeline', 'Timeline'], ['calendar', 'Calendar'], ['standings', 'Standings']].map(([k, l]) => `<button role="tab" aria-selected="${tab === k}" data-act="hist-tab" data-t="${k}">${esc(l)}</button>`).join('')}</div>
+    ${tab === 'standings' ? '' : filters + `<h2 class="hist-title">${tab === 'timeline' ? `Who raced in ${esc(name)}, and when` : `${esc(name)}, year by year`}</h2>` + (tab === 'timeline' ? timelineHtml(es, name) : calendarHtml(es, name))}`;
+}
+const _standingsViewHistory = ROUTES.standings.view;
+ROUTES.standings.view = function () {
+  if ((S.ui.standView || 'hub') !== 'career') return _standingsViewHistory();
+  const h = _standingsViewHistory(), tab = S.ui.histTab || 'timeline', body = historyViewHtml();
+  const at = h.indexOf('</div>', h.indexOf('class="seg stand-tabs"'));
+  if (tab === 'standings') return at < 0 ? body + h : h.slice(0, at + 6) + body + h.slice(at + 6);
+  const head = `<div class="page-head"><div><h1>Championship</h1><p>Who raced in each championship and when: F1 SIM seasons, and accepted career records from before the league.</p></div></div>`;
+  const tabsEnd = h.indexOf('</div>', h.indexOf('class="seg stand-tabs"')), tabsStart = h.indexOf('<div class="seg stand-tabs"');
+  return head + (tabsStart >= 0 ? h.slice(tabsStart, tabsEnd + 6) : '') + body;
 };
 
 /* start-up: every part has registered its routes, drawers and actions */
