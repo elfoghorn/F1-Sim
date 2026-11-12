@@ -25,6 +25,20 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v0.27.0: flavour on the character sheet, and Connections
+
+12 November 2026. Build `f1sim-0.27.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Flavour sections | Nine optional sections on every character sheet: goals and motivation, fears and insecurities, appearance, habits, hobbies, likes, dislikes, skills and family. They sit in an "Add flavour (optional)" fold-out in the character form (inline on the application page, and when creating a character), so players can fill them in now or come back any time. |
+| Where flavour shows | A "More about them" card on the character page, a "Flavour" card on the application, a line in Race Control's decision checklist ("Flavour: 7 of 9 optional sections"), and a "More about them" section in the Google Doc. |
+| Connections page | A new menu item. A character's connections, each with who, what they are and the story; adding and removing them; and who counts the character as a connection. Kinds come in five groups: family (sibling, parent, child, cousin), friends (friend, best friend), rivals (rival, nemesis, unfinished business), work (mentor, protégé, team-mate, former team-mate, manager, colleague) and romance (partner, ex). |
+| Across the paddock | A map of every connection in the league: people as dots in their team colours (player characters outlined), connections as lines in their group's colour, several connections between the same two people bowed apart. Filter by group, click anyone to open their page, or read them all as a list. |
+| Relationships | The character page's Relationships card uses the same, wider set of kinds. |
+
+---
+
 ## v0.26.1: approvals as a list
 
 12 November 2026. Build `f1sim-0.26.1`. **No database update.**

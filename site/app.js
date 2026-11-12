@@ -1,4 +1,4 @@
-/* F1 SIM v0.26.1 (build f1sim-0.26.1): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v0.27.0 (build f1sim-0.27.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -1166,7 +1166,8 @@ function charFormFields(f) {
     <label class="field">About them<textarea id="ch-bio" rows="6" data-bind="ui/form/ch/bio" placeholder="Background, personality, how they got into the paddock">${esc(f.bio || '')}</textarea></label>
     ${f.role === 'driver' ? `<label class="field">Before Formula 1 (optional)<textarea id="ch-junior" rows="3" data-bind="ui/form/ch/junior" placeholder="Karting, junior series, titles, the one that got away">${esc(f.junior || '')}</textarea></label>
     ${txt('helmet', 'Helmet design (optional)', 'placeholder="e.g. Saltire blue with a gold stripe"')}` : ''}
-`;
+
+    ${typeof flavourFieldsHtml === 'function' ? flavourFieldsHtml(f) : ''}`;
 }
 DRAWERS.char = function () {
   const f = S.ui.form.ch || {};
@@ -2557,6 +2558,7 @@ route('character', 'Character', function () {
   if (S.ui.charInline === c.id) h += charInlineHtml(c);
   else h += `<section class="card"><h2>Who they are</h2>${c.bio ? paras(c.bio) : '<p class="muted">No background written yet. Use Edit details.</p>'}
     <p class="muted small">${[c.nationality, c.code, c.number ? '#' + c.number : '', c.faceclaim ? 'Face claim: ' + c.faceclaim : '', c.discord ? 'Discord: ' + c.discord : ''].filter(Boolean).map(esc).join('. ')}</p>${c.portraitUrl ? `<img class="app-photo" src="${esc(c.portraitUrl)}" alt="${esc(c.name)}">` : ''}</section>`;
+  if (S.ui.charInline !== c.id) h += flavourCardHtml(c, 'Flavour');
   h += careerAppHtml(c);
   if (driver) {
     h += `<section class="card"><h2>Background</h2>${g.rolls ? `<p><b>${esc(b.name)}</b>. ${esc(b.blurb)}</p>` : `<p class="muted">Where your driver comes from sets their starting range and experience. It’s fixed once you roll.</p>
@@ -4646,6 +4648,7 @@ route('career', 'Character', function () {
 
   const mid = `<div class="char-mid">
     <section class="card"><h2>Story</h2>${c && c.bio ? paras(c.bio) : `<p class="muted">${c ? 'No story written yet.' : `${esc(p.name)} is part of today’s real grid.`}</p>`}</section>
+    ${flavourCardHtml(c)}
     ${diary.length || mine ? `<section class="card"><h2>Diary</h2>${diary.length ? diary.slice(0, 8).map(d => `<article class="diary"><p class="muted small">${esc(fmtWhen(d.at))}</p><h3>${esc(d.title)}</h3>${paras(d.body)}${mine ? `<button class="btn small ghost" data-act="diary-delete" data-id="${esc(d.id)}">Delete</button>` : ''}</article>`).join('') : '<p class="muted">No entries yet. Diary entries are public.</p>'}</section>` : ''}
     <section class="card"><h2>Timeline</h2>${tl.length ? `<ol class="timeline">${tl.map(x => `<li><span class="muted small">${esc(fmtDate(x.at))}</span> ${esc(x.text)}</li>`).join('')}</ol>` : '<p class="muted small">The story starts at the first race.</p>'}</section></div>`;
 
@@ -5796,6 +5799,7 @@ async function sheetDocx(cid) {
   }
   /* Story. */
   if (c.bio) { body.push(H2('Story')); String(c.bio).split(/\n+/).filter(Boolean).forEach(t => body.push(P(t))); }
+  if (typeof FLAVOUR !== 'undefined' && flavourCount(c)) { body.push(H2('More about them')); FLAVOUR.filter(([k]) => String(c[k] || '').trim()).forEach(([k, l]) => { body.push(docxPara(docxRun(l, { b: true, sz: 21, color: accent }), { after: 40, keep: true })); String(c[k]).split(/\n+/).filter(Boolean).forEach(t => body.push(P(t))); }); }
   if (d.driver && c.junior) { body.push(H2('Before Formula 1')); String(c.junior).split(/\n+/).filter(Boolean).forEach(t => body.push(P(t))); }
   /* Career record. */
   if (d.sim.length || d.canon.length) {
@@ -6372,6 +6376,7 @@ function decisionHtml(c) {
       ${check(!!String(c.bio || '').trim(), 'Story written')}
       ${PREF_ROLES.indexOf(c.role) !== -1 ? check(prefDone(c), prefLine(c) ? esc(prefLine(c)) : 'No team preference') : ''}
       ${driver ? check(!!g.rolls, g.rolls ? `${esc((bracketOf(g.bracket) || {}).name || '')}, roll ${g.rolls} of ${maxRolls(c)}${g.changes ? '; background changed once' : ''}${(g.history || []).length ? `; ${plural(g.history.length, 'earlier attempt')} below` : ''}` : 'Not rolled') : ''}
+      ${check(true, `Flavour: ${flavourCount(c)} of ${FLAVOUR.length} optional sections`)}
       ${careerRows(c).length ? check(!waiting.some(isMajor), `${plural(careerRows(c).length, 'career season')}${waiting.length ? `, ${waiting.length} still to mark (approving makes them canon)` : ''}`) : ''}
     </ul>
     <label class="field">Note to the player (needed to return it)<textarea id="dec-${esc(c.id)}" rows="2" data-bind="ui/form/rcnote/${esc(c.id)}">${esc(((S.ui.form.rcnote || {})[c.id]) || '')}</textarea></label>
@@ -6400,6 +6405,108 @@ const _genReturnBack = ACTIONS['gen-return'];
 ACTIONS['gen-return'] = d => { const onPage = S.route === 'character'; _genReturnBack(d); if (onPage) waitFor(() => charStatus(get('characters', d.id) || {}) === 'returned', 8000).then(ok => { if (ok && S.route === 'character') go('control'); }); };
 const _genApproveBack = ACTIONS['gen-approve'];
 ACTIONS['gen-approve'] = d => { const onPage = S.route === 'character'; _genApproveBack(d); if (onPage) waitFor(() => charStatus(get('characters', d.id) || {}) === 'approved', 8000).then(ok => { if (ok && S.route === 'character') go('control'); }); };
+
+/* =====================================================================
+   F1 SIM — flavour and connections.
+   Optional sections of the character sheet, filled in any time: goals
+   and motivation, fears and insecurities, appearance, habits, hobbies,
+   likes, dislikes, skills and family. They show on the character page,
+   in the application and in the Google Doc.
+   The Connections page: a character's connections (family, friends,
+   rivals, work and romance), who counts them as a connection, and a map
+   of every connection in the paddock.
+   ===================================================================== */
+'use strict';
+
+const FLAVOUR = [
+  ['goals', 'Goals and motivation', 'What drives them; what they want from the sport and from life'],
+  ['fears', 'Fears and insecurities', 'What keeps them up at night; where they doubt themselves'],
+  ['appearance', 'Appearance', 'Build, style, how they carry themselves, anything distinctive'],
+  ['habits', 'Habits', 'Rituals, superstitions, tics, routines on a race weekend'],
+  ['hobbies', 'Hobbies', 'What they do away from the track'],
+  ['likes', 'Likes', 'Food, music, places, people, circuits'],
+  ['dislikes', 'Dislikes', 'What winds them up'],
+  ['skills', 'Skills', 'Talents in and out of the car'],
+  ['family', 'Family', 'Parents, siblings, partners, children; who’s in their corner']
+];
+FLAVOUR.forEach(([k]) => { if (!(k in CHAR_BLANK)) CHAR_BLANK[k] = ''; });
+const flavourCount = c => FLAVOUR.filter(([k]) => String((c || {})[k] || '').trim()).length;
+function flavourFieldsHtml(f) {
+  const n = flavourCount(f);
+  return `<details class="flavour" ${n ? 'open' : ''}><summary><b>Add flavour (optional)</b> <span class="muted small">${n ? `${n} of ${FLAVOUR.length} filled. ` : ''}Fill in any of these now, or come back any time.</span></summary>
+    <div class="flavour-grid">${FLAVOUR.map(([k, l, ph]) => `<label class="field">${esc(l)}<textarea id="ch-${k}" rows="3" maxlength="1500" data-bind="ui/form/ch/${k}" placeholder="${esc(ph)}">${esc(f[k] || '')}</textarea></label>`).join('')}</div></details>`;
+}
+function flavourCardHtml(c, title) {
+  if (!c || !flavourCount(c)) return '';
+  return `<section class="card flavour-card"><h2>${esc(title || 'More about them')}</h2><dl class="flavour-dl">${FLAVOUR.filter(([k]) => String(c[k] || '').trim()).map(([k, l]) => `<div><dt>${esc(l)}</dt><dd>${paras(c[k])}</dd></div>`).join('')}</dl></section>`;
+}
+
+/* ---------------------------------------------------------------- connections */
+const REL_GROUPS = [
+  ['family', 'Family', '#7CD69C', [['sibling', 'Sibling'], ['parent', 'Parent'], ['child', 'Child'], ['cousin', 'Cousin']]],
+  ['friends', 'Friends', '#5AA9FF', [['friend', 'Friend'], ['bestfriend', 'Best friend']]],
+  ['rivals', 'Rivals', '#E10600', [['rival', 'Rival'], ['nemesis', 'Nemesis'], ['history', 'Unfinished business']]],
+  ['work', 'Work', '#F5C400', [['mentor', 'Mentor'], ['protege', 'Protégé'], ['teammate', 'Team-mate'], ['formerteammate', 'Former team-mate'], ['manager', 'Manager'], ['colleague', 'Colleague']]],
+  ['romance', 'Romance', '#E58AD8', [['partner', 'Partner'], ['ex', 'Ex']]]
+];
+REL_GROUPS.forEach(g => g[3].forEach(k => { if (!REL_KINDS.some(x => x[0] === k[0])) REL_KINDS.push(k); }));
+const relGroupOf = kind => REL_GROUPS.find(g => g[3].some(k => k[0] === kind)) || REL_GROUPS[2];
+const relKindName = kind => (REL_KINDS.find(x => x[0] === kind) || [kind, kind])[1];
+const personName = id => (F1.person(id) || {}).name || id;
+function connPeople() {
+  return list('f1_people').filter(p => p.approved !== false && (p.charId ? charApproved(get('characters', p.charId)) : true)).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+}
+ACTIONS['conn-add'] = () => {
+  const c = currentChar(), f = S.ui.form.conn || {}; if (!c) { toast('Choose a character to play as first.', true); return; }
+  if (!f.otherId) { toast('Choose who the connection is with.', true); return; }
+  if (f.otherId === f1PcId(c.id)) { toast('That’s them.', true); return; }
+  run(async () => { await Data.put('f1_relations', newId('rel'), { userId: asOwner(), charId: c.id, personId: f1PcId(c.id), otherId: f.otherId, kind: f.kind || 'friend', note: String(f.note || '').trim().slice(0, 600), at: nowIso() }); S.ui.form.conn = { kind: f.kind || 'friend' }; }, 'Connection added.');
+};
+ACTIONS['conn-remove'] = d => askConfirm('Remove this connection?', 'Remove', () => run(async () => { await Data.remove('f1_relations', d.id); }, 'Removed.'), true);
+ACTIONS['conn-filter'] = d => { S.ui.connFilter = d.g; render(); };
+function connMapHtml(rels, filter) {
+  const shown = rels.filter(r => !filter || relGroupOf(r.kind)[0] === filter);
+  const ids = [...new Set(shown.flatMap(r => [r.personId, r.otherId]))];
+  if (!ids.length) return '<p class="muted">No connections to show yet.</p>';
+  const W = 760, H = 560, cx = W / 2, cy = H / 2, R = Math.min(W, H) / 2 - 70;
+  const pos = {}; ids.forEach((id, i) => { const a = -Math.PI / 2 + i * 2 * Math.PI / ids.length; pos[id] = [cx + R * Math.cos(a), cy + R * Math.sin(a), a]; });
+  const node = id => { const p = F1.person(id) || {}, c = p.charId ? get('characters', p.charId) : null, seat = c ? primarySeat(c.id) : null, col = seat ? f1Colour(seat.teamId) : p.teamId ? f1Colour(p.teamId) : '#8A8F98';
+    const [x, y, a] = pos[id], right = Math.cos(a) >= 0, label = p.name || id;
+    return `<a href="#career" data-act="career" data-id="${esc(id)}" aria-label="${esc(label)}"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${p.charId ? 11 : 8}" fill="${esc(col)}" stroke="#FFFFFF" stroke-width="${p.charId ? 2 : 0}"></circle>
+      <text x="${(x + (right ? 16 : -16)).toFixed(1)}" y="${(y + 4).toFixed(1)}" text-anchor="${right ? 'start' : 'end'}" class="conn-label">${esc(label)}</text></a>`; };
+  /* Two people can have several connections: those lines bow apart so each one shows. */
+  const pairKey = r => [r.personId, r.otherId].sort().join('|'), pairs = {};
+  shown.forEach(r => { (pairs[pairKey(r)] = pairs[pairKey(r)] || []).push(r.id); });
+  const edge = r => { const a = pos[r.personId], b = pos[r.otherId]; if (!a || !b) return ''; const col = relGroupOf(r.kind)[2];
+    const grp = pairs[pairKey(r)], j = grp.indexOf(r.id), off = (j - (grp.length - 1) / 2) * 36;
+    const [p, q] = [r.personId, r.otherId].sort() [0] === r.personId ? [a, b] : [b, a];
+    const mx = (p[0] + q[0]) / 2, my = (p[1] + q[1]) / 2, dx = q[0] - p[0], dy = q[1] - p[1], len = Math.hypot(dx, dy) || 1;
+    const cxp = mx - dy / len * off, cyp = my + dx / len * off;
+    return `<path class="conn-edge" d="M${a[0].toFixed(1)},${a[1].toFixed(1)} Q${cxp.toFixed(1)},${cyp.toFixed(1)} ${b[0].toFixed(1)},${b[1].toFixed(1)}" fill="none" stroke="${col}" stroke-width="2.5" stroke-opacity="0.9"><title>${esc(personName(r.personId))}: ${esc(relKindName(r.kind))} of ${esc(personName(r.otherId))}</title></path>`; };
+  return `<div class="scroll-x"><svg class="conn-map" viewBox="0 0 ${W} ${H}" role="img" aria-label="Map of ${plural(shown.length, 'connection')} between ${plural(ids.length, 'person', 'people')}">${shown.map(edge).join('')}${ids.map(node).join('')}</svg></div>`;
+}
+route('connections', 'Connections', function () {
+  const c = currentChar(), me = c ? f1PcId(c.id) : null, rels = list('f1_relations').filter(r => F1.person(r.personId) && F1.person(r.otherId));
+  const mine = me ? rels.filter(r => r.personId === me) : [], theirs = me ? rels.filter(r => r.otherId === me) : [], filter = S.ui.connFilter || '';
+  const f = S.ui.form.conn = S.ui.form.conn || { kind: 'friend' };
+  const row = (r, other, del) => { const g = relGroupOf(r.kind);
+    return `<li class="conn-row"><span class="conn-dot" style="background:${g[2]}"></span><div><b>${esc(relKindName(r.kind))}:</b> ${careerLink(other, personName(other))}${r.note ? `<p class="muted small">${esc(r.note)}</p>` : ''}</div>${del ? `<button class="btn small ghost" data-act="conn-remove" data-id="${esc(r.id)}">Remove</button>` : ''}</li>`; };
+  let h = `<div class="page-head"><div><h1>Connections</h1><p>Family, friends, rivals, colleagues and old flames: who’s connected to whom in the paddock.</p></div></div>`;
+  if (c) h += `<div class="cols2" style="align-items:start"><section class="card"><h2>${esc(c.name)}’s connections</h2>${mine.length ? `<ul class="conn-list">${mine.map(r => row(r, r.otherId, true)).join('')}</ul>` : '<p class="muted">None yet.</p>'}
+      <h3>Add a connection</h3><div class="form-grid">
+        <label class="field">Who${sel('conn-other', 'ui/form/conn/otherId', f.otherId || '', connPeople().filter(p => p.id !== me).map(p => [p.id, p.name + (p.charId ? '' : ' (real driver)')]), 'Choose someone')}</label>
+        <label class="field">What they are to ${esc(c.name.split(' ')[0])}<select id="conn-kind" data-bind="ui/form/conn/kind">${REL_GROUPS.map(([gid, gl, , ks]) => `<optgroup label="${esc(gl)}">${ks.map(([k, l]) => `<option value="${k}" ${f.kind === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</optgroup>`).join('')}</select></label></div>
+      <label class="field">The story (optional)<textarea id="conn-note" rows="3" maxlength="600" data-bind="ui/form/conn/note" placeholder="e.g. Karting rivals since they were nine. Neither has forgiven Macau.">${esc(f.note || '')}</textarea></label>
+      <div class="btn-row"><button class="btn primary" data-act="conn-add">Add the connection</button></div></section>
+    <section class="card"><h2>Who counts ${esc(c.name.split(' ')[0])} as a connection</h2>${theirs.length ? `<ul class="conn-list">${theirs.map(r => `<li class="conn-row"><span class="conn-dot" style="background:${relGroupOf(r.kind)[2]}"></span><div>${careerLink(r.personId, personName(r.personId))} counts ${esc(c.name.split(' ')[0])} as a <b>${esc(relKindName(r.kind).toLowerCase())}</b>${r.note ? `<p class="muted small">${esc(r.note)}</p>` : ''}</div></li>`).join('')}</ul>` : '<p class="muted">Nobody yet.</p>'}</section></div>`;
+  else h += `<div class="card notice"><p>Choose a character to play as to add their connections. Everyone’s connections are on the map below.</p></div>`;
+  h += `<section class="card"><h2>Across the paddock</h2>
+    <div class="chips" role="group" aria-label="Show">${[['', 'All']].concat(REL_GROUPS.map(g => [g[0], g[1]])).map(([g, l]) => `<button class="chip ${filter === g ? 'on' : ''}" data-act="conn-filter" data-g="${g}" aria-pressed="${filter === g}">${g ? `<span class="conn-dot" style="background:${relGroupOf((REL_GROUPS.find(x => x[0] === g) || [])[3][0][0])[2]}"></span>` : ''}${esc(l)}</button>`).join('')}</div>
+    ${connMapHtml(rels, filter)}
+    <details><summary>All connections as a list (${rels.filter(r => !filter || relGroupOf(r.kind)[0] === filter).length})</summary><ul class="conn-list">${rels.filter(r => !filter || relGroupOf(r.kind)[0] === filter).map(r => `<li class="conn-row"><span class="conn-dot" style="background:${relGroupOf(r.kind)[2]}"></span><div>${careerLink(r.personId, personName(r.personId))}: <b>${esc(relKindName(r.kind).toLowerCase())}</b> of ${careerLink(r.otherId, personName(r.otherId))}${r.note ? `<p class="muted small">${esc(r.note)}</p>` : ''}</div></li>`).join('')}</ul></details></section>`;
+  return h;
+});
+(() => { const i = NAV.findIndex(x => x[0] === 'people'); if (i !== -1 && !NAV.some(x => x[0] === 'connections')) NAV.splice(i + 1, 0, ['connections', 'users', 'Connections']); })();
 
 /* start-up: every part has registered its routes, drawers and actions */
 init();
