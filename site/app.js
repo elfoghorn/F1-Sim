@@ -1154,7 +1154,7 @@ async function init() {
 
 /* ---------------------------------------------------------------- Your characters */
 const CHAR_BLANK = { name: '', code: '', number: '', nationality: '', role: 'driver', bio: '', discord: '', faceclaim: '', personality: '', portraitUrl: null, nickname: '', birthplace: '', junior: '', helmet: '' };
-ACTIONS['char-new'] = () => { S.ui.form.ch = Object.assign({}, CHAR_BLANK); openDrawer('char'); };
+ACTIONS['char-new'] = () => { S.ui.form.ch = Object.assign({}, CHAR_BLANK); go('newchar'); };
 ACTIONS['char-edit'] = d => { const c = get('characters', d.id); if (!c) return; S.ui.form.ch = Object.assign({}, CHAR_BLANK, clone(S.store.characters[d.id]), { id: d.id }); openDrawer('char'); };
 ACTIONS['char-play'] = d => { S.charId = d.id; lsSet('f1sim.char', d.id); toast('Now playing as ' + ((get('characters', d.id) || {}).name || 'this character') + '.'); render(); };
 ACTIONS['ch-pref-first'] = d => {
@@ -1205,13 +1205,23 @@ function charDrawerPrefHtml(f) {
 }
 DRAWERS.char = function () {
   const f = S.ui.form.ch || {};
-  const desc = f.id ? 'Characters are fiction.' : 'Fill in who they are and pick a team. Background and ratings come next, then you send the application to Race Control.';
-  return `<header><div><h2>${f.id ? 'Edit character' : 'New character'}</h2><p>${desc}</p></div>
+  return `<header><div><h2>Edit character</h2><p>Characters are fiction.</p></div>
       <button class="btn ghost" data-act="close-drawer">Close</button></header>
     <div class="body">${charFormFields(f)}
-    ${!f.id ? charDrawerPrefHtml(f) : ''}
-    <div class="btn-row"><button class="btn primary" data-act="char-save">${f.id ? 'Save changes' : 'Create character'}</button>${f.id ? `<button class="btn danger" data-act="char-retire" data-id="${esc(f.id)}">Retire this character</button>` : ''}</div></div>`;
+    <div class="btn-row"><button class="btn primary" data-act="char-save">Save changes</button>${f.id ? `<button class="btn danger" data-act="char-retire" data-id="${esc(f.id)}">Retire this character</button>` : ''}</div></div>`;
 };
+route('newchar', 'New character', function () {
+  const f = S.ui.form.ch || (S.ui.form.ch = Object.assign({}, CHAR_BLANK));
+  if (f.id) { go('character'); return ''; }
+  return `<div class="page-head"><div><h1>New character</h1>
+      <p>Fill in who they are and pick a team. Click Create character when you're ready -- you can keep editing on the next page, and come back any time via Your characters.</p></div></div>
+    <section class="card">${charFormFields(f)}
+    ${charDrawerPrefHtml(f)}</section>
+    <div class="btn-row" style="padding:0 var(--page-gap) var(--page-gap)">
+      <button class="btn primary" data-act="char-save">Create character</button>
+      <button class="btn ghost" data-act="nav" data-route="characters">Cancel</button>
+    </div>`;
+});
 ACTIONS['char-save'] = () => {
   const f = clone(S.ui.form.ch || {}); let id = f.id || null; delete f.id;
   f.name = String(f.name || '').trim();
@@ -5845,14 +5855,14 @@ ACTIONS['gen-approve'] = d => {
 CHANGES['ch-portrait'] = (v, d, el) => {
   const file = el.files && el.files[0]; if (!file || !S.ui.form.ch) return;
   if (!/^image\//.test(file.type)) { toast('Choose a picture: a JPEG, PNG or WebP.', true); return; }
-  S.ui.chUploading = true; renderOverlay(); if (S.ui.charInline) render();
+  S.ui.chUploading = true; renderOverlay(); if (S.ui.charInline || S.route === 'newchar') render();
   (async () => { try { const blob = await shrinkImage(file, 900), assets = await window.claude.use('assets'), up = await assets.upload(blob, { type: 'image/jpeg' });
       if (S.ui.form.ch) S.ui.form.ch.portraitUrl = up.url; toast('Picture uploaded. Save the character to keep it.'); }
     catch (e) { toast('The picture didn’t upload: ' + (e.message || e), true); }
-    S.ui.chUploading = false; renderOverlay(); if (S.ui.charInline) render(); })();
+    S.ui.chUploading = false; renderOverlay(); if (S.ui.charInline || S.route === 'newchar') render(); })();
   el.value = '';
 };
-ACTIONS['ch-portrait-remove'] = () => { if (S.ui.form.ch) { S.ui.form.ch.portraitUrl = null; renderOverlay(); if (S.ui.charInline) render(); } };
+ACTIONS['ch-portrait-remove'] = () => { if (S.ui.form.ch) { S.ui.form.ch.portraitUrl = null; renderOverlay(); if (S.ui.charInline || S.route === 'newchar') render(); } };
 /* Sending without a picture or face claim asks first. */
 const _genSubmitPhoto = ACTIONS['gen-submit'];
 ACTIONS['gen-submit'] = d => {
@@ -6201,7 +6211,7 @@ function winsHtml(p, c) {
 }
 
 /* ---------------------------------------------------------------- what players see before approval */
-const LIMITED_ROUTES = ['home', 'grid', 'calendar', 'standings', 'seasons', 'characters', 'character', 'career'];
+const LIMITED_ROUTES = ['home', 'grid', 'calendar', 'standings', 'seasons', 'characters', 'character', 'career', 'newchar'];
 function playerLimited() { return S.phase === 'ready' && !S.isGm && !myChars().some(c => !c.retired && (charStatus(c) === 'approved' || (F1.person(f1PcId(c.id)) || {}).approved)); }
 const _navHtmlLimited = navHtml;
 navHtml = function () {
@@ -6246,7 +6256,7 @@ function charInlineHtml(c) {
     <div class="btn-row"><button class="btn primary" data-act="char-save">Save changes</button><button class="btn ghost" data-act="char-inline-cancel">Cancel</button></div></section>`;
 }
 /* The role decides which fields show, so changing it redraws the form wherever it is. */
-CHANGES['ch-role'] = v => { if (S.ui.form.ch) { S.ui.form.ch.role = v; renderOverlay(); if (S.ui.charInline) render(); } };
+CHANGES['ch-role'] = v => { if (S.ui.form.ch) { S.ui.form.ch.role = v; renderOverlay(); if (S.ui.charInline || S.route === 'newchar') render(); } };
 
 /* ---------------------------------------------------------------- the rolls */
 function genSnapshot(c, by, why) {
