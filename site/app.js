@@ -1971,7 +1971,7 @@ function f1PracticeHtml(w, e, t, mine, ro) {
 }
 
 /* ================================================================ team car: effective stats */
-const tpSeat = teamId => F1.seats(teamId).find(s => s.role === ‘principal’);
+const tpSeat = teamId => F1.seats(teamId).find(s => s.role === 'principal');
 /* The car for race n+1 (n races finished): base numbers plus engine and development points. */
 function f1EffectiveTeam(team, n) {
   if (!team) return team;
@@ -2068,21 +2068,21 @@ route('career', 'Career', function () {
 });
 
 /* ================================================================ Team HQ */
-route(‘team’, ‘Team HQ’, function () {
-  const teams = F1.teams(); if (!teams.length) return ‘<div class="empty">The grid isn’t set up yet.</div>’;
+route('team', 'Team HQ', function () {
+  const teams = F1.teams(); if (!teams.length) return '<div class="empty">The grid isn’t set up yet.</div>';
   const mySeat = S.charId ? F1.seats().find(s => s.holderCharId === S.charId) : null;
   const tid = S.ui.teamId || (mySeat && mySeat.teamId) || teams[0].id, team = F1.team(tid), n = finishedGps().length;
   const eff = f1EffectiveTeam(team, n), tp = tpSeat(tid);
-  const statRow = ([k, l]) => { const d = Math.round(((eff[k] || 0) - (team[k] || 0)) * 100) / 100; return `<tr><td>${esc(l)}</td><td class="num"><b>${eff[k]}</b>${d ? ` <span class="${d > 0 ? ‘f1-up’ : ‘f1-down’}">${d > 0 ? ‘+’ : ‘−’}${Math.abs(d)}</span>` : ‘’}</td></tr>`; };
-  const drivers = F1.seats(tid).filter(s => s.role === ‘driver’).map(s => ({ s, o: f1Occupant(s) }));
+  const statRow = ([k, l]) => { const d = Math.round(((eff[k] || 0) - (team[k] || 0)) * 100) / 100; return `<tr><td>${esc(l)}</td><td class="num"><b>${eff[k]}</b>${d ? ` <span class="${d > 0 ? 'f1-up' : 'f1-down'}">${d > 0 ? '+' : '−'}${Math.abs(d)}</span>` : ''}</td></tr>`; };
+  const drivers = F1.seats(tid).filter(s => s.role === 'driver').map(s => ({ s, o: f1Occupant(s) }));
   return `<div class="page-head"><div><h1>${esc(team.name)}</h1><p>${esc(engineLabel(team.id))}</p></div>
-      <label class="field" style="margin:0">Team${sel(‘team-pick’, ‘ui/teamId’, tid, teams.map(t => [t.id, t.name]))}</label></div>
+      <label class="field" style="margin:0">Team${sel('team-pick', 'ui/teamId', tid, teams.map(t => [t.id, t.name]))}</label></div>
     <div class="cols2">
       <section class="card" style="--team:${esc(team.color)}"><h2>The car</h2><p class="muted small">For the next race.</p>
-        <table class="data compact"><tbody>${[[‘carPace’, ‘Overall pace’], [‘topSpeed’, ‘Top speed’], [‘cornering’, ‘Cornering’], [‘reliability’, ‘Reliability’], [‘tyreLife’, ‘Kindness to tyres’], [‘pitSpeed’, ‘Pit crew’]].map(statRow).join(‘’)}</tbody></table></section>
+        <table class="data compact"><tbody>${[['carPace', 'Overall pace'], ['topSpeed', 'Top speed'], ['cornering', 'Cornering'], ['reliability', 'Reliability'], ['tyreLife', 'Kindness to tyres'], ['pitSpeed', 'Pit crew']].map(statRow).join('')}</tbody></table></section>
       <section class="card"><h2>People</h2><ul class="f1-seatlist">${F1.seats(tid).map(s => { const o = f1Occupant(s);
-        return `<li><span class="role">${esc(seatTitle(s))}</span><div class="f1-occ">${o.person ? careerLink(o.person.id, o.name) : esc(o.name)} ${o.player ? ‘<span class="tag player">Player</span>’ : o.person ? ‘<span class="tag">Real</span>’ : ‘’}${s.role === ‘driver’ && o.person ? `<span class="muted small">${f1Record(o.person.id).filter(x => wSeries(x.w) === curSeriesId() && wSeason(x.w) === curSeasonId()).reduce((a, x) => a + (x.r.points || 0), 0)} points this season</span>` : ‘’}</div></li>`; }).join(‘’)}</ul></section></div>
-    ${drivers.filter(x => x.o.player && x.s.holderCharId === S.charId).map(x => `<section class="card"><h2>Your development</h2>${devPanelHtml(x.s.holderCharId)}</section>`).join(‘’)}`;
+        return `<li><span class="role">${esc(seatTitle(s))}</span><div class="f1-occ">${o.person ? careerLink(o.person.id, o.name) : esc(o.name)} ${o.player ? '<span class="tag player">Player</span>' : o.person ? '<span class="tag">Real</span>' : ''}${s.role === 'driver' && o.person ? `<span class="muted small">${f1Record(o.person.id).filter(x => wSeries(x.w) === curSeriesId() && wSeason(x.w) === curSeasonId()).reduce((a, x) => a + (x.r.points || 0), 0)} points this season</span>` : ''}</div></li>`; }).join('')}</ul></section></div>
+    ${drivers.filter(x => x.o.player && x.s.holderCharId === S.charId).map(x => `<section class="card"><h2>Your development</h2>${devPanelHtml(x.s.holderCharId)}</section>`).join('')}`;
 });
 
 /* =====================================================================
