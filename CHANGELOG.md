@@ -25,6 +25,20 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v0.34.0: careers and standings for team principals, engineers and other roles; JSON updates
+
+12 November 2026. Build `f1sim-0.34.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Roles in career seasons | Each career season has a role: driver, team principal, sporting director, race engineer, strategist, consultant or another team role. In a team role, wins, podiums, poles and the championship are the team's results that season (a race engineer's are their car's). The role shows under the team in the career record. |
+| Who ran each race | Every finished race now records each team's principal and each car's race engineer (players, or the computer-run real principal), so credit stays with whoever held the post at the time. |
+| Standings by role | The Championship's all-time and career views have Drivers, Team principals, Race engineers and Other roles. Team principals are ranked on their team's results while in charge and get the constructors' title; race engineers on their car's results and get the drivers' title; other roles come from canon career seasons. |
+| Character pages | "Wins and podiums by championship" splits by role: as a driver, then as team principal, sporting director, consultant and so on, with team results labelled as team titles, wins and podiums. |
+| JSON updates existing characters | An uploaded character updates an existing one when its id matches or, without an id, when its name matches one you can edit. The preview says "Update … (matched by name)", with "Create a new character" as the alternative. Only the fields in the file change. Career seasons merge: a season with the same years, series and role is updated (players' changed seasons go back to Race Control; unchanged ones keep their status), new ones are added, and seasons not in the file stay. Race Control's "Approved, with the ratings in the file" also updates approved drivers' ratings. |
+
+---
+
 ## v0.33.0: teams on approval, and transfer posts
 
 12 November 2026. Build `f1sim-0.33.0`. **No database update.**

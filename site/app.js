@@ -1,4 +1,4 @@
-/* F1 SIM v0.33.0 (build f1sim-0.33.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v0.34.0 (build f1sim-0.34.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -1609,6 +1609,7 @@ async function f1Advance(laps) {
     const byId = new Map((w.entrants || []).map(e => [e.id, e]));
     doc.results = RaceEngine.classify(st).map(r => Object.assign({}, r, byId.get(r.id) || {}));
     doc.finishedAt = nowIso();
+    if (typeof weekendStaff === 'function') doc.staff = weekendStaff(w);
   }
   const ok = await run(async () => {
     await Data.put('f1_weekends', w.id, doc);
@@ -5532,9 +5533,15 @@ const isMajor = r => MAJOR_SERIES.indexOf(r.series) !== -1 && (String(r.pos) ===
 const CAREER_STATUS = { pending: ['Awaiting approval', 'open'], canon: ['Canon', 'player'], notcanon: ['Not canon', 'flag'] };
 
 /* ---------------------------------------------------------------- the player's side */
+/* The role someone had in a career season: wins, podiums and the championship are the team's (or their car's) results in a team role. */
+const CAREER_ROLES = [['driver', 'Driver'], ['principal', 'Team principal'], ['director', 'Sporting director'], ['engineer', 'Race engineer'], ['strategist', 'Strategist'], ['consultant', 'Consultant'], ['other', 'Another team role']];
+const CAREER_ROLE_KEYS = CAREER_ROLES.map(r => r[0]);
+const careerRoleName = k => (CAREER_ROLES.find(r => r[0] === (k || 'driver')) || ['', 'Driver'])[1];
+const roleGroupOf = k => ({ driver: 'driver', principal: 'principal', engineer: 'engineer' })[k || 'driver'] || 'other';
+CHANGES['cr-role'] = v => { if (S.ui.form.cr) { S.ui.form.cr.role = v; render(); } };
 const careerRows = c => (c && Array.isArray(c.career) ? c.career : []);
 const careerEditable = c => !!c && (c.userId === S.uid || S.isGm) && !c.retired;
-ACTIONS['cr-add'] = () => { S.ui.form.cr = { id: null, years: '', series: 'Formula 2', other: '', team: '', wins: '', podiums: '', poles: '', pos: '', notes: '' }; render(); };
+ACTIONS['cr-add'] = () => { const ch = get('characters', S.ui.charEdit) || {}; S.ui.form.cr = { id: null, role: ({ driver: 'driver', principal: 'principal', engineer: 'engineer' })[ch.role] || 'other', years: '', series: 'Formula 2', other: '', team: '', wins: '', podiums: '', poles: '', pos: '', notes: '' }; render(); };
 ACTIONS['cr-edit'] = d => { const c = get('characters', S.ui.charEdit), r = careerRows(c).find(x => x.id === d.rid); if (r) { S.ui.form.cr = Object.assign({}, r); render(); } };
 ACTIONS['cr-cancel'] = () => { S.ui.form.cr = null; render(); };
 CHANGES['cr-series'] = v => { if (S.ui.form.cr) { S.ui.form.cr.series = v; render(); } };
@@ -5544,7 +5551,7 @@ ACTIONS['cr-save'] = () => {
   if (!String(f.years || '').trim()) { toast('Add the year or years, such as 2025 or 2023 to 2024.', true); return; }
   if (f.series === 'Other' && !String(f.other || '').trim()) { toast('Name the series.', true); return; }
   const num = v => v === '' || v == null ? '' : Math.max(0, Math.round(Number(v) || 0));
-  const row = { id: f.id || newId('cr'), years: String(f.years).trim().slice(0, 20), series: f.series, other: f.series === 'Other' ? String(f.other).trim().slice(0, 60) : '',
+  const row = { id: f.id || newId('cr'), role: CAREER_ROLE_KEYS.indexOf(f.role) !== -1 ? f.role : 'driver', years: String(f.years).trim().slice(0, 20), series: f.series, other: f.series === 'Other' ? String(f.other).trim().slice(0, 60) : '',
     team: String(f.team || '').trim().slice(0, 60), wins: num(f.wins), podiums: num(f.podiums), poles: num(f.poles),
     pos: String(f.pos || ''), notes: String(f.notes || '').trim().slice(0, 200), status: 'pending', at: nowIso() };
   if (row.wins !== '' && row.podiums !== '' && row.wins > row.podiums) { toast('More wins than podiums: check the numbers.', true); return; }
@@ -5562,6 +5569,7 @@ function careerFormHtml(f) {
   const opt = (v, l, cur) => `<option value="${esc(v)}" ${String(cur) === String(v) ? 'selected' : ''}>${esc(l)}</option>`;
   const num = (k, l) => `<label class="field small">${l}<input id="cr-${k}" type="number" min="0" max="999" data-bind="ui/form/cr/${k}" value="${esc(f[k] === '' || f[k] == null ? '' : f[k])}"></label>`;
   return `<div class="career-form card"><h3>${f.id ? 'Edit this season' : 'Add a season'}</h3><div class="form-grid">
+      <label class="field">Role<select id="cr-role" data-change="cr-role">${CAREER_ROLES.map(([v, l]) => opt(v, l, f.role || 'driver')).join('')}</select></label>
       <label class="field">Year or years<input id="cr-years" type="text" data-bind="ui/form/cr/years" value="${esc(f.years || '')}" placeholder="e.g. 2025, or 2023 to 2024"></label>
       <label class="field">Series<select id="cr-series" data-change="cr-series">${CAREER_GROUPS.map(([g, xs]) => `<optgroup label="${esc(g)}">${xs.map(x => opt(x, x === 'Other' ? 'Another series' : x, f.series)).join('')}</optgroup>`).join('')}</select></label>
       ${f.series === 'Other' ? `<label class="field">Which series<input id="cr-other" type="text" data-bind="ui/form/cr/other" value="${esc(f.other || '')}" placeholder="e.g. Super GT"></label>` : ''}
@@ -5569,6 +5577,7 @@ function careerFormHtml(f) {
       ${num('wins', 'Wins')}${num('podiums', 'Podiums')}${num('poles', /WRC|Dakar/.test(f.series) ? 'Stage wins' : 'Poles')}
       <label class="field">Championship<select id="cr-pos" data-bind="ui/form/cr/pos">${CAREER_POS.map(([v, l]) => opt(v, l, f.pos)).join('')}</select></label></div>
     <label class="field">Notes (optional)<input id="cr-notes" type="text" data-bind="ui/form/cr/notes" value="${esc(f.notes || '')}" placeholder="e.g. Class win at Le Mans; rookie of the year"></label>
+    ${(f.role || 'driver') !== 'driver' ? '<p class="small"><b>In a team role, wins, podiums, poles and the championship are the team’s results that season</b> (for a race engineer, their car’s).</p>' : ''}
     <p class="muted small">Titles and wins in the top series count as major achievements: they only become canon once Race Control approves them.</p>
     <div class="btn-row"><button class="btn primary" data-act="cr-save">${f.id ? 'Save the season' : 'Add the season'}</button><button class="btn ghost" data-act="cr-cancel">Cancel</button></div></div>`;
 }
@@ -5584,7 +5593,7 @@ function careerTableHtml(rows, o) {
   const opts = o || {}, cell = v => v === '' || v == null ? '<span class="muted">–</span>' : esc(v);
   return `<div class="scroll-x"><table class="data compact career"><thead><tr><th>Years</th><th>Series</th><th>Team</th><th class="num">Wins</th><th class="num">Podiums</th><th class="num">Poles</th><th>Championship</th>${opts.status !== false ? '<th></th>' : ''}${opts.manage || opts.review ? '<th></th>' : ''}</tr></thead><tbody>
     ${rows.map(r => { const st = CAREER_STATUS[r.status || 'pending'] || CAREER_STATUS.pending;
-      return `<tr><td>${esc(r.years)}</td><td><b>${esc(seriesLabel(r))}</b>${seriesWarn(r) ? `<div class="small warn-note">${esc(seriesWarn(r))}</div>` : ''}${r.notes ? `<div class="muted small">${esc(r.notes)}</div>` : ''}</td><td>${cell(r.team)}</td>
+      return `<tr><td>${esc(r.years)}</td><td><b>${esc(seriesLabel(r))}</b>${seriesWarn(r) ? `<div class="small warn-note">${esc(seriesWarn(r))}</div>` : ''}${r.notes ? `<div class="muted small">${esc(r.notes)}</div>` : ''}</td><td>${cell(r.team)}${(r.role || 'driver') !== 'driver' ? `<div class="muted small">${esc(careerRoleName(r.role))}</div>` : ''}</td>
         <td class="num">${cell(r.wins)}</td><td class="num">${cell(r.podiums)}</td><td class="num">${cell(r.poles)}</td><td>${String(r.pos) === '1' ? '<span class="tag trophy">Champion</span>' : r.pos ? esc(posLabel(r.pos)) : '<span class="muted">–</span>'}</td>
         ${opts.status !== false ? `<td>${isMajor(r) && r.status !== 'canon' ? '<span class="tag flag">Major achievement</span> ' : ''}<span class="tag ${st[1]}">${st[0]}</span></td>` : ''}
         ${opts.manage ? `<td class="nowrap"><button class="btn small" data-act="cr-edit" data-rid="${esc(r.id)}">Edit</button> <button class="btn small ghost" data-act="cr-remove" data-rid="${esc(r.id)}">Remove</button></td>` : ''}
@@ -6825,7 +6834,7 @@ function normaliseChar(x, i, problems) {
   if (x.discord) o.discord = String(x.discord).trim().replace(/^@+/, '').replace(/\s+/g, '').slice(0, 40);
   const series = CAREER_GROUPS.flatMap(g => g[1]), num = v => v === '' || v == null || isNaN(Number(v)) ? '' : Math.max(0, Math.round(Number(v)));
   o.career = (Array.isArray(x.career) ? x.career : []).slice(0, 40).map((r, j) => { if (!r || !r.years) { problems.push(`${where}, career season ${j + 1}: needs years.`); return null; }
-    const known = series.indexOf(r.series) !== -1, row = { years: capStr(r.years, 20), series: known ? r.series : 'Other', other: known ? capStr(r.other, 60) : capStr(r.other || r.series, 60), team: capStr(r.team, 60), wins: num(r.wins), podiums: num(r.podiums), poles: num(r.poles), pos: String(r.pos == null ? '' : r.pos), notes: capStr(r.notes, 200), status: ['canon', 'notcanon', 'pending'].indexOf(r.status) !== -1 ? r.status : 'pending' };
+    const known = series.indexOf(r.series) !== -1, row = { role: CAREER_ROLE_KEYS.indexOf(r.role) !== -1 ? r.role : 'driver', years: capStr(r.years, 20), series: known ? r.series : 'Other', other: known ? capStr(r.other, 60) : capStr(r.other || r.series, 60), team: capStr(r.team, 60), wins: num(r.wins), podiums: num(r.podiums), poles: num(r.poles), pos: String(r.pos == null ? '' : r.pos), notes: capStr(r.notes, 200), status: ['canon', 'notcanon', 'pending'].indexOf(r.status) !== -1 ? r.status : 'pending' };
     if (row.wins !== '' && row.podiums !== '' && row.wins > row.podiums) problems.push(`${where}, ${row.years} ${row.series}: more wins than podiums.`);
     if (seriesWarn(row)) problems.push(`${where}, ${row.years} ${row.series}: ${seriesWarn(row)}`);
     return row; }).filter(Boolean);
@@ -7341,6 +7350,170 @@ ROUTES.grid.view = function () {
   const h = _gridViewTransfers(); if (!S.isGm) return h;
   const bar = `<div class="transfer-bar"><label class="small"><input type="checkbox" data-change="transfer-toggle" ${transfersOn() ? 'checked' : ''}> Post a transfer card to Discord when I move a character to another team</label></div>`;
   const i = h.indexOf('</div></div>'); return i < 0 ? bar + h : h.slice(0, i + 12) + bar + h.slice(i + 12);
+};
+
+/* =====================================================================
+   F1 SIM — careers and standings beyond drivers.
+   Each finished race keeps who ran each team (principal) and each car
+   (race engineer), so F1 SIM credits them with their team's or car's
+   results. Career seasons have a role: in a team role, the wins,
+   podiums and championship are the team's results. The Championship's
+   all-time and career views get Drivers, Team principals, Race
+   engineers and Other roles. JSON uploads update existing characters
+   (matched by id or by name) and merge career seasons.
+   ===================================================================== */
+'use strict';
+
+/* ---------------------------------------------------------------- who ran each team in a race */
+function weekendStaff(w) {
+  const out = {}, teams = [...new Set((w.entrants || f1Entrants()).map(e => e.teamId))];
+  const who = s => s && s.holderCharId ? { charId: s.holderCharId, personId: f1PcId(s.holderCharId) } : s && s.defaultPersonId ? { charId: null, personId: s.defaultPersonId } : null;
+  teams.forEach(tid => { const seats = list('f1_seats').filter(s => s.teamId === tid), eng = {};
+    seats.filter(s => s.role === 'engineer').forEach(s => { const x = who(s); if (x) eng[s.car || 1] = x; });
+    out[tid] = { principal: who(seats.find(s => s.role === 'principal')), engineers: eng }; });
+  return out;
+}
+const staffPid = x => x && (x.charId ? f1PcId(x.charId) : x.personId);
+/* F1 SIM records for principals (team results) or race engineers (their car's results). */
+function staffStats(sidFilter, role) {
+  const m = new Map(), at = (pid, x) => { const o = m.get(pid) || { pid, charId: x.charId || null, name: (F1.person(pid) || {}).name || pid, seasons: new Set(), races: 0, wins: 0, podiums: 0, pts: 0, titles: [], series: new Set() }; m.set(pid, o); return o; };
+  const ws = list('f1_weekends').filter(w => w.status === 'finished' && w.staff && w.session !== 'test' && (!sidFilter || wSeries(w) === sidFilter));
+  ws.forEach(w => Object.keys(w.staff).forEach(tid => { const st = w.staff[tid] || {};
+    const holders = role === 'principal' ? (st.principal ? [[st.principal, (w.results || []).filter(r => r.teamId === tid)]] : [])
+      : Object.keys(st.engineers || {}).map(car => [st.engineers[car], (w.results || []).filter(r => r.teamId === tid && String(r.car || 1) === String(car))]);
+    holders.forEach(([x, rs]) => { const pid = staffPid(x); if (!pid) return; const o = at(pid, x);
+      o.seasons.add(`${wSeries(w)}|${wSeason(w)}`); o.series.add(seriesDoc(wSeries(w)).name);
+      if (w.session !== 'sprint') { o.races += 1; o.wins += rs.filter(r => r.position === 1).length; o.podiums += rs.filter(r => r.position && r.position <= 3).length; }
+      o.pts += rs.reduce((s, r) => s + (r.points || 0), 0); }); }));
+  /* Titles: the principal of the champion team, or the engineer on the champion's car, at the season's last race. */
+  [...new Set(ws.map(w => `${wSeries(w)}|${wSeason(w)}`))].forEach(k => { const [sid, sea] = k.split('|'); if (!seasonDone(sea)) return;
+    const st = standingsFor(sid, sea), last = ws.filter(w => wSeries(w) === sid && wSeason(w) === sea).sort((a, b) => String(b.finishedAt).localeCompare(String(a.finishedAt)))[0]; if (!last) return;
+    const label = `${seriesDoc(sid).short || seriesDoc(sid).name} ${seasonDoc(sea).name}`;
+    if (role === 'principal' && st.teams[0]) { const x = (last.staff[st.teams[0].teamId] || {}).principal, pid = staffPid(x); if (pid && m.get(pid)) m.get(pid).titles.push(label); }
+    if (role === 'engineer' && st.drivers[0]) { const r = (last.results || []).find(rr => rr.personId === st.drivers[0].personId); const x = r && ((last.staff[r.teamId] || {}).engineers || {})[r.car || 1], pid = staffPid(x); if (pid && m.get(pid)) m.get(pid).titles.push(label); }
+  });
+  return [...m.values()].sort((a, b) => b.titles.length - a.titles.length || b.wins - a.wins || b.podiums - a.podiums || b.pts - a.pts);
+}
+
+/* ---------------------------------------------------------------- wins and podiums, by role */
+function winsByRole(p, c) {
+  const groups = {}, add = (role, k, o) => { const g = groups[role] = groups[role] || new Map(); const x = g.get(k) || { name: k, seasons: 0, titles: 0, wins: 0, podiums: 0, best: 99 };
+    x.seasons += o.s || 1; x.titles += o.t; x.wins += o.w; x.podiums += o.p; x.best = Math.min(x.best, o.b || 99); g.set(k, x); };
+  careerRows(c).filter(r => r.status === 'canon').forEach(r => add(r.role || 'driver', seriesLabel(r), { t: String(r.pos) === '1' ? 1 : 0, w: Number(r.wins) || 0, p: Number(r.podiums) || 0, b: Number(r.pos) || 99 }));
+  if (p) {
+    simSeasons(p.id).forEach(o => add('driver', `F1 SIM: ${o.seriesName}`, { t: o.done && o.pos === 1 ? 1 : 0, w: o.wins, p: o.podiums, b: o.pos }));
+    ['principal', 'engineer'].forEach(role => { const o = staffStats(null, role).find(x => x.pid === p.id);
+      if (o) add(role, `F1 SIM: ${[...o.series].join(', ')}`, { s: o.seasons.size, t: o.titles.length, w: o.wins, p: o.podiums }); });
+  }
+  const out = {}; Object.keys(groups).forEach(k => { out[k] = [...groups[k].values()].sort((a, b) => b.titles - a.titles || b.wins - a.wins || b.podiums - a.podiums); });
+  return out;
+}
+winsByChampionship = function (p, c) { return winsByRole(p, c).driver || []; };
+const ROLE_HEAD = { driver: 'As a driver', principal: 'As team principal (the team’s results)', director: 'As sporting director (the team’s results)', engineer: 'As race engineer (their car’s results)', strategist: 'As strategist (the team’s results)', consultant: 'As consultant (the team’s results)', other: 'In other team roles (the team’s results)' };
+winsHtml = function (p, c) {
+  const by = winsByRole(p, c), order = ['driver', 'principal', 'director', 'engineer', 'strategist', 'consultant', 'other'].filter(k => (by[k] || []).length);
+  if (!order.length) return '';
+  const table = (rows, team) => { const maxP = Math.max(1, ...rows.map(x => x.podiums)), tot = rows.reduce((s, x) => ({ t: s.t + x.titles, w: s.w + x.wins, p: s.p + x.podiums }), { t: 0, w: 0, p: 0 });
+    return `<div class="metrics"><div class="metric"><b>${tot.t}</b><span>${team ? 'Team titles' : tot.t === 1 ? 'Title' : 'Titles'}</span></div><div class="metric"><b>${tot.w}</b><span>${team ? 'Team wins' : 'Wins'}</span></div><div class="metric"><b>${tot.p}</b><span>${team ? 'Team podiums' : 'Podiums'}</span></div><div class="metric"><b>${rows.length}</b><span>${rows.length === 1 ? 'Championship' : 'Championships'}</span></div></div>
+      <div class="scroll-x"><table class="data"><thead><tr><th>Championship</th><th class="num">Seasons</th><th class="num">${team ? 'Team titles' : 'Titles'}</th><th class="num">Wins</th><th class="num">Podiums</th><th class="bars-h">Wins and podiums</th><th>Best</th></tr></thead><tbody>
+      ${rows.map(x => `<tr><td><b>${esc(x.name)}</b></td><td class="num">${x.seasons}</td><td class="num">${x.titles ? `<span class="tag trophy">${x.titles}</span>` : 0}</td><td class="num">${x.wins}</td><td class="num">${x.podiums}</td>
+        <td><div class="wp-bar" role="img" aria-label="${x.wins} wins and ${x.podiums} podiums"><span class="p" style="width:${x.podiums / maxP * 100}%"></span><span class="w" style="width:${x.wins / maxP * 100}%"></span></div></td>
+        <td>${x.best === 1 && x.titles ? 'Champion' : x.best < 99 ? ordinal(x.best) : '–'}</td></tr>`).join('')}</tbody></table></div>`; };
+  return `<section class="card wins-champ"><h2>Wins and podiums by championship</h2>
+    ${order.map(k => `${order.length > 1 || k !== 'driver' ? `<h3 class="wins-role">${esc(ROLE_HEAD[k])}</h3>` : ''}${table(by[k], k !== 'driver')}`).join('')}
+    <p class="muted small"><span class="key w"></span> wins <span class="key p"></span> podiums. F1 SIM races count automatically; other championships come from the canon career record.</p></section>`;
+};
+
+/* ---------------------------------------------------------------- standings by role */
+ACTIONS['stand-role'] = d => { S.ui.standRole = d.r; render(); };
+const STAND_ROLES = [['driver', 'Drivers'], ['principal', 'Team principals'], ['engineer', 'Race engineers'], ['other', 'Other roles']];
+function roleCareerData(role) {
+  const people = new Map(), at = (pid, name, c) => { const o = people.get(pid) || { pid, name, c, titles: [], wins: 0, podiums: 0, champs: new Set() }; people.set(pid, o); return o; };
+  if (role !== 'other') staffStats(null, role).forEach(s => { const o = at(s.pid, s.name, s.charId ? get('characters', s.charId) : null); o.titles.push(...s.titles.map(t => `F1 SIM ${t}`)); o.wins += s.wins; o.podiums += s.podiums; s.series.forEach(x => o.champs.add(`F1 SIM: ${x}`)); });
+  list('characters').filter(c => !c.retired && charApproved(c)).forEach(c => careerRows(c).filter(r => r.status === 'canon' && roleGroupOf(r.role) === role).forEach(r => {
+    const o = at(f1PcId(c.id), c.name, c); if (String(r.pos) === '1') o.titles.push(`${seriesLabel(r)} ${r.years}${role === 'other' ? ` (${careerRoleName(r.role).toLowerCase()})` : ''}`);
+    o.wins += Number(r.wins) || 0; o.podiums += Number(r.podiums) || 0; o.champs.add(seriesLabel(r)); }));
+  return [...people.values()].sort((a, b) => b.titles.length - a.titles.length || b.wins - a.wins || b.podiums - a.podiums || a.name.localeCompare(b.name));
+}
+const _standingsViewRoles = ROUTES.standings.view;
+ROUTES.standings.view = function () {
+  const v = S.ui.standView || 'season', role = S.ui.standRole || 'driver';
+  if (v === 'season') return _standingsViewRoles();
+  const tabs = `<div class="seg stand-roles" role="tablist" aria-label="Who">${STAND_ROLES.map(([k, l]) => `<button role="tab" aria-selected="${role === k}" data-act="stand-role" data-r="${k}">${esc(l)}</button>`).join('')}</div>`;
+  const h = role === 'driver' ? _standingsViewRoles() : roleStandingsHtml(v, role), at = h.indexOf('</div>', h.indexOf('class="seg stand-tabs"'));
+  return at < 0 ? tabs + h : h.slice(0, at + 6) + tabs + h.slice(at + 6);
+};
+function roleStandingsHtml(v, role) {
+  const sid = curSeriesId(), s = seriesDoc(sid), label = (STAND_ROLES.find(r => r[0] === role) || [])[1];
+  const tabs = `<div class="seg stand-tabs" role="tablist" aria-label="Standings">${[['season', `${seasonDoc(curSeasonId(sid)).name} season`], ['alltime', 'All-time in F1 SIM'], ['career', 'Career: every championship']].map(([k, l]) => `<button role="tab" aria-selected="${v === k}" data-act="stand-view" data-v="${k}">${esc(l)}</button>`).join('')}</div>`;
+  const what = role === 'principal' ? 'Team principals are credited with their team’s results while they ran it, and the constructors’ title when their team won it.' : role === 'engineer' ? 'Race engineers are credited with their car’s results, and the drivers’ title when their driver won it.' : 'Sporting directors, strategists, consultants and other team roles, from canon career seasons (the team’s results).';
+  let body;
+  if (v === 'alltime') {
+    const rows = role === 'other' ? [] : staffStats(sid, role);
+    body = rows.length ? `<section class="card"><h2>${esc(label)}</h2><div class="scroll-x"><table class="data"><thead><tr><th>Pos</th><th>Name</th><th class="num">Seasons</th><th class="num">Races</th><th class="num">Wins</th><th class="num">Podiums</th><th class="num">Points</th><th>Titles</th></tr></thead><tbody>${rows.map((o, i) => `<tr><td><b>${i + 1}</b></td><td>${careerLink(o.pid, o.name)}${o.charId ? ' <span class="tag player">Player</span>' : ''}</td><td class="num">${o.seasons.size}</td><td class="num">${o.races}</td><td class="num">${o.wins}</td><td class="num">${o.podiums}</td><td class="num"><b>${o.pts}</b></td><td>${o.titles.map(t => `<span class="tag trophy">${esc(t)}</span>`).join(' ')}</td></tr>`).join('')}</tbody></table></div></section>`
+      : `<p class="muted">${role === 'other' ? 'F1 SIM seats are drivers, team principals and race engineers; other roles appear in the career view.' : 'No races recorded with them yet.'}</p>`;
+  } else {
+    const rows = roleCareerData(role);
+    body = rows.length ? `<section class="card"><h2>${esc(label)}: career standings</h2><div class="scroll-x"><table class="data"><thead><tr><th>Pos</th><th>Name</th><th class="num">${role === 'engineer' ? 'Titles' : 'Team titles'}</th><th class="num">Wins</th><th class="num">Podiums</th><th class="num">Championships</th><th>Titles won</th></tr></thead><tbody>${rows.map((o, i) => `<tr><td><b>${i + 1}</b></td><td>${careerLink(o.pid, o.name)}${o.c ? ' <span class="tag player">Player</span>' : ''}<div class="muted small">${esc([...o.champs].join(', '))}</div></td><td class="num"><b>${o.titles.length}</b></td><td class="num">${o.wins}</td><td class="num">${o.podiums}</td><td class="num">${o.champs.size}</td><td>${o.titles.map(t => `<span class="tag trophy">${esc(t)}</span>`).join(' ')}</td></tr>`).join('')}</tbody></table></div></section>` : '<p class="muted">Nobody yet.</p>';
+  }
+  return `<div class="page-head"><div><h1>Championship</h1><p>${esc(what)} ${v === 'alltime' ? `${esc(s.name)}, every F1 SIM season.` : 'F1 SIM plus canon career seasons.'}</p></div></div>${tabs}${body}`;
+}
+
+/* ---------------------------------------------------------------- JSON: roles, and updating existing characters */
+const _normaliseCharStaff = normaliseChar;
+normaliseChar = function (x, i, problems) {
+  const o = _normaliseCharStaff(x, i, problems); if (!o) return o;
+  (Array.isArray(x.career) ? x.career : []).forEach((r, j) => { if (r && r.role && CAREER_ROLE_KEYS.indexOf(r.role) === -1) { problems.push(`Character ${i + 1} (${o.name}), career season ${j + 1}: role “${r.role}” isn’t one of ${CAREER_ROLE_KEYS.join(', ')}.`); } });
+  if (!o.update) { const m = list('characters').find(c => String(c.name).trim().toLowerCase() === o.name.toLowerCase() && (c.userId === S.uid || S.isGm));
+    if (m) { o.id = m.id; o.update = true; o.matchedBy = 'name'; } } else o.matchedBy = 'id';
+  o.mode = o.update ? 'update' : 'new';
+  return o;
+};
+const _charToJsonStaff = charToJson;
+charToJson = function (c) { const o = _charToJsonStaff(c); if (o.career) o.career = o.career.map((r, k) => { const src = careerRows(c)[k] || {}; return src.role && src.role !== 'driver' ? Object.assign({ role: src.role }, r) : r; }); return o; };
+CHANGES['io-item-mode'] = (v, d) => { const it = ((S.ui.io || {}).items || [])[Number(d.i)]; if (it) { it.mode = v; renderOverlay(); } };
+const careerKey = r => [String(r.years || '').trim(), r.series, String(r.other || '').trim().toLowerCase(), r.role || 'driver'].join('|');
+const sameRow = (a, b) => ['team', 'wins', 'podiums', 'poles', 'pos', 'notes'].every(k => String(a[k] == null ? '' : a[k]) === String(b[k] == null ? '' : b[k]));
+ACTIONS['io-ch-run'] = () => {
+  const x = S.ui.io; if (!x || x.kind !== 'ch' || !x.items.length) return; const approve = S.isGm && x.mode === 'approved';
+  run(async () => {
+    let made = 0, updated = 0, rated = 0;
+    for (const it of x.items) {
+      const upd = it.update && it.mode !== 'new', { update, ratings, career, mode, matchedBy, ...fields } = it;
+      const id = upd ? it.id : newId('ch'), prev = upd ? get('characters', id) : null; delete fields.id;
+      if (prev && charStatus(prev) === 'approved') delete fields.role;           /* an approved character keeps their role */
+      const statusFor = (r, old) => S.isGm ? (approve && (r.status || 'pending') === 'pending' ? 'canon' : (r.status || (old && old.status) || 'pending')) : (old && sameRow(old, r) ? old.status : 'pending');
+      let rows;
+      if (prev) { rows = careerRows(prev).map(r => Object.assign({}, r));
+        career.forEach(r => { const k = careerKey(r), j = rows.findIndex(o => careerKey(o) === k);
+          if (j >= 0) rows[j] = Object.assign({}, rows[j], r, { id: rows[j].id, status: statusFor(r, rows[j]), at: sameRow(rows[j], r) ? rows[j].at : nowIso() });
+          else rows.push(Object.assign({ id: newId('cr'), at: nowIso() }, r, { status: statusFor(r, null) })); });
+      } else rows = career.map(r => Object.assign({ id: newId('cr'), at: nowIso() }, r, { status: statusFor(r, null) }));
+      rows.sort((a, b) => (parseInt(a.years, 10) || 0) - (parseInt(b.years, 10) || 0));
+      const doc = Object.assign({}, prev ? clone(S.store.characters[id]) : { createdAt: nowIso(), userId: S.uid, status: 'draft' }, fields, { career: rows, updatedAt: nowIso() });
+      const pid = f1PcId(id), person = get('f1_people', pid);
+      if (approve && !(prev && charStatus(prev) === 'approved')) {
+        const base = doc.role === 'driver' ? Object.assign({}, F1_ROOKIE, ratings || {}) : {};
+        await Data.put('f1_people', pid, Object.assign(base, { kind: doc.role, charId: id, name: doc.name, abbr: doc.code || f1Code(doc.name), num: doc.number || null, flag: '', approved: true, imported: true, approvedAt: nowIso() }));
+        Object.assign(doc, { status: 'approved', decidedAt: nowIso(), gen: Object.assign({}, doc.gen || {}, { imported: true, style: (ratings || {}).style || 'technical' }) });
+      } else if (approve && person && ratings && Object.keys(ratings).length && doc.role === 'driver') { await Data.put('f1_people', pid, Object.assign(clone(S.store.f1_people[pid]), ratings)); rated++; }
+      if (person && prev && (fields.name || fields.code || fields.number)) await Data.put('f1_people', pid, Object.assign(clone(S.store.f1_people[pid] || {}), { name: doc.name, abbr: doc.code || person.abbr, num: doc.number || person.num }));
+      await Data.put('characters', id, doc); if (prev) updated++; else made++;
+    }
+    await Data.audit('io.characters', `Imported characters: ${made} new, ${updated} updated${rated ? `, ${rated} ratings updated` : ''}${approve ? ', as approved' : ''}`);
+    closeDrawer();
+    toast(`${made ? `${plural(made, 'character')} created` : ''}${made && updated ? ', ' : ''}${updated ? `${plural(updated, 'character')} updated` : ''}${rated ? ` (${rated} with new ratings)` : ''}.`);
+  });
+};
+/* The preview: say which characters update, and let each be created new instead. */
+const _drawerIoStaff = DRAWERS.io;
+DRAWERS.io = function () {
+  const x = S.ui.io || {}; let h = _drawerIoStaff(); if (x.kind !== 'ch') return h;
+  x.items.forEach((it, i) => { const tag = it.update ? '<span class="tag open">Updates yours</span>' : '<span class="tag">New</span>';
+    const ctl = it.update ? `<select data-change="io-item-mode" data-i="${i}" aria-label="What to do with ${esc(it.name)}"><option value="update" ${it.mode !== 'new' ? 'selected' : ''}>Update ${esc(it.name)}${it.matchedBy === 'name' ? ' (matched by name)' : ''}</option><option value="new" ${it.mode === 'new' ? 'selected' : ''}>Create a new character</option></select>` : tag;
+    h = h.replace(tag, ctl); });
+  return h.replace('<option value="approved" ', '<option value="approved" title="Also updates the ratings of approved drivers in the file" ').replace('Approved, with the ratings in the file</option>', 'Approved, with the ratings in the file (updates approved drivers’ ratings too)</option>')
+    + '';
 };
 
 /* start-up: every part has registered its routes, drawers and actions */
