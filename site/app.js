@@ -1,4 +1,4 @@
-/* F1 SIM v0.25.0 (build f1sim-0.25.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v0.26.0 (build f1sim-0.26.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -1148,17 +1148,16 @@ const CHAR_BLANK = { name: '', code: '', number: '', nationality: '', role: 'dri
 ACTIONS['char-new'] = () => { S.ui.form.ch = Object.assign({}, CHAR_BLANK); openDrawer('char'); };
 ACTIONS['char-edit'] = d => { const c = get('characters', d.id); if (!c) return; S.ui.form.ch = Object.assign({}, CHAR_BLANK, clone(S.store.characters[d.id]), { id: d.id }); openDrawer('char'); };
 ACTIONS['char-play'] = d => { S.charId = d.id; lsSet('f1sim.char', d.id); toast('Now playing as ' + ((get('characters', d.id) || {}).name || 'this character') + '.'); render(); };
-DRAWERS.char = function () {
-  const f = S.ui.form.ch || {}, txt = (k, label, extra) => `<label class="field">${label}<input id="ch-${k}" type="text" data-bind="ui/form/ch/${k}" value="${esc(f[k] || '')}" ${extra || ''}></label>`;
-  return `<header><div><h2>${f.id ? 'Edit character' : 'New character'}</h2><p>Characters are fiction. Race Control puts characters into seats on the grid; you can also apply for one.</p></div>
-      <button class="btn ghost" data-act="close-drawer">Close</button></header>
-    <div class="body"><div class="ch-photo-row"><div class="ch-photo">${f.portraitUrl ? `<img src="${esc(f.portraitUrl)}" alt="The character’s picture">` : '<span class="muted small">No picture yet</span>'}</div>
+/* The character form's fields: used by the side panel (new characters) and inline on the application page. */
+function charFormFields(f) {
+  const txt = (k, label, extra) => `<label class="field">${label}<input id="ch-${k}" type="text" data-bind="ui/form/ch/${k}" value="${esc(f[k] || '')}" ${extra || ''}></label>`;
+  return `<div class="ch-photo-row"><div class="ch-photo">${f.portraitUrl ? `<img src="${esc(f.portraitUrl)}" alt="The character’s picture">` : '<span class="muted small">No picture yet</span>'}</div>
       <div><h3>Picture and face claim</h3><div class="btn-row"><label class="btn small file-btn">${f.portraitUrl ? 'Change the picture' : 'Upload a picture'}<input type="file" accept="image/*" class="sr-only" data-change="ch-portrait"></label>${f.portraitUrl ? '<button class="btn small ghost" data-act="ch-portrait-remove">Remove</button>' : ''}${S.ui.chUploading ? '<span class="muted small">Uploading…</span>' : ''}</div>
       <p class="muted small">JPEG, PNG or WebP; a head-and-shoulders shot works best. It’s saved with the character.</p>
       ${txt('faceclaim', 'Face claim', 'placeholder="Who the picture shows, e.g. the actor or model" autocomplete="off"')}</div></div>
     <div class="form-grid">
       ${txt('name', 'Name', 'autocomplete="off" required')}
-      <label class="field">What they do<select id="ch-role" data-bind="ui/form/ch/role" ${f.id && charStatus(get('characters', f.id) || {}) === 'approved' ? 'disabled' : ''}>${CHAR_ROLES.map(([k, l]) => `<option value="${k}" ${f.role === k ? 'selected' : ''}>${l}</option>`).join('')}</select>${f.id && charStatus(get('characters', f.id) || {}) === 'approved' ? '<span class="muted small">Fixed once approved; ask Race Control to change it.</span>' : ''}</label>
+      <label class="field">What they do<select id="ch-role" data-change="ch-role" ${f.id && charStatus(get('characters', f.id) || {}) === 'approved' ? 'disabled' : ''}>${CHAR_ROLES.map(([k, l]) => `<option value="${k}" ${f.role === k ? 'selected' : ''}>${l}</option>`).join('')}</select>${f.id && charStatus(get('characters', f.id) || {}) === 'approved' ? '<span class="muted small">Fixed once approved; ask Race Control to change it.</span>' : ''}</label>
       ${txt('nationality', 'Nationality', 'placeholder="e.g. Scottish"')}
       ${f.role === 'driver' ? txt('code', 'Three-letter code (drivers)', 'maxlength="3" placeholder="e.g. HAR"') + `<label class="field">Car number (drivers)<input id="ch-number" type="number" min="1" max="99" data-bind="ui/form/ch/number" data-type="number" value="${esc(f.number || '')}"></label>` : ''}
       ${txt('discord', 'Discord username (for @mentions)', 'autocomplete="off" placeholder="e.g. amelia.hart"')}
@@ -1167,6 +1166,13 @@ DRAWERS.char = function () {
     <label class="field">About them<textarea id="ch-bio" rows="6" data-bind="ui/form/ch/bio" placeholder="Background, personality, how they got into the paddock">${esc(f.bio || '')}</textarea></label>
     ${f.role === 'driver' ? `<label class="field">Before Formula 1 (optional)<textarea id="ch-junior" rows="3" data-bind="ui/form/ch/junior" placeholder="Karting, junior series, titles, the one that got away">${esc(f.junior || '')}</textarea></label>
     ${txt('helmet', 'Helmet design (optional)', 'placeholder="e.g. Saltire blue with a gold stripe"')}` : ''}
+`;
+}
+DRAWERS.char = function () {
+  const f = S.ui.form.ch || {};
+  return `<header><div><h2>${f.id ? 'Edit character' : 'New character'}</h2><p>Characters are fiction. Race Control puts characters into seats on the grid; you can also apply for one.</p></div>
+      <button class="btn ghost" data-act="close-drawer">Close</button></header>
+    <div class="body">${charFormFields(f)}
     <div class="btn-row"><button class="btn primary" data-act="char-save">${f.id ? 'Save changes' : 'Create character'}</button>${f.id ? `<button class="btn danger" data-act="char-retire" data-id="${esc(f.id)}">Retire this character</button>` : ''}</div></div>`;
 };
 ACTIONS['char-save'] = () => {
@@ -1181,6 +1187,7 @@ ACTIONS['char-save'] = () => {
   const doc = Object.assign({}, prev ? clone(S.store.characters[id]) : { createdAt: nowIso() }, f, { userId: prev ? prev.userId : S.uid, updatedAt: nowIso() });
   run(async () => {
     await Data.put('characters', id, doc);
+    S.ui.charInline = null;
     /* An approved character's name, code and number also change on the grid. */
     const pid = f1PcId(id), person = prev && F1.person(pid);
     if (person && (person.name !== doc.name || person.abbr !== (doc.code || person.abbr) || (person.num || null) !== (doc.number || null))) {
@@ -2395,6 +2402,7 @@ route('weekend', 'Race Weekend', function () {
 
 const ROLL_ATTRS = [['pace', 'Pace'], ['consistency', 'Consistency'], ['wet', 'Wet weather'], ['overtaking', 'Overtaking'], ['defense', 'Defence']];
 const MAX_ROLLS = 3;          // the first roll and two re-rolls
+const maxRolls = c => MAX_ROLLS + ((c && c.gen && c.gen.extra) || 0);   /* Race Control can give extra re-rolls */
 const ROLL_CAP = 90;          // nobody arrives better than 90: the rest is earned
 const BRACKETS = [
   { id: 'f2', name: 'Formula 2 graduate', blurb: 'Quick and well drilled, straight up the ladder.', base: 70, dice: [2, 10], exp: 30, mods: {} },
@@ -2420,18 +2428,19 @@ const STATUS_TEXT = { draft: 'Draft', pending: 'Waiting for Race Control', appro
 /* Roll k for a character: base plus dice for each of the five ratings, plus mental strength (1d6 + 3). */
 function rollValues(charId, k, bracketId) {
   const b = bracketOf(bracketId); if (!b || !k) return null;
-  const r = RaceEngine.rng(h32(charId, 'roll', k)), d = () => { let s = 0; for (let i = 0; i < b.dice[0]; i++) s += 1 + Math.floor(r() * b.dice[1]); return s; };
+  const c0 = get('characters', charId), salt = (c0 && c0.gen && c0.gen.salt) || 0;   /* a reset gives fresh numbers */
+  const r = RaceEngine.rng(salt ? h32(charId, 'roll', k, 's' + salt) : h32(charId, 'roll', k)), d = () => { let s = 0; for (let i = 0; i < b.dice[0]; i++) s += 1 + Math.floor(r() * b.dice[1]); return s; };
   const out = { values: ROLL_ATTRS.map(() => Math.min(ROLL_CAP, b.base + d())), mental: 4 + Math.floor(r() * 6) };
   /* Years and experience have their own dice, so adding them didn't change anyone's earlier rolls. */
   const c = get('characters', charId), y = yearsOf(c && c.gen && c.gen.years);
-  if (y) { const ry = RaceEngine.rng(h32(charId, 'years', k)); out.years = y.min + Math.floor(ry() * (y.max - y.min + 1));
+  if (y) { const ry = RaceEngine.rng(salt ? h32(charId, 'years', k, 's' + salt) : h32(charId, 'years', k)); out.years = y.min + Math.floor(ry() * (y.max - y.min + 1));
     out.experience = Math.max(15, Math.min(88, 15 + out.years * 7 + Math.floor(ry() * 8) + (BRACKET_EXP[bracketId] || 0))); }
   return out;
 }
 const validOrder = o => Array.isArray(o) && o.length === ROLL_ATTRS.length && o.slice().sort().join() === ROLL_ATTRS.map((x, i) => i).join();
 /* The finished ratings: the latest roll, arranged, plus the background's adjustments. */
 function rolledRatings(c) {
-  const g = c.gen || {}, b = bracketOf(g.bracket), roll = rollValues(c.id, Math.min(g.rolls || 0, MAX_ROLLS), g.bracket); if (!b || !roll) return null;
+  const g = c.gen || {}, b = bracketOf(g.bracket), roll = rollValues(c.id, Math.min(g.rolls || 0, maxRolls(c)), g.bracket); if (!b || !roll) return null;
   const order = validOrder(g.order) ? g.order : ROLL_ATTRS.map((x, i) => i), y = yearsOf(g.years);
   const out = { experience: roll.experience != null ? roll.experience : b.exp, mental: Math.min(10, roll.mental + (g.years === '7+' ? 1 : 0)), style: g.style || 'technical' };
   if (roll.years != null) { out.years = roll.years; out.growth = y.growth; }
@@ -2453,9 +2462,9 @@ ACTIONS['gen-roll'] = () => {
   const c = get('characters', S.ui.charEdit); if (!c || !editable(c)) return;
   const g = c.gen || {}; if (!g.bracket) { toast('Choose a background first.', true); return; }
   if (!g.years) { toast('Choose how many years they’ve been racing first.', true); return; }
-  if ((g.rolls || 0) >= MAX_ROLLS) { toast('No re-rolls left.', true); return; }
+  if ((g.rolls || 0) >= maxRolls(c)) { toast('No re-rolls left.', true); return; }
   const n = (g.rolls || 0) + 1;
-  saveGen(c, { rolls: n, order: ROLL_ATTRS.map((x, i) => i), rolledAt: (g.rolledAt || []).concat(nowIso()) }, n === 1 ? 'Rolled. Arrange the numbers, or re-roll.' : `Re-rolled. ${plural(MAX_ROLLS - n, 're-roll')} left; this roll now stands.`);
+  saveGen(c, { rolls: n, order: ROLL_ATTRS.map((x, i) => i), rolledAt: (g.rolledAt || []).concat(nowIso()) }, n === 1 ? 'Rolled. Arrange the numbers, or re-roll.' : `Re-rolled. ${plural(maxRolls(c) - n, 're-roll')} left; this roll now stands.`);
 };
 ACTIONS['gen-move'] = d => {
   const c = get('characters', S.ui.charEdit); if (!c || !editable(c)) return;
@@ -2492,7 +2501,7 @@ ACTIONS['gen-return'] = d => {
 };
 function rollHistoryHtml(c) {
   const g = c.gen || {}, rows = [];
-  for (let k = 1; k <= Math.min(g.rolls || 0, MAX_ROLLS); k++) { const r = rollValues(c.id, k, g.bracket); rows.push(`<tr${k === g.rolls ? ' class="me"' : ''}><td>Roll ${k}${k === g.rolls ? ' (stands)' : ''}</td>${r.values.map(v => `<td class="num">${v}</td>`).join('')}<td class="num">${r.mental}</td></tr>`); }
+  for (let k = 1; k <= Math.min(g.rolls || 0, maxRolls(c)); k++) { const r = rollValues(c.id, k, g.bracket); rows.push(`<tr${k === g.rolls ? ' class="me"' : ''}><td>Roll ${k}${k === g.rolls ? ' (stands)' : ''}</td>${r.values.map(v => `<td class="num">${v}</td>`).join('')}<td class="num">${r.mental}</td></tr>`); }
   return rows.length ? `<table class="data compact"><thead><tr><th></th>${ROLL_ATTRS.map(() => '<th class="num">Value</th>').join('')}<th class="num">Mental</th></tr></thead><tbody>${rows.join('')}</tbody></table>` : '<p class="muted small">No rolls yet.</p>';
 }
 function ratingsTableHtml(r) {
@@ -2509,7 +2518,7 @@ function chargenQueueHtml() {
         ${r ? `<p><b>${esc(b.name)}</b>. ${esc(b.blurb)}</p>${ratingsTableHtml(r)}<details><summary>Every roll</summary>${rollHistoryHtml(c)}<p class="muted small">Rolls are worked out from the character, so these are exactly what the player saw.</p></details>` : ''}
         <label class="field">Note to the player (needed to return it)<textarea id="rcn-${esc(c.id)}" rows="2" data-bind="ui/form/rcnote/${esc(c.id)}"></textarea></label>
         <label class="small"><input type="checkbox" data-bind="ui/form/postAccept/${esc(c.id)}" ${((S.ui.form.postAccept || {})[c.id]) !== false ? 'checked' : ''}> Post the acceptance card to Discord${c.discord ? `, mentioning @${esc(c.discord)}` : ' (no Discord username, so no @mention)'}</label>
-        <div class="btn-row"><button class="btn primary" data-act="gen-approve" data-id="${esc(c.id)}">Approve</button><button class="btn" data-act="gen-return" data-id="${esc(c.id)}">Return with the note</button></div></article>`; }).join('')}</div>`
+        <div class="btn-row"><button class="btn primary" data-act="gen-approve" data-id="${esc(c.id)}">Approve</button><button class="btn" data-act="gen-return" data-id="${esc(c.id)}">Return with the note</button>${c.role === 'driver' ? `<button class="btn" data-act="gen-extra" data-id="${esc(c.id)}">Give an extra re-roll</button><button class="btn" data-act="gen-reset" data-id="${esc(c.id)}">Reset the ratings</button>` : ''}</div></article>`; }).join('')}</div>`
       : '<p class="muted">No characters waiting.</p>'}</section>`;
 }
 
@@ -2541,11 +2550,12 @@ route('character', 'Character', function () {
   const roll = driver && g.rolls ? rollValues(c.id, g.rolls, g.bracket) : null, order = validOrder(g.order) ? g.order : ROLL_ATTRS.map((x, i) => i);
   const steps = [['Who they are', !!String(c.bio || '').trim()], ['Picture and face claim', !!(c.portraitUrl && String(c.faceclaim || '').trim())], ...(driver ? [['Background', !!b], ['Years', !!g.years], ['Roll and arrange', !!g.rolls]] : []), ...(PREF_ROLES.indexOf(c.role) !== -1 ? [['Team', prefDone(c)]] : []), ['Race Control', st === 'approved']];
   let h = `<div class="page-head"><div><p class="eyebrow">${esc(charRoleName(c.role))}</p><h1>${esc(c.name)}</h1><p><span class="tag ${st === 'approved' ? 'player' : st === 'pending' ? 'open' : st === 'returned' ? 'flag' : ''}">${esc(STATUS_TEXT[st])}</span></p></div>
-      <div class="btn-row"><button class="btn" data-act="char-edit" data-id="${esc(c.id)}">Edit details</button><button class="btn" data-act="sheet-open" data-id="${esc(c.id)}">Export</button><button class="btn ghost" data-act="nav" data-route="characters">All characters</button></div></div>
+      <div class="btn-row"><button class="btn" data-act="char-edit-inline" data-id="${esc(c.id)}" ${S.ui.charInline === c.id ? 'disabled' : ''}>Edit details</button><button class="btn" data-act="sheet-open" data-id="${esc(c.id)}">Export</button><button class="btn ghost" data-act="nav" data-route="characters">All characters</button></div></div>
     <ol class="stages" aria-label="Application">${steps.map(([l, done], i) => `<li class="${done ? 'done' : (steps.findIndex(s => !s[1]) === i ? 'now' : '')}">${esc(l)}</li>`).join('')}</ol>`;
   if (st === 'returned' && c.rcNote) h += `<div class="card notice warn"><b>Race Control’s note:</b> ${esc(c.rcNote)}</div>`;
   h += offersHtml(c.id);
-  h += `<section class="card"><h2>Who they are</h2>${c.bio ? paras(c.bio) : '<p class="muted">No background written yet. Use Edit details.</p>'}
+  if (S.ui.charInline === c.id) h += charInlineHtml(c);
+  else h += `<section class="card"><h2>Who they are</h2>${c.bio ? paras(c.bio) : '<p class="muted">No background written yet. Use Edit details.</p>'}
     <p class="muted small">${[c.nationality, c.code, c.number ? '#' + c.number : '', c.faceclaim ? 'Face claim: ' + c.faceclaim : '', c.discord ? 'Discord: ' + c.discord : ''].filter(Boolean).map(esc).join('. ')}</p>${c.portraitUrl ? `<img class="app-photo" src="${esc(c.portraitUrl)}" alt="${esc(c.name)}">` : ''}</section>`;
   h += careerAppHtml(c);
   if (driver) {
@@ -2558,14 +2568,14 @@ route('character', 'Character', function () {
         <div class="cards brackets">${ok.map(id => { const x = yearsOf(id); return `<button class="card bracket ${g.years === id ? 'on' : ''}" data-act="gen-years" data-id="${id}" aria-pressed="${g.years === id}" ${ed ? '' : 'disabled'}><b>${esc(x.label)}</b><span>${esc(x.note)}</span>
           <span class="muted small">Development points ×${x.growth}</span></button>`; }).join('')}</div>`}</section>`; }
     if (b) h += `<section class="card"><h2>Ratings</h2>
-      ${!g.rolls ? `<p>Roll five numbers for pace, consistency, wet weather, overtaking and defence, plus mental strength. You get ${MAX_ROLLS - 1} re-rolls; the latest roll always stands. Then arrange the five numbers across the ratings however you like.</p>`
-        : `<p class="muted small">Roll ${g.rolls} of ${MAX_ROLLS}${g.rolls < MAX_ROLLS ? `: ${plural(MAX_ROLLS - g.rolls, 're-roll')} left, and a re-roll replaces this one` : ''}. Use the arrows to move numbers between ratings; the background’s adjustments are added on top.</p>
+      ${!g.rolls ? `<p>Roll five numbers for pace, consistency, wet weather, overtaking and defence, plus mental strength. You get ${maxRolls(c) - 1} re-rolls; the latest roll always stands. Then arrange the five numbers across the ratings however you like.</p>`
+        : `<p class="muted small">Roll ${g.rolls} of ${maxRolls(c)}${g.rolls < maxRolls(c) ? `: ${plural(maxRolls(c) - g.rolls, 're-roll')} left, and a re-roll replaces this one` : ''}. Use the arrows to move numbers between ratings; the background’s adjustments are added on top.</p>
         <table class="data arrange"><tbody>${ROLL_ATTRS.map(([k, l], i) => `<tr><td>${esc(l)}</td><td class="num"><b>${roll.values[order[i]]}</b>${b.mods[k] ? ` <span class="${b.mods[k] > 0 ? 'f1-up' : 'f1-down'}">${b.mods[k] > 0 ? '+' : '−'}${Math.abs(b.mods[k])}</span>` : ''}</td><td class="num">= <b>${r[k]}</b></td>
           <td class="num">${ed ? `<button class="btn small" data-act="gen-move" data-i="${i}" data-dir="-1" aria-label="Move ${esc(l)}’s number up" ${i === 0 ? 'disabled' : ''}>▲</button> <button class="btn small" data-act="gen-move" data-i="${i}" data-dir="1" aria-label="Move ${esc(l)}’s number down" ${i === ROLL_ATTRS.length - 1 ? 'disabled' : ''}>▼</button>` : ''}</td></tr>`).join('')}
           <tr><td>Experience</td><td></td><td class="num">= <b>${r.experience}</b></td><td class="muted small num">${r.years != null ? `${r.years} years of racing` : 'From the background'}</td></tr>
           <tr><td>Mental strength</td><td></td><td class="num">= <b>${r.mental}</b></td><td class="muted small num">Rolled, 4 to 9</td></tr></tbody></table>
         <label class="field" style="max-width:320px;margin-top:12px">Driving style<select id="gen-style" data-change="gen-style" ${ed ? '' : 'disabled'}>${F1_STYLES.map(([k, l]) => `<option value="${k}" ${(g.style || 'technical') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`}
-      ${ed ? `<div class="btn-row"><button class="btn ${g.rolls ? '' : 'primary'}" data-act="gen-roll" ${g.rolls >= MAX_ROLLS ? 'disabled' : ''}>${g.rolls ? `Re-roll (${MAX_ROLLS - g.rolls} left)` : 'Roll the ratings'}</button></div>` : ''}
+      ${ed ? `<div class="btn-row"><button class="btn ${g.rolls ? '' : 'primary'}" data-act="gen-roll" ${g.rolls >= maxRolls(c) ? 'disabled' : ''}>${g.rolls ? `Re-roll (${maxRolls(c) - g.rolls} left)` : 'Roll the ratings'}</button></div>` : ''}
       ${g.rolls > 1 ? `<details><summary>Earlier rolls</summary>${rollHistoryHtml(c)}</details>` : ''}</section>`;
   }
   h += teamPrefHtml(c);
@@ -5872,14 +5882,14 @@ ACTIONS['gen-approve'] = d => {
 CHANGES['ch-portrait'] = (v, d, el) => {
   const file = el.files && el.files[0]; if (!file || !S.ui.form.ch) return;
   if (!/^image\//.test(file.type)) { toast('Choose a picture: a JPEG, PNG or WebP.', true); return; }
-  S.ui.chUploading = true; renderOverlay();
+  S.ui.chUploading = true; renderOverlay(); if (S.ui.charInline) render();
   (async () => { try { const blob = await shrinkImage(file, 900), assets = await window.claude.use('assets'), up = await assets.upload(blob, { type: 'image/jpeg' });
       if (S.ui.form.ch) S.ui.form.ch.portraitUrl = up.url; toast('Picture uploaded. Save the character to keep it.'); }
     catch (e) { toast('The picture didn’t upload: ' + (e.message || e), true); }
-    S.ui.chUploading = false; renderOverlay(); })();
+    S.ui.chUploading = false; renderOverlay(); if (S.ui.charInline) render(); })();
   el.value = '';
 };
-ACTIONS['ch-portrait-remove'] = () => { if (S.ui.form.ch) { S.ui.form.ch.portraitUrl = null; renderOverlay(); } };
+ACTIONS['ch-portrait-remove'] = () => { if (S.ui.form.ch) { S.ui.form.ch.portraitUrl = null; renderOverlay(); if (S.ui.charInline) render(); } };
 /* Sending without a picture or face claim asks first. */
 const _genSubmitPhoto = ACTIONS['gen-submit'];
 ACTIONS['gen-submit'] = d => {
@@ -6208,7 +6218,7 @@ function winsHtml(p, c) {
 
 /* ---------------------------------------------------------------- what players see before approval */
 const LIMITED_ROUTES = ['home', 'grid', 'calendar', 'standings', 'seasons', 'characters', 'character', 'career'];
-function playerLimited() { return S.phase === 'ready' && !S.isGm && !myChars().some(c => !c.retired && charStatus(c) === 'approved'); }
+function playerLimited() { return S.phase === 'ready' && !S.isGm && !myChars().some(c => !c.retired && (charStatus(c) === 'approved' || (F1.person(f1PcId(c.id)) || {}).approved)); }
 const _navHtmlLimited = navHtml;
 navHtml = function () {
   if (!playerLimited()) return _navHtmlLimited();
@@ -6226,6 +6236,93 @@ ROUTES.home.view = function () {
   const mine = myChars().filter(c => !c.retired), pend = mine.find(c => charStatus(c) === 'pending');
   return `<section class="card notice limited-note"><h2>Welcome to the paddock</h2><p>${pend ? `${esc(pend.name)}’s application is with Race Control.` : mine.length ? 'Finish your character’s application and send it to Race Control.' : 'Start by creating your character.'} The rest of the site (Team HQ, Race Weekend, the Test Track, Characters and the Paddock) opens once your character is approved.</p>
     <div class="btn-row"><button class="btn primary" data-act="nav" data-route="characters">${mine.length ? 'Your characters' : 'Create a character'}</button></div></section>` + h;
+};
+
+/* =====================================================================
+   F1 SIM — editing on the application page, and fixing the rolls.
+   Details are edited inline on the application page. After rolling, a
+   player can change their background or years once: the ratings are
+   cleared for a fresh roll. Race Control can give an extra re-roll, or
+   reset the ratings (fresh numbers, background and years unlocked, and
+   the application reopened if it was sent or approved). Every earlier
+   roll is kept, for the player and Race Control to see.
+   ===================================================================== */
+'use strict';
+
+/* ---------------------------------------------------------------- inline details */
+ACTIONS['char-edit-inline'] = d => {
+  if (!get('characters', d.id)) return;
+  S.ui.form.ch = Object.assign({}, CHAR_BLANK, clone(S.store.characters[d.id]), { id: d.id }); S.ui.charInline = d.id; render();
+  setTimeout(() => { const el = document.getElementById('char-inline'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 60);
+};
+ACTIONS['char-inline-cancel'] = () => { S.ui.charInline = null; S.ui.form.ch = null; render(); };
+function charInlineHtml(c) {
+  const f = S.ui.form.ch || {};
+  return `<section class="card char-inline" id="char-inline"><h2>Edit details</h2>${charFormFields(f)}
+    <div class="btn-row"><button class="btn primary" data-act="char-save">Save changes</button><button class="btn ghost" data-act="char-inline-cancel">Cancel</button></div></section>`;
+}
+/* The role decides which fields show, so changing it redraws the form wherever it is. */
+CHANGES['ch-role'] = v => { if (S.ui.form.ch) { S.ui.form.ch.role = v; renderOverlay(); if (S.ui.charInline) render(); } };
+
+/* ---------------------------------------------------------------- the rolls */
+function genSnapshot(c, by, why) {
+  const g = c.gen || {}, rolls = [];
+  for (let k = 1; k <= Math.min(g.rolls || 0, maxRolls(c)); k++) { const r = rollValues(c.id, k, g.bracket); if (r) rolls.push({ values: r.values, mental: r.mental, years: r.years, experience: r.experience }); }
+  return { at: nowIso(), by, why: why || '', bracket: g.bracket || null, years: g.years || null, rolls, stood: g.rolls ? rolledRatings(c) : null };
+}
+const freshGen = (g, snap, extraKeep) => ({ style: g.style, salt: (g.salt || 0) + 1, changes: extraKeep.changes, extra: 0, history: (g.history || []).concat([snap]) });
+ACTIONS['gen-rechoose'] = () => {
+  const c = get('characters', S.ui.charEdit); if (!c || !editable(c)) return; const g = c.gen || {};
+  if (!g.rolls) return;
+  if ((g.changes || 0) >= 1) { toast('You’ve already changed your background once. Ask Race Control if it needs changing again.', true); return; }
+  askConfirm('Change the background or years? Your ratings are cleared and you roll again from the start. You can do this once, and Race Control sees every earlier roll.', 'Change them', () => run(async () => {
+    const doc = charDoc(c.id); doc.gen = freshGen(g, genSnapshot(c, 'player', 'Changed background or years'), { changes: (g.changes || 0) + 1 });
+    await Data.put('characters', c.id, doc); await Data.audit('character.rechoose', `${c.name} changed background or years after rolling`);
+  }, 'Choose the background and years again, then roll.'));
+};
+const rcNoteFor = id => String(((S.ui.form.rcnote || {})[id]) || '').trim();
+ACTIONS['gen-extra'] = d => {
+  if (!S.isGm) return; const c = get('characters', d.id || S.ui.charEdit); if (!c) return; const g = c.gen || {}, note = rcNoteFor(c.id);
+  run(async () => {
+    const doc = charDoc(c.id); doc.gen = Object.assign({}, g, { extra: (g.extra || 0) + 1 });
+    if (charStatus(c) === 'pending') Object.assign(doc, { status: 'returned', decidedAt: nowIso(), rcNote: `Race Control has given you an extra re-roll.${note ? ' ' + note : ''}` });
+    await Data.put('characters', c.id, doc); await Data.audit('character.extra-roll', `${c.name} given an extra re-roll${note ? ': ' + note : ''}`);
+  }, `${c.name} has an extra re-roll.`);
+};
+ACTIONS['gen-reset'] = d => {
+  if (!S.isGm) return; const c = get('characters', d.id || S.ui.charEdit); if (!c) return; const g = c.gen || {}, note = rcNoteFor(c.id), st = charStatus(c);
+  askConfirm(`Reset ${c.name}’s ratings? The rolls are cleared and their background and years unlocked, so they roll again with fresh numbers.${st === 'approved' ? ' Their application reopens, and their current ratings stay until you approve it again.' : ''}`, 'Reset the ratings', () => run(async () => {
+    const doc = charDoc(c.id); doc.gen = freshGen(g, genSnapshot(c, 'Race Control', note || 'Ratings reset'), { changes: 0 });
+    if (st === 'pending' || st === 'approved') Object.assign(doc, { status: 'returned', decidedAt: nowIso(), rcNote: `Race Control reset your ratings: choose your background and years, then roll again.${note ? ' ' + note : ''}` });
+    await Data.put('characters', c.id, doc); await Data.audit('character.reset-ratings', `${c.name}: ratings reset by Race Control${note ? ': ' + note : ''}`);
+  }, 'Ratings reset.'), true);
+};
+function rollsHistoryHtml(c) {
+  const h = (c.gen || {}).history || []; if (!h.length) return '';
+  return `<details class="gen-history"><summary>Earlier attempts (${h.length})</summary>${h.slice().reverse().map(x => { const b = bracketOf(x.bracket), y = yearsOf(x.years);
+    return `<div class="gen-attempt"><p class="small"><b>${esc(fmtWhen(x.at))}</b>: ${esc(x.by === 'player' ? 'changed by the player' : 'reset by Race Control')}${x.why && x.by !== 'player' ? `, “${esc(x.why)}”` : ''}. ${esc(b ? b.name : 'No background')}, ${esc(y ? y.label : 'no years chosen')}.</p>
+      ${x.rolls.length ? `<table class="data compact"><thead><tr><th></th>${ROLL_ATTRS.map(([, l]) => `<th class="num">${esc(l)}</th>`).join('')}<th class="num">Mental</th></tr></thead><tbody>${x.rolls.map((r, i) => `<tr${i === x.rolls.length - 1 ? ' class="me"' : ''}><td>Roll ${i + 1}${i === x.rolls.length - 1 ? ' (stood)' : ''}</td>${r.values.map(v => `<td class="num">${v}</td>`).join('')}<td class="num">${r.mental}</td></tr>`).join('')}</tbody></table>` : '<p class="muted small">Not rolled.</p>'}</div>`; }).join('')}</details>`;
+}
+/* Cards on the application page: change background (player), earlier attempts, and Race Control's controls. */
+function genFixHtml(c) {
+  if (c.role !== 'driver') return '';
+  const g = c.gen || {}, ed = editable(c), own = c.userId === S.uid || S.isGm; let h = '';
+  if (ed && g.rolls) h += `<section class="card"><h2>Wrong background or years?</h2>${(g.changes || 0) < 1
+    ? `<p>You can change them once. Your ratings are cleared for a fresh roll, and Race Control sees every earlier roll.</p><div class="btn-row"><button class="btn" data-act="gen-rechoose">Change background or years</button></div>`
+    : '<p class="muted">You’ve already changed them once. Ask Race Control if they need changing again.</p>'}${own ? rollsHistoryHtml(c) : ''}</section>`;
+  else if (own && (g.history || []).length) h += `<section class="card"><h2>Earlier attempts</h2>${rollsHistoryHtml(c)}</section>`;
+  if (S.isGm) h += `<section class="card rc-gen"><h2>Race Control: ratings</h2><p class="small">${g.rolls ? `Roll ${g.rolls} of ${maxRolls(c)}` : 'Not rolled yet'}${g.extra ? `, including ${plural(g.extra, 'extra re-roll')}` : ''}. Background changed by the player: ${g.changes ? 'yes' : 'no'}.</p>
+    <label class="field">Note to the player (optional)<textarea id="rcg-${esc(c.id)}" rows="2" data-bind="ui/form/rcnote/${esc(c.id)}"></textarea></label>
+    <div class="btn-row"><button class="btn" data-act="gen-extra" data-id="${esc(c.id)}">Give an extra re-roll</button><button class="btn" data-act="gen-reset" data-id="${esc(c.id)}">Reset the ratings</button></div></section>`;
+  return h;
+}
+const _characterViewRegen = ROUTES.character.view;
+ROUTES.character.view = function () {
+  const h = _characterViewRegen(), c = get('characters', S.ui.charEdit); if (!c) return h;
+  const add = genFixHtml(c); if (!add) return h;
+  const marks = ['<section class="card" id="team-pref">', '<section class="card"><h2>Team you’d like to join</h2>', '<section class="card"><h2>Send to Race Control</h2>', '<section class="card"><h2>With Race Control</h2>', '<section class="card"><h2>Your driver’s record</h2>'];
+  const at = marks.map(m => h.indexOf(m)).filter(i => i >= 0).sort((a, b) => a - b)[0];
+  return at == null ? h + add : h.slice(0, at) + add + h.slice(at);
 };
 
 /* start-up: every part has registered its routes, drawers and actions */

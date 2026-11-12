@@ -25,6 +25,20 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v0.26.0: edit on the application page, and fixing the rolls
+
+12 November 2026. Build `f1sim-0.26.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Inline editing | "Edit details" on the application page opens the form right there, in place of "Who they are", instead of a side panel: picture and face claim, name, role, nationality, code and number, Discord username, nickname, where they're from, story, before Formula 1 and helmet. Save changes or Cancel. Changing the role shows or hides the driver fields straight away. (Creating a new character still uses the side panel.) |
+| Change background or years | After rolling, a player can change their background or years once. The ratings are cleared and they roll again (a fresh allowance). Every earlier roll is kept under "Earlier attempts", for the player and Race Control. A second change needs Race Control. |
+| Extra re-roll | Race Control can give a driver an extra re-roll, from the application review or the application page, with an optional note. If the application had been sent, it comes back to the player with the note. |
+| Reset the ratings | Race Control can reset a driver's ratings: the rolls are cleared, background and years unlocked, and the next rolls are new numbers. A sent or approved application reopens with a note; an approved driver keeps their seat, menu and current ratings until Race Control approves them again, when the new ratings replace the old. |
+| Fairness | Rolls that were never reset are unchanged. Race Control sees every roll, including earlier attempts. |
+
+---
+
 ## v0.25.0: team preference, wins and podiums, and the new-player menu
 
 12 November 2026. Build `f1sim-0.25.0`. **No database update.**
