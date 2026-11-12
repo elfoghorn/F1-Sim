@@ -685,15 +685,48 @@ button.gc:hover, button.gc:focus-visible { outline: 2px solid var(--ink); outlin
 .seat-could { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 10px; background: var(--panel-2); border-left: 6px solid var(--team); }
 .held-list { display: flex; flex-wrap: wrap; gap: 8px; } .held-chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; background: #3A1D20; border: 1px solid var(--red); } .held-chip i { width: 10px; height: 10px; background: var(--team); }
 .seat-app { padding: 8px 0; border-bottom: 1px solid var(--line); } .seat-app p { margin: 4px 0; }
+
+/* ---------- the top navigation bar ---------- */
+.topnav { display: flex; align-items: stretch; gap: 2px; margin: 0 8px; min-width: 0; }
+.tn-menu { position: relative; } .tn-menu > summary { list-style: none; cursor: pointer; display: flex; flex-direction: column; justify-content: center; min-height: 44px; padding: 2px 14px; font-weight: 700; font-size: 14px; color: var(--muted); border-bottom: 3px solid transparent; white-space: nowrap; }
+.tn-menu > summary::-webkit-details-marker { display: none; } .tn-menu > summary::after { content: '▾'; margin-left: 4px; font-size: 11px; position: absolute; right: 2px; top: 50%; transform: translateY(-50%); }
+.tn-menu > summary b { font-size: 15px; color: var(--ink); line-height: 1.1; } .tn-menu.on > summary { color: var(--ink); border-bottom-color: var(--red); }
+.tn-menu > summary:hover, .tn-menu[open] > summary { color: var(--ink); background: var(--panel); } .tn-menu > summary:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+.tn-panel { position: absolute; top: 100%; left: 0; z-index: 60; min-width: 300px; max-height: 70vh; overflow-y: auto; background: var(--panel); border: 1px solid var(--line-strong); border-top: 3px solid var(--red); padding: 8px; box-shadow: 0 12px 30px rgba(0,0,0,0.45); }
+.tn-h { margin: 8px 6px 4px; font-size: 12.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; } .tn-h span { text-transform: none; font-weight: 400; letter-spacing: 0; } .tn-note { margin: 4px 6px 8px; font-size: 13px; color: var(--muted); max-width: 300px; }
+.tn-item { display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%; min-height: 40px; padding: 6px 10px; background: transparent; border: 0; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.tn-item span { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; } .tn-item i { width: 10px; height: 10px; display: inline-block; } .tn-item small { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+.tn-item:hover, .tn-item:focus-visible { background: var(--panel-2); } .tn-item.on { background: #3A1D20; box-shadow: inset 3px 0 0 var(--red); } .tn-link span { color: var(--muted); }
+.series-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 10px; } .series-strip > span { font-size: 13px; font-weight: 700; color: var(--muted); margin-right: 4px; }
+.series-strip button { min-height: 34px; padding: 0 12px; background: transparent; color: var(--ink); border: 1px solid var(--line-strong); font: 700 13.5px var(--body); cursor: pointer; border-left: 4px solid var(--sc); } .series-strip button.on { background: var(--panel); border-color: var(--red); border-left-color: var(--sc); box-shadow: inset 0 -3px 0 var(--red); }
+.tn-coming { margin-bottom: 14px; }
+@media (max-width: 900px) { .topnav { order: 10; width: 100%; margin: 0; overflow-x: auto; } .tn-menu { position: static; } .tn-panel { left: 8px; right: 8px; min-width: 0; } }
+
+@media (max-width: 900px) { .topbar { flex-wrap: wrap; padding-bottom: 0; } }
+
+.tn-panel { min-width: 340px; width: max-content; max-width: min(460px, calc(100vw - 16px)); } @media (max-width: 900px) { .tn-panel { width: auto; max-width: none; } }
+
+.tn-panel, .tn-item { box-sizing: border-box; }
+
+/* ---------- the grid: drivers, principals and engineers set apart ---------- */
+.grid-table .g-groups th { font-size: 14px; font-weight: 800; color: var(--ink); text-transform: uppercase; letter-spacing: 0.05em; padding: 10px 8px 6px; border-bottom: 0; }
+.grid-table th.g-driver.g-first, .grid-table td.g-driver.g-first { border-left: 3px solid var(--line-strong); }
+.grid-table th.g-principal, .grid-table td.g-principal { border-left: 3px solid var(--line-strong); background: rgba(245, 196, 0, 0.05); }
+.grid-table th.g-engineer.g-first, .grid-table td.g-engineer.g-first { border-left: 3px solid var(--line-strong); }
+.grid-table th.g-engineer, .grid-table td.g-engineer { background: rgba(90, 169, 255, 0.04); }
+.grid-table .g-groups th.g-driver { box-shadow: inset 0 -4px 0 #E10600; } .grid-table .g-groups th.g-principal { box-shadow: inset 0 -4px 0 #F5C400; } .grid-table .g-groups th.g-engineer { box-shadow: inset 0 -4px 0 #5AA9FF; }
+.gc-role { font-style: normal; font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; line-height: 1.2; }
+.g-driver .gc-role { color: #FF8A80; } .g-principal .gc-role { color: #F5C400; } .g-engineer .gc-role { color: #8CC2FF; }
+.gc { min-height: 52px; }
 </style>
 </head>
 <body>
 <div id="auth-root"><div class="boot"><div class="boot-card"><span class="brand-mark big" aria-hidden="true"></span><h1>F1 SIM</h1><p>Loading…</p></div></div></div>
 <div id="app"></div>
-<script>window.F1SIM_BUILD = 'f1sim-0.39.1'; window.F1SIM_VERSION = '0.39.1';</script>
+<script>window.F1SIM_BUILD = 'f1sim-0.40.2'; window.F1SIM_VERSION = '0.40.2';</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
-<script src="config.js?v=f1sim-0.39.1"></script>
-<script src="bridge.js?v=f1sim-0.39.1"></script>
+<script src="config.js?v=f1sim-0.40.2"></script>
+<script src="bridge.js?v=f1sim-0.40.2"></script>
 <noscript>F1 SIM needs JavaScript switched on.</noscript>
 </body>
 </html>

@@ -25,6 +25,44 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v0.40.2: driver titles only in the drivers' career standings
+
+12 November 2026. Build `f1sim-0.40.2`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Career standings | On Championship → Career: every championship → Drivers, titles now count only seasons as a driver. Titles from team roles (a consultant's or team principal's team title) were being listed there too; they stay under Team principals, Race engineers or Other roles, labelled with the role. |
+
+---
+
+## v0.40.1: seats open by default, and the grid set out by role
+
+12 November 2026. Build `f1sim-0.40.1`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Open by default | Every seat is open to applications when it's made: when today's grid is loaded and when a new series is set up. Reloading the grid keeps existing seats as they are. A seat a player leaves (handed back, or after a transfer) opens again. A seat a player takes closes, as before. |
+| Open or close every seat | On The Grid, Race Control has Open every seat and Close every seat for the series on screen (seats players hold aren't affected). Use Open every seat once on a league made before this version, whose seats were created closed. |
+| Set out by role | The whole grid groups its columns under Drivers (red), Team principal (gold) and Race engineers (blue): a header band over each group, a strong divider between groups, a shaded principal column, and a role label on every seat (Driver 1, Team principal, Engineer 2). The Discord grid image is grouped the same way. |
+| Wording | Engineer posts with no one in them read "Open post" (or "Vacant post" when closed); open seats read "Open", or "Open · 2 applied" once there are applications. The race engineers tile counts open and vacant posts separately. |
+
+---
+
+## v0.40.0: the top navigation bar
+
+12 November 2026. Build `f1sim-0.40.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Category menus | The top bar is now a navigation bar with four menus: Formula, Endurance, Rally and Touring. The Formula menu shows the series currently on (e.g. "Formula · Formula 1"); its first section, Racing in F1 SIM, switches the whole site to Formula 1, Formula 2, Formula 3 or any series you've set up (Race Control also gets Set up a series). Below it, and in the other menus, are the championships not raced in F1 SIM (GP2, IndyCar, Super Formula; WEC, Le Mans, IMSA; WRC, WRC2, World Rallycross, Dakar; DTM, BTCC, Supercars and the rest), each with how many characters have it on their record. |
+| Not raced yet | Choosing one of those opens its championship page (leaderboard and champions from career records) with a note that it isn't raced in F1 SIM yet. Its menu is highlighted while you're there. |
+| Series strip | Pages that depend on the series (The Grid, Teams, Team HQ, Race Weekend, Calendar, Championship outside the hub, Seasons, Test Track) have a strip under the title to switch between the Formula series. Teams' own series tabs are replaced by it. |
+| Menus | One menu opens at a time; Escape or a click elsewhere closes them. On phones the menus sit on their own row and open full width. The old series dropdown is gone. |
+| World Rallycross | Added to the rally championships for career records (from 2014). |
+| Home | Players' seat applications show again above the weekend card ("Application for driver, car 2 at Ferrari: waiting for Race Control"), with decisions shown for a week. |
+
+---
+
 ## v0.39.1: each series' grid goes to its own channel
 
 12 November 2026. Build `f1sim-0.39.1`. **No database update.**
