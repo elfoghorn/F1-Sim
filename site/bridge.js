@@ -59,10 +59,15 @@
     Array.prototype.forEach.call(box.children, function (li, i) { var ok = USERNAME_RULES[i][1](u); li.className = !u ? '' : ok ? 'ok' : 'bad'; li.firstChild.textContent = !u ? '•' : ok ? '✓' : '✕'; });
   }
   var toLogin = function (u) { return u.toLowerCase() + '@' + ACCOUNT_DOMAIN; };
-  var mode = 'signin', note = null, started = false, inviteNeeded = null;
-  var INVITE_LABEL = function () { return inviteNeeded === false ? 'Invite code (not needed at the moment)' : 'Invite code (from Race Control)'; };
+  var mode = 'signin', note = null, started = false, inviteNeeded = null, inviteOpen = null;
+  var INVITE_LABEL = function () { return inviteNeeded === false ? 'Invite code (not needed for the first account)' : 'Invite code (10 characters, from Race Control)'; };
+  var CLOSED_TEXT = 'New accounts are closed at the moment: Race Control hasn’t issued an invite code. Ask them for one.';
   /* The answer can arrive while someone is typing, so only the label changes: never redraw the form here. */
-  function checkInvite() { sb.rpc('invite_required').then(function (r) { inviteNeeded = !r.error && r.data === true; var l = document.getElementById('au-invite-label'); if (l) l.textContent = INVITE_LABEL(); }, function () {}); }
+  function checkInvite() {
+    sb.rpc('invite_required').then(function (r) { inviteNeeded = !r.error && r.data === true; var l = document.getElementById('au-invite-label'); if (l) l.textContent = INVITE_LABEL(); showClosed(); }, function () {});
+    sb.rpc('invite_open').then(function (r) { inviteOpen = r.error ? null : r.data === true; showClosed(); }, function () {});
+  }
+  function showClosed() { var p = document.getElementById('au-closed'); if (p) p.hidden = !(mode === 'signup' && inviteNeeded === true && inviteOpen === false); }
   function field(id, label, type, extra) { return '<label class="field">' + label + '<input id="' + id + '" type="' + type + '" ' + (extra || '') + '></label>'; }
   function showGate() {
     /* A redraw keeps what was typed, so a failed attempt can be corrected rather than started again. */
@@ -72,7 +77,8 @@
       + (mode === 'signup' ? usernameRulesHtml() : '')
       + field('au-pass', mode === 'signup' ? 'Password (at least 8 characters)' : 'Password', 'password', 'autocomplete="' + (mode === 'signup' ? 'new-password' : 'current-password') + '" required')
       + (mode === 'signup' ? field('au-pass2', 'Password again', 'password', 'autocomplete="new-password" required')
-        + field('au-invite', '<span id="au-invite-label">' + INVITE_LABEL() + '</span>', 'text', 'autocomplete="off" autocapitalize="none" spellcheck="false"') : '');
+        + field('au-invite', '<span id="au-invite-label">' + INVITE_LABEL() + '</span>', 'text', 'autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="14"')
+        + '<p class="notice warn small" id="au-closed"' + (inviteNeeded === true && inviteOpen === false ? '' : ' hidden') + '>' + esc(CLOSED_TEXT) + '</p>' : '');
     card('<p class="kicker">F1 SIM</p><h1>' + title + '</h1>' + (note ? '<p class="notice ' + (note.bad ? 'warn' : '') + '" id="au-note" role="alert">' + esc(note.text) + '</p>' : '')
       + (mode === 'signup' ? '<p class="small muted">No email address is needed or stored.</p>' : '')
       + '<form id="au-form" class="auth-form" novalidate>' + body + '<button class="btn primary" type="submit" id="au-go">' + (mode === 'signup' ? 'Create account' : 'Sign in') + '</button></form>'
@@ -96,7 +102,8 @@
     busy(true);
     try {
       if (mode === 'signin') { var r = await sb.auth.signInWithPassword({ email: toLogin(user), password: pass }); if (r.error) throw r.error; return start(r.data.session); }
-      var code = val('au-invite').trim(), meta = { username: user }; if (code) meta.invite = code;
+      var code = val('au-invite').replace(/\s+/g, '').toUpperCase(), meta = { username: user }; if (code) meta.invite = code;
+      if (inviteNeeded !== false && !code) { busy(false); note = { bad: true, text: inviteOpen === false ? CLOSED_TEXT : 'Enter the 10-character invite code from Race Control.' }; return showGate(); }
       var s = await sb.auth.signUp({ email: toLogin(user), password: pass, options: { data: meta } });
       if (s.error) throw s.error;
       if (s.data.session) return start(s.data.session);
@@ -108,6 +115,7 @@
       else if (/rate limit/i.test(m)) m = 'Too many attempts. Wait a minute and try again.';
       else if (/not confirmed/i.test(m)) m = 'This account still needs confirming. Ask the Administrator to switch off “Confirm email” in Supabase.';
       else if (/signups? not allowed|disabled/i.test(m)) m = 'New accounts are closed. Ask the Administrator to create one for you.';
+      else if (/invite_code_required/i.test(m) || (/database error saving new user/i.test(m) && inviteOpen === false)) m = CLOSED_TEXT;
       else if (/invite_code_invalid|database error saving new user/i.test(m)) m = inviteNeeded === false ? 'The database wouldn’t create this account. Tell the Administrator, and quote this message.' : 'That invite code isn’t right. Ask Race Control for the current one.';
       note = { bad: true, text: m }; showGate();
     }
@@ -249,6 +257,8 @@
       resetPassword: async function (uid, pass) { var r = await sb.rpc('admin_reset_password', { p_user: uid, p_password: pass }); if (r.error) throw mapError(r.error); },
       inviteRequired: async function () { var r = await sb.rpc('invite_required'); if (r.error) throw mapError(r.error); return r.data === true; },
       setInviteCode: async function (code) { var r = await sb.rpc('admin_set_invite_code', { p_code: code || null }); if (r.error) throw mapError(r.error); },
+      generateInviteCode: async function () { var r = await sb.rpc('admin_generate_invite_code'); if (r.error) throw mapError(r.error); return r.data; },
+      inviteStatus: async function () { var r = await sb.rpc('admin_invite_status'); if (r.error) throw mapError(r.error); return r.data || { issued: false }; },
       deleteAccount: async function (uid) { var r = await sb.rpc('admin_delete_account', { p_user: uid }); if (r.error) throw mapError(r.error); }
     };
     var gm = role === 'owner' || role === 'mod';
