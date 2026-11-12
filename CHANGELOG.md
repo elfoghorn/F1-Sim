@@ -25,6 +25,19 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v0.30.0: historical series and year checks in career records
+
+12 November 2026. Build `f1sim-0.30.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| More series | Career records now offer the series older careers ran in: GP2 Series, GP3 Series, FIA F3 European Championship, Formula Nippon and Indy Lights (single-seaters), and WRC3, Junior WRC, Production Car WRC, Super 2000 WRC and the European Rally Championship (rally). |
+| Year checks | Each series knows the years it ran under that name. A season dated outside them is flagged, with what it was called then (for example "WRC2 began in 2013; before that, use Production Car WRC or Super 2000 WRC"): when saving the season, in the career record on the application, in Race Control's decision checklist, and in JSON uploads. Flagged seasons can still be saved; Race Control decides. |
+| Major achievements | Titles and wins in GP2, Formula Nippon, WRC2, the Production Car WRC and the Super 2000 WRC also count as major achievements needing approval. |
+| Non-drivers' racing past | Team principals, engineers and others with canon seasons in other championships (a former rally champion, say) show "Wins and podiums by championship" on their page and appear in the career standings. |
+
+---
+
 ## v0.29.1: Personality on the character sheet
 
 12 November 2026. Build `f1sim-0.29.1`. **No database update.**

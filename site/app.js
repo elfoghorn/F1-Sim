@@ -1,4 +1,4 @@
-/* F1 SIM v0.29.1 (build f1sim-0.29.1): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v0.30.0 (build f1sim-0.30.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -5500,13 +5500,32 @@ DRAWERS.incidents = function () {
 'use strict';
 
 const CAREER_GROUPS = [
-  ['Single-seaters', ['Formula 1', 'Formula 2', 'Formula 3', 'F1 Academy', 'Formula Regional', 'Formula 4', 'Super Formula', 'Formula E', 'IndyCar', 'Indy NXT', 'Karting']],
+  ['Single-seaters', ['Formula 1', 'Formula 2', 'GP2 Series', 'Formula 3', 'GP3 Series', 'FIA F3 European Championship', 'F1 Academy', 'Formula Regional', 'Formula 4', 'Super Formula', 'Formula Nippon', 'Formula E', 'IndyCar', 'Indy NXT', 'Indy Lights', 'Karting']],
   ['Endurance', ['WEC', 'Le Mans 24 Hours', 'IMSA', 'European Le Mans Series', 'GT World Challenge']],
-  ['Rally', ['WRC', 'WRC2', 'Dakar']],
+  ['Rally', ['WRC', 'WRC2', 'WRC3', 'Junior WRC', 'Production Car WRC', 'Super 2000 WRC', 'European Rally Championship', 'Dakar']],
   ['Touring', ['DTM', 'BTCC', 'Supercars']],
   ['Other', ['Other']]
 ];
-const MAJOR_SERIES = ['Formula 1', 'Formula 2', 'IndyCar', 'Super Formula', 'Formula E', 'WEC', 'Le Mans 24 Hours', 'IMSA', 'WRC'];
+const MAJOR_SERIES = ['Formula 1', 'Formula 2', 'GP2 Series', 'IndyCar', 'Super Formula', 'Formula Nippon', 'Formula E', 'WEC', 'Le Mans 24 Hours', 'IMSA', 'WRC', 'WRC2', 'Production Car WRC', 'Super 2000 WRC'];
+/* The years each series ran under that name, so a season outside them is flagged (with what it was called then). */
+const SERIES_YEARS = {
+  'Formula 1': [1950], 'Formula 2': [2017, null, 'FIA Formula 2 began in 2017; before that, use GP2 Series'], 'GP2 Series': [2005, 2016, 'GP2 ran from 2005 to 2016; from 2017 it is Formula 2'],
+  'Formula 3': [2019, null, 'FIA Formula 3 began in 2019; before that, use GP3 Series or FIA F3 European Championship'], 'GP3 Series': [2010, 2018, 'GP3 ran from 2010 to 2018; from 2019 it is Formula 3'],
+  'FIA F3 European Championship': [2012, 2018, 'the FIA F3 European Championship ran from 2012 to 2018'], 'F1 Academy': [2023, null, 'F1 Academy began in 2023'], 'Formula Regional': [2019, null, 'the Formula Regional European Championship began in 2019'],
+  'Formula 4': [2014, null, 'FIA Formula 4 championships began in 2014'], 'Super Formula': [2013, null, 'Super Formula began in 2013; before that, use Formula Nippon'], 'Formula Nippon': [1996, 2012, 'Formula Nippon ran from 1996 to 2012; from 2013 it is Super Formula'],
+  'Formula E': [2014, null, 'Formula E began in 2014'], 'IndyCar': [1996], 'Indy NXT': [2023, null, 'Indy NXT took that name in 2023; before that, use Indy Lights'], 'Indy Lights': [1986, 2022, 'Indy Lights ran until 2022; from 2023 it is Indy NXT'],
+  'WEC': [2012, null, 'the World Endurance Championship began in 2012'], 'Le Mans 24 Hours': [1923], 'IMSA': [2014, null, 'the IMSA WeatherTech SportsCar Championship began in 2014'], 'European Le Mans Series': [2004, null, 'the European Le Mans Series began in 2004'],
+  'WRC': [1973, null, 'the World Rally Championship began in 1973'], 'WRC2': [2013, null, 'WRC2 began in 2013; before that, use Production Car WRC or Super 2000 WRC'], 'WRC3': [2013, null, 'WRC3 began in 2013'],
+  'Junior WRC': [2001], 'Production Car WRC': [1987, 2012, 'the Production Car WRC (the FIA Group N Cup until 2002) ran until 2012; from 2013 Group N cars went into WRC2'], 'Super 2000 WRC': [2010, 2012, 'the Super 2000 WRC ran from 2010 to 2012; from 2013 it is WRC2'],
+  'European Rally Championship': [1953], 'Dakar': [1979], 'DTM': [1984], 'BTCC': [1958], 'Supercars': [1997, null, 'known as V8 Supercars until 2016']
+};
+function seriesWarn(r) {
+  const info = SERIES_YEARS[r && r.series]; if (!info) return '';
+  const ys = String(r.years || '').match(/\b(19|20)\d{2}\b/g); if (!ys) return '';
+  const lo = Math.min(...ys.map(Number)), hi = Math.max(...ys.map(Number));
+  if ((info[0] && lo < info[0]) || (info[1] && hi > info[1])) return `Check the years: ${info[2] || `${r.series} ran ${info[0]}${info[1] ? ` to ${info[1]}` : ' onwards'}`}.`;
+  return '';
+}
 const CAREER_POS = [['', 'Not given'], ['1', 'Champion'], ['2', '2nd'], ['3', '3rd'], ['4', '4th'], ['5', '5th'], ['6', '6th'], ['7', '7th'], ['8', '8th'], ['9', '9th'], ['10', '10th'], ['11', 'Lower than 10th'], ['0', 'Part season']];
 const careerGroupOf = series => (CAREER_GROUPS.find(g => g[1].indexOf(series) !== -1) || ['Other'])[0];
 const seriesLabel = r => r.series === 'Other' ? (r.other || 'Other') : r.series;
@@ -5531,6 +5550,7 @@ ACTIONS['cr-save'] = () => {
     team: String(f.team || '').trim().slice(0, 60), wins: num(f.wins), podiums: num(f.podiums), poles: num(f.poles),
     pos: String(f.pos || ''), notes: String(f.notes || '').trim().slice(0, 200), status: 'pending', at: nowIso() };
   if (row.wins !== '' && row.podiums !== '' && row.wins > row.podiums) { toast('More wins than podiums: check the numbers.', true); return; }
+  if (seriesWarn(row)) toast(seriesWarn(row) + ' Saved; Race Control will see the note.');
   const doc = charDoc(c.id), rows = careerRows(doc).filter(x => x.id !== row.id).concat([row]);
   rows.sort((a, b) => String(parseInt(a.years, 10) || 0).localeCompare(String(parseInt(b.years, 10) || 0)) || 0);
   doc.career = rows;
@@ -5566,7 +5586,7 @@ function careerTableHtml(rows, o) {
   const opts = o || {}, cell = v => v === '' || v == null ? '<span class="muted">–</span>' : esc(v);
   return `<div class="scroll-x"><table class="data compact career"><thead><tr><th>Years</th><th>Series</th><th>Team</th><th class="num">Wins</th><th class="num">Podiums</th><th class="num">Poles</th><th>Championship</th>${opts.status !== false ? '<th></th>' : ''}${opts.manage || opts.review ? '<th></th>' : ''}</tr></thead><tbody>
     ${rows.map(r => { const st = CAREER_STATUS[r.status || 'pending'] || CAREER_STATUS.pending;
-      return `<tr><td>${esc(r.years)}</td><td><b>${esc(seriesLabel(r))}</b>${r.notes ? `<div class="muted small">${esc(r.notes)}</div>` : ''}</td><td>${cell(r.team)}</td>
+      return `<tr><td>${esc(r.years)}</td><td><b>${esc(seriesLabel(r))}</b>${seriesWarn(r) ? `<div class="small warn-note">${esc(seriesWarn(r))}</div>` : ''}${r.notes ? `<div class="muted small">${esc(r.notes)}</div>` : ''}</td><td>${cell(r.team)}</td>
         <td class="num">${cell(r.wins)}</td><td class="num">${cell(r.podiums)}</td><td class="num">${cell(r.poles)}</td><td>${String(r.pos) === '1' ? '<span class="tag trophy">Champion</span>' : r.pos ? esc(posLabel(r.pos)) : '<span class="muted">–</span>'}</td>
         ${opts.status !== false ? `<td>${isMajor(r) && r.status !== 'canon' ? '<span class="tag flag">Major achievement</span> ' : ''}<span class="tag ${st[1]}">${st[0]}</span></td>` : ''}
         ${opts.manage ? `<td class="nowrap"><button class="btn small" data-act="cr-edit" data-rid="${esc(r.id)}">Edit</button> <button class="btn small ghost" data-act="cr-remove" data-rid="${esc(r.id)}">Remove</button></td>` : ''}
@@ -6211,7 +6231,7 @@ function winsByChampionship(p, c) {
 }
 function winsHtml(p, c) {
   const isDriver = p && (!p.kind || p.kind === 'driver');
-  if (!isDriver) return '';
+  if (!isDriver && !careerRows(c).some(r => r.status === 'canon')) return '';
   const rows = winsByChampionship(p, c); if (!rows.length) return '';
   const maxP = Math.max(1, ...rows.map(x => x.podiums)), tot = rows.reduce((s, x) => ({ t: s.t + x.titles, w: s.w + x.wins, p: s.p + x.podiums }), { t: 0, w: 0, p: 0 });
   return `<section class="card wins-champ"><h2>Wins and podiums by championship</h2>
@@ -6381,6 +6401,7 @@ function decisionHtml(c) {
       ${PREF_ROLES.indexOf(c.role) !== -1 ? check(prefDone(c), prefLine(c) ? esc(prefLine(c)) : 'No team preference') : ''}
       ${driver ? check(!!g.rolls, g.rolls ? `${esc((bracketOf(g.bracket) || {}).name || '')}, roll ${g.rolls} of ${maxRolls(c)}${g.changes ? '; background changed once' : ''}${(g.history || []).length ? `; ${plural(g.history.length, 'earlier attempt')} below` : ''}` : 'Not rolled') : ''}
       ${check(true, `Flavour: ${flavourCount(c)} of ${FLAVOUR.length} optional sections`)}
+      ${careerRows(c).some(r => seriesWarn(r)) ? check(false, `${plural(careerRows(c).filter(r => seriesWarn(r)).length, 'career season')} dated outside the series’ real years (see the career record)`) : ''}
       ${careerRows(c).length ? check(!waiting.some(isMajor), `${plural(careerRows(c).length, 'career season')}${waiting.length ? `, ${waiting.length} still to mark (approving makes them canon)` : ''}`) : ''}
     </ul>
     <label class="field">Note to the player (needed to return it)<textarea id="dec-${esc(c.id)}" rows="2" data-bind="ui/form/rcnote/${esc(c.id)}">${esc(((S.ui.form.rcnote || {})[c.id]) || '')}</textarea></label>
@@ -6709,7 +6730,7 @@ function allTimeData(sid) {
 function careerData() {
   const people = new Map();
   list('f1_weekends').filter(w => w.status === 'finished' && w.session !== 'test').forEach(w => (w.results || []).forEach(r => { if (!people.has(r.personId)) people.set(r.personId, { pid: r.personId, name: r.name, charId: r.charId }); }));
-  list('characters').filter(c => !c.retired && charApproved(c) && c.role === 'driver').forEach(c => { const pid = f1PcId(c.id); if (!people.has(pid)) people.set(pid, { pid, name: c.name, charId: c.id }); });
+  list('characters').filter(c => !c.retired && charApproved(c) && (c.role === 'driver' || careerRows(c).some(r => r.status === 'canon'))).forEach(c => { const pid = f1PcId(c.id); if (!people.has(pid)) people.set(pid, { pid, name: c.name, charId: c.id }); });
   return [...people.values()].map(x => { const p = F1.person(x.pid) || { id: x.pid, name: x.name }, c = x.charId ? get('characters', x.charId) : null, rows = winsByChampionship(p, c);
     const titles = []; careerRows(c).filter(r => r.status === 'canon' && String(r.pos) === '1').forEach(r => titles.push(`${seriesLabel(r)} ${r.years}`));
     seriesIdsAll().forEach(sid => seriesSeasons(sid).filter(s => seasonDone(s.id)).forEach(s => { const st = standingsFor(sid, s.id); if (st.drivers[0] && st.drivers[0].personId === x.pid) titles.push(`F1 SIM ${seriesDoc(sid).short || seriesDoc(sid).name} ${s.name}`); }));
@@ -6807,6 +6828,7 @@ function normaliseChar(x, i, problems) {
   o.career = (Array.isArray(x.career) ? x.career : []).slice(0, 40).map((r, j) => { if (!r || !r.years) { problems.push(`${where}, career season ${j + 1}: needs years.`); return null; }
     const known = series.indexOf(r.series) !== -1, row = { years: capStr(r.years, 20), series: known ? r.series : 'Other', other: known ? capStr(r.other, 60) : capStr(r.other || r.series, 60), team: capStr(r.team, 60), wins: num(r.wins), podiums: num(r.podiums), poles: num(r.poles), pos: String(r.pos == null ? '' : r.pos), notes: capStr(r.notes, 200), status: ['canon', 'notcanon', 'pending'].indexOf(r.status) !== -1 ? r.status : 'pending' };
     if (row.wins !== '' && row.podiums !== '' && row.wins > row.podiums) problems.push(`${where}, ${row.years} ${row.series}: more wins than podiums.`);
+    if (seriesWarn(row)) problems.push(`${where}, ${row.years} ${row.series}: ${seriesWarn(row)}`);
     return row; }).filter(Boolean);
   if (x.teamPref && typeof x.teamPref === 'object') { const f = teamIdOf(x.teamPref.first), s = teamIdOf(x.teamPref.second);
     if (f === null) problems.push(`${where}: team “${x.teamPref.first}” isn’t on the grid.`); if (s === null) problems.push(`${where}: team “${x.teamPref.second}” isn’t on the grid.`);
