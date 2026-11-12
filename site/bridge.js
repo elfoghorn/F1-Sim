@@ -159,6 +159,8 @@
     });
   }
   var db = {
+    /* A new character's ID, issued by the database: CH- and eight letters and digits, unique among characters. */
+    newCharacterId: async function () { var r = await sb.rpc('new_character_id'); if (r.error) throw mapError(r.error); return r.data; },
     collection: function (col) {
       return {
         onSnapshot: function (cb, err) {
@@ -171,6 +173,12 @@
             set: async function (data) {
               var r = await sb.from('docs').upsert({ collection: col, id: id, data: data }, { onConflict: 'collection,id' });
               if (r.error) throw mapError(r.error);
+              if (!PRIVATE.test(col)) { (cache[col] = cache[col] || {})[id] = clone(data); notify(col); }
+            },
+            /* Insert only: refused if the ID is already in use. */
+            create: async function (data) {
+              var r = await sb.from('docs').insert({ collection: col, id: id, data: data });
+              if (r.error) throw (r.error.code === '23505' ? { code: 'exists', message: 'That ID is already in use. Try again.' } : mapError(r.error));
               if (!PRIVATE.test(col)) { (cache[col] = cache[col] || {})[id] = clone(data); notify(col); }
             },
             delete: async function () {

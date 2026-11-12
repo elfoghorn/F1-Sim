@@ -1,4 +1,4 @@
-/* F1 SIM v1.0.0 (build f1sim-1.0.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v1.0.1 (build f1sim-1.0.1): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -908,6 +908,13 @@ const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;
 const esc = s => s == null ? '' : String(s).replace(/[&<>"']/g, c => ESC[c]);
 const nowIso = () => new Date().toISOString();
 const newId = p => p + '-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+/* A character's ID comes from the database (CH- and eight letters and digits, checked against every character),
+   or, where the database can't be asked, the same format made here with a secure random source. */
+const CHAR_ID_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+async function newCharId() {
+  try { const db = await window.claude.use('db'); if (db && db.newCharacterId) { const id = await db.newCharacterId(); if (id && !get('characters', id)) return id; } } catch (e) { /* fall back below */ }
+  for (;;) { const b = new Uint8Array(8); crypto.getRandomValues(b); const id = 'CH-' + Array.from(b, x => CHAR_ID_ALPHABET[x % 32]).join(''); if (!get('characters', id)) return id; }
+}
 const clone = o => o == null ? o : JSON.parse(JSON.stringify(o));
 const plural = (n, w, pl) => n + ' ' + (n === 1 ? w : (pl || w + 's'));
 const fmtDate = iso => iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
@@ -946,7 +953,8 @@ const Data = {
     const bucket = S.store[col] = S.store[col] || {};
     const had = Object.prototype.hasOwnProperty.call(bucket, id), prev = bucket[id];
     bucket[id] = clone(data);
-    try { await S.db.collection(col).doc(id).set(data); }
+    /* A new character is inserted, never upserted: an ID already in use is refused instead of overwriting someone else. */
+    try { const ref = S.db.collection(col).doc(id); if (col === 'characters' && !had && ref.create) await ref.create(data); else await ref.set(data); }
     catch (e) { if (had) bucket[id] = prev; else delete bucket[id]; throw e; }
   },
   async remove(col, id) {
@@ -1179,16 +1187,17 @@ DRAWERS.char = function () {
     <div class="btn-row"><button class="btn primary" data-act="char-save">${f.id ? 'Save changes' : 'Create character'}</button>${f.id ? `<button class="btn danger" data-act="char-retire" data-id="${esc(f.id)}">Retire this character</button>` : ''}</div></div>`;
 };
 ACTIONS['char-save'] = () => {
-  const f = clone(S.ui.form.ch || {}), id = f.id || newId('ch'); delete f.id;
+  const f = clone(S.ui.form.ch || {}); let id = f.id || null; delete f.id;
   f.name = String(f.name || '').trim();
   if (!f.name) { toast('Give your character a name.', true); return; }
   f.code = String(f.code || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
   f.discord = String(f.discord || '').trim().replace(/^@+/, '').replace(/\s+/g, '');
   delete f.discordId;
-  const prev = get('characters', id);
+  const prev = id ? get('characters', id) : null;
   if (prev && charStatus(prev) === 'approved') f.role = prev.role;
   const doc = Object.assign({}, prev ? clone(S.store.characters[id]) : { createdAt: nowIso() }, f, { userId: prev ? prev.userId : S.uid, updatedAt: nowIso() });
   run(async () => {
+    if (!id) { id = await newCharId(); doc.id = id; }
     await Data.put('characters', id, doc);
     S.ui.charInline = null;
     /* An approved character's name, code and number also change on the grid. */
@@ -6891,7 +6900,7 @@ ACTIONS['io-ch-run'] = () => {
   run(async () => {
     let made = 0, updated = 0;
     for (const it of x.items) {
-      const { update, ratings, career, ...fields } = it, id = update ? it.id : newId('ch'), prev = update ? get('characters', id) : null;
+      const { update, ratings, career, ...fields } = it, id = update ? it.id : await newCharId(), prev = update ? get('characters', id) : null;
       const rows = career.map(r => Object.assign({ id: newId('cr'), at: nowIso() }, r, { status: S.isGm ? (approve && r.status === 'pending' ? 'canon' : r.status) : 'pending' }));
       const doc = Object.assign({}, prev ? clone(S.store.characters[id]) : { createdAt: nowIso(), userId: S.uid, status: 'draft' }, fields, { career: rows, updatedAt: nowIso() });
       delete doc.update; delete doc.ratings; doc.id = undefined; delete doc.id;
@@ -7220,7 +7229,7 @@ function charManageHtml() {
     <div class="chm-tools"><label class="sr-only" for="chm-q">Search</label><input id="chm-q" type="search" placeholder="Search by name or player" value="${esc(S.ui.chmQ || '')}" data-change="chm-q">
       <label class="sr-only" for="chm-status">Status</label><select id="chm-status" data-change="chm-status">${[['all', 'Every status'], ['draft', 'Drafts'], ['pending', 'Waiting for Race Control'], ['returned', 'Returned'], ['approved', 'Approved'], ['retired', 'Retired']].map(([k, l]) => `<option value="${k}" ${stf === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>
     ${rows.length ? `<div class="scroll-x"><table class="data chm-table"><thead><tr><th>Character</th><th>Player</th><th>Role</th><th>Status</th><th>Seat</th><th class="num">Results</th><th></th></tr></thead><tbody>${rows.map(c => { const fp = charFootprint(c), seat = fp.seats[0];
-      return `<tr><td><b>${esc(c.name)}</b></td><td>${esc(ownerName(c.userId) || '–')}</td><td>${esc(charRoleName(c.role))}</td><td>${statusTag(c)}</td><td>${seat ? `${esc(F1.team(seat.teamId).name)}, ${esc(seatTitle(seat).toLowerCase())}` : '<span class="muted">–</span>'}</td><td class="num">${fp.results || '–'}</td>
+      return `<tr><td><b>${esc(c.name)}</b><br><code class="muted small">${esc(c.id)}</code></td><td>${esc(ownerName(c.userId) || '–')}</td><td>${esc(charRoleName(c.role))}</td><td>${statusTag(c)}</td><td>${seat ? `${esc(F1.team(seat.teamId).name)}, ${esc(seatTitle(seat).toLowerCase())}` : '<span class="muted">–</span>'}</td><td class="num">${fp.results || '–'}</td>
         <td class="chm-acts"><button class="btn small" data-act="char-open" data-id="${esc(c.id)}">Open</button>${c.retired ? `<button class="btn small" data-act="chm-restore" data-id="${esc(c.id)}">Restore</button>` : `<button class="btn small ghost" data-act="char-retire" data-id="${esc(c.id)}">Retire</button>`}<button class="btn small danger" data-act="chdel-open" data-id="${esc(c.id)}">Delete</button></td></tr>`; }).join('')}</tbody></table></div>` : '<p class="muted">No characters match.</p>'}</section>`;
 }
 ACTIONS['chm-restore'] = d => { if (!S.isGm) return; const c = get('characters', d.id); if (!c) return;
@@ -7235,7 +7244,8 @@ DRAWERS.chdel = function () {
   return `<header><div><h2>Delete ${esc(c.name)}</h2><p>${esc(charRoleName(c.role))}${owner ? `, played by ${esc(owner)}` : ''}. This can’t be undone.</p></div><button class="btn ghost" data-act="close-drawer">Close</button></header>
     <div class="body">${fp.live ? `<div class="card notice warn"><p><b>${esc(c.name)} is in the open weekend.</b> Finish or cancel the weekend first, then delete them.</p></div>` : ''}
     <p>Deleting removes the character, their application and sheet${items.length ? ', and:' : '.'}</p>${items.length ? `<ul>${items.map(i => `<li>${i[1]}</li>`).join('')}</ul>` : ''}
-    <p>${fp.results ? `Their <b>${plural(fp.results, 'race result')}</b> ${fp.results === 1 ? 'stays' : 'stay'} in the history under their name, so standings and past seasons don’t change.` : 'They have no race results.'}</p>
+    <p>${fp.results ? `Their <b>${plural(fp.results, 'race result')}</b> ${fp.results === 1 ? 'is' : 'are'} removed too, with their qualifying, timesheets and any team-role records: the standings recalculate without them. Everyone else keeps their own finishes and points.` : 'They have no race results.'} Anything in the database that refers to their ID (<code>${esc(c.id)}</code>) goes.</p>
+    <p class="muted small">Posts already sent to Discord stay there.</p>
     <p class="muted small">Retiring instead keeps everything and can be undone.</p>
     <label class="field"><span>Type <b>${esc(c.name)}</b> to confirm</span><input id="chdel-typed" type="text" autocomplete="off" data-bind="ui/chdel/typed" value="${esc(x.typed || '')}"></label>
     <div class="btn-row"><button class="btn danger" data-act="chdel-run" ${fp.live ? 'disabled' : ''}>Delete permanently</button>${c.retired ? '' : `<button class="btn" data-act="char-retire" data-id="${esc(c.id)}">Retire instead</button>`}</div></div>`;
@@ -7268,7 +7278,7 @@ const _characterViewChm = ROUTES.character.view;
 ROUTES.character.view = function () {
   const h = _characterViewChm(), c = get('characters', S.ui.charEdit);
   if (!S.isGm || !c) return h;
-  return h + `<section class="card rc-danger"><h2>Race Control</h2><p class="muted small">Delete this character and everything attached to them. Race results stay in the history.</p><div class="btn-row"><button class="btn danger" data-act="chdel-open" data-id="${esc(c.id)}">Delete this character</button></div></section>`;
+  return h + `<section class="card rc-danger"><h2>Race Control</h2><p class="muted small">Delete this character and every record of them, race results included.</p><div class="btn-row"><button class="btn danger" data-act="chdel-open" data-id="${esc(c.id)}">Delete this character</button></div></section>`;
 };
 
 /* =====================================================================
@@ -7511,7 +7521,7 @@ ACTIONS['io-ch-run'] = () => {
     let made = 0, updated = 0, rated = 0;
     for (const it of x.items) {
       const upd = it.update && it.mode !== 'new', { update, ratings, career, mode, matchedBy, ...fields } = it;
-      const id = upd ? it.id : newId('ch'), prev = upd ? get('characters', id) : null; delete fields.id;
+      const id = upd ? it.id : await newCharId(), prev = upd ? get('characters', id) : null; delete fields.id;
       if (prev && charStatus(prev) === 'approved') delete fields.role;           /* an approved character keeps their role */
       const statusFor = (r, old) => S.isGm ? (approve && (r.status || 'pending') === 'pending' ? 'canon' : (r.status || (old && old.status) || 'pending')) : (old && sameRow(old, r) ? old.status : 'pending');
       let rows;
@@ -8355,6 +8365,118 @@ route('endurance', 'Endurance', function () {
       <div class="btn-row">${ch.map(n => `<button class="btn small" data-act="champ-open" data-kind="canon" data-key="${esc(n)}">${esc(n)}</button>`).join('')}</div></section>`;
 });
 if (LIMITED_ROUTES.indexOf('endurance') === -1) LIMITED_ROUTES.push('endurance');
+
+/* =====================================================================
+   F1 SIM — deleting a character removes every record of them.
+   Everything is keyed on the character's unique ID (and their grid ID,
+   pc-<ID>): documents that belong to them are deleted; inside shared
+   records (a finished race's results, timesheets, staff, catalogued
+   seasons) their entries are taken out. Standings recalculate without
+   them; everyone else keeps their own finishes and points.
+   "Clean up leftovers" finds records pointing at characters that no
+   longer exist and removes them the same way.
+   ===================================================================== */
+'use strict';
+
+const REF_KEYS = ['charId', 'personId', 'pid', 'holderCharId', 'otherId', 'driverId', 'fromCharId', 'toCharId', 'byCharId', 'targetId', 'engineerId', 'principalId'];
+const hasRef = (o, ids) => o && typeof o === 'object' && !Array.isArray(o) && REF_KEYS.some(k => typeof o[k] === 'string' && ids.has(o[k]));
+/* Returns [pruned copy, changed]: array entries that are, or point at, one of the ids go; so do keys named after them,
+   and fields holding them (an object pointing at them becomes null). */
+function pruneDeep(v, ids) {
+  if (Array.isArray(v)) { let ch = false; const out = [];
+    for (const x of v) { if ((typeof x === 'string' && ids.has(x)) || hasRef(x, ids)) { ch = true; continue; } const [nx, c] = pruneDeep(x, ids); if (c) ch = true; out.push(nx); }
+    return [out, ch]; }
+  if (v && typeof v === 'object') { let ch = false; const out = {};
+    for (const k of Object.keys(v)) { const x = v[k];
+      if (ids.has(k)) { ch = true; continue; }
+      if (typeof x === 'string' && ids.has(x)) { out[k] = null; ch = true; continue; }
+      if (hasRef(x, ids)) { out[k] = null; ch = true; continue; }
+      const [nx, c] = pruneDeep(x, ids); if (c) ch = true; out[k] = nx; }
+    return [out, ch]; }
+  return [v, false];
+}
+const idsFor = charIds => new Set(charIds.flatMap(id => [id, f1PcId(id)]));
+/* What a purge would touch, without changing anything. */
+function purgeScan(ids) {
+  const out = { remove: [], edit: [], seats: [], results: 0 };
+  for (const col of COLLECTIONS) { if (col === 'audit' || col === 'characters') continue;
+    for (const [id, d] of Object.entries(S.store[col] || {})) {
+      if (col === 'f1_seats') { if (ids.has(d.holderCharId)) out.seats.push(id); continue; }
+      if (col === 'f1_teams' || col === 'f1_tracks') continue;
+      if (ids.has(id) || hasRef(d, ids)) { out.remove.push([col, id]); continue; }
+      const json = JSON.stringify(d); if (![...ids].some(x => json.indexOf(`"${x}"`) !== -1)) continue;
+      out.edit.push([col, id]);
+      if (col === 'f1_weekends') out.results += (d.results || []).filter(r => hasRef(r, ids)).length;
+    } }
+  return out;
+}
+async function purgeIds(ids, names) {
+  const sc = purgeScan(ids);
+  for (const sid of sc.seats) await Data.put('f1_seats', sid, Object.assign(clone(S.store.f1_seats[sid]), { holderCharId: null, holderName: null, holderSince: null, open: true }));
+  for (const [col, id] of sc.remove) await Data.remove(col, id);
+  for (const [col, id] of sc.edit) { const [nd, ch] = pruneDeep(clone(S.store[col][id]), ids); if (ch) await Data.put(col, id, nd); }
+  /* Activity log lines naming them, unless another character still has that name. */
+  const keep = new Set(list('characters').map(c => String(c.name).trim().toLowerCase()));
+  for (const nm of names.filter(n => n && !keep.has(String(n).trim().toLowerCase())))
+    for (const a of list('audit').filter(x => String(x.text || '').indexOf(nm) !== -1)) await Data.remove('audit', a.id);
+  return sc;
+}
+
+/* ---------------------------------------------------------------- deleting a character */
+ACTIONS['chdel-run'] = () => {
+  const x = S.ui.chdel || {}, c = get('characters', x.id); if (!S.isGm || !c) return;
+  const typed = String((document.getElementById('chdel-typed') || {}).value || x.typed || '').trim();
+  if (typed.toLowerCase() !== String(c.name).trim().toLowerCase()) { toast(`Type ${c.name} exactly to confirm.`, true); return; }
+  const fp = charFootprint(c); if (fp.live) { toast('Finish or cancel the open weekend first.', true); return; }
+  const name = c.name, cid = c.id;
+  run(async () => {
+    await Data.remove('characters', cid);
+    const sc = await purgeIds(idsFor([cid]), [name]);
+    if (S.charId === cid) { S.charId = null; lsSet('f1sim.char', null); }
+    if (S.ui.charEdit === cid) S.ui.charEdit = null;
+    await Data.audit('character.delete', `A character (${cid}) was deleted by Race Control, with ${plural(sc.remove.length + sc.edit.length + sc.seats.length, 'record')}`);
+    closeDrawer(); S.ui.chdel = null; if (S.route === 'character' || S.route === 'career') go('control');
+  }, `${name} deleted, with every record of them.`);
+};
+
+/* ---------------------------------------------------------------- leftovers from characters that no longer exist */
+function findOrphans() {
+  const live = new Set(list('characters').map(c => c.id)), found = new Map();
+  const note = (cid, name) => { if (!cid || live.has(cid)) return; const o = found.get(cid) || { id: cid, names: new Set() }; if (name) o.names.add(String(name)); found.set(cid, o); };
+  const walk = v => { if (Array.isArray(v)) return v.forEach(walk); if (!v || typeof v !== 'object') return;
+    if (typeof v.charId === 'string') note(v.charId, v.name || v.charName || v.holderName);
+    if (typeof v.holderCharId === 'string') note(v.holderCharId, v.holderName);
+    ['personId', 'pid'].forEach(k => { if (typeof v[k] === 'string' && v[k].indexOf('pc-') === 0) note(v[k].slice(3), v.name); });
+    Object.values(v).forEach(walk); };
+  for (const col of COLLECTIONS) { if (col === 'characters' || col === 'audit') continue; Object.entries(S.store[col] || {}).forEach(([id, d]) => { if (col === 'f1_people' && id.indexOf('pc-') === 0) note(id.slice(3), d.name); walk(d); }); }
+  return [...found.values()].map(o => Object.assign(o, { names: [...o.names], scan: purgeScan(idsFor([o.id])) }));
+}
+ACTIONS['orphans-check'] = () => { if (!S.isGm) return; S.ui.orphans = findOrphans(); render(); };
+ACTIONS['orphans-clean'] = () => { if (!S.isGm) return; const os = S.ui.orphans || []; if (!os.length) return;
+  askConfirm(`Remove every record of ${plural(os.length, 'deleted character')}? This can’t be undone.`, 'Remove them', () => run(async () => {
+    for (const o of os) await purgeIds(idsFor([o.id]), o.names);
+    await Data.audit('cleanup.orphans', `Race Control removed the leftover records of ${plural(os.length, 'deleted character')}`);
+    S.ui.orphans = findOrphans();
+  }, 'Leftovers removed.'), true); };
+function orphansHtml() {
+  const os = S.ui.orphans;
+  return `<section class="card"><h2>Clean up leftovers</h2><p class="muted small">Finds records still pointing at characters that no longer exist (from deletes before v1.0.1) and removes them, the same way deleting does now.</p>
+    ${os === undefined ? '<button class="btn" data-act="orphans-check">Check for leftovers</button>'
+      : !os.length ? '<p><b>Nothing left over.</b> Every record points at a character that exists.</p><button class="btn small ghost" data-act="orphans-check">Check again</button>'
+      : `<ul class="orphans">${os.map(o => { const n = o.scan.results, other = o.scan.remove.length + o.scan.edit.length + o.scan.seats.length; return `<li><b>${esc(o.names[0] || 'Unnamed')}</b> <span class="muted small">(${esc(o.id)})</span>: ${n ? plural(n, 'race result') + ', ' : ''}${plural(other, 'record')}</li>`; }).join('')}</ul>
+        <div class="btn-row"><button class="btn danger" data-act="orphans-clean">Remove them all</button><button class="btn ghost" data-act="orphans-check">Check again</button></div>`}</section>`;
+}
+const _controlViewOrphans = ROUTES.control.view;
+ROUTES.control.view = function () { const h = _controlViewOrphans(); return S.isGm ? h + orphansHtml() : h; };
+
+/* ---------------------------------------------------------------- the ID, shown where it's useful */
+const _characterViewIds = ROUTES.character.view;
+ROUTES.character.view = function () {
+  const h = _characterViewIds(), c = get('characters', S.ui.charEdit);
+  if (!c || !(S.isGm || c.userId === S.uid)) return h;
+  return h + `<p class="muted small char-id">Character ID: <code>${esc(c.id)}</code> <button class="btn small ghost" data-act="copy-text" data-text="${esc(c.id)}">Copy</button></p>`;
+};
+if (!ACTIONS['copy-text']) ACTIONS['copy-text'] = d => { try { navigator.clipboard.writeText(d.text); toast('Copied.'); } catch (e) { toast('Couldn’t copy: select it instead.', true); } };
 
 /* start-up: every part has registered its routes, drawers and actions */
 init();

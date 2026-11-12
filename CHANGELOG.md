@@ -25,6 +25,18 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v1.0.1: unique character IDs, and deleting removes everything
+
+12 November 2026. Build `f1sim-1.0.1`. **DATABASE UPDATE** (migration `20261112000009_character_ids.sql`).
+
+| Area | What it does |
+| --- | --- |
+| Character IDs | Every new character gets its ID from the database: CH- and eight letters and digits (no O, 0, I or 1), from a secure random source and checked against every character, e.g. CH-7K3M2Q9X. A new character is saved with an insert, never an upsert, so an ID already in use is refused instead of overwriting another character. Characters made from JSON uploads get them too. The ID shows at the bottom of the character page (for its player and Race Control, with Copy) and under each name in Race Control's All characters list. Existing characters keep the IDs they have. |
+| Deleting | Deleting a character now removes every record of them: everything keyed on their ID or grid ID goes, including race results, qualifying, timesheets, team-role records, catalogued seasons, seats (which open again), applications, connections, contracts, diary, branding, runs, plans, votes and notices, and activity log lines naming them (unless another character has the same name). Standings recalculate without them; everyone else keeps their own finishes and points. Posts already sent to Discord stay there. |
+| Clean up leftovers | Race Control → Clean up leftovers → Check for leftovers lists records still pointing at characters that no longer exist (from deletes before this version, which kept race results), with how many race results and records each has. Remove them all purges them the same way. |
+
+---
+
 ## v1.0.0: beyond Grand Prix racing
 
 12 November 2026. Build `f1sim-1.0.0`. **No database update.** Version 1 marks the start of expanding the simulator beyond Grand Prix racing, beginning with endurance.
