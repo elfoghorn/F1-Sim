@@ -284,7 +284,7 @@
         if (type.indexOf('application/json') !== -1) { try { j = await r.json(); } catch (e) { j = null; } }
         if (!j && type.indexOf('text/html') !== -1 && r.ok) throw { code: 'not_setup', message: 'The Discord relay isn’t deployed: /api/discord returns the website instead. Check the functions folder is at the top of the repository (next to site), then redeploy (SETUP.md, Discord).' };
         if (!j) throw { code: 'failed', message: 'The Discord relay failed (' + r.status + '). In Cloudflare, open the latest deployment’s Functions logs to see why.' };
-        if (!r.ok) throw { code: r.status === 503 ? 'not_setup' : 'failed', message: j.error || ('Discord relay error ' + r.status) };
+        if (!r.ok) throw { code: r.status === 503 ? 'not_setup' : j.gone ? 'gone' : 'failed', message: j.error || ('Discord relay error ' + r.status) };
         return j;
       },
       channels: async function () { var j = await discord.call('GET'); if (!(j.channels || []).length && j.hint) throw { code: 'not_setup', message: 'No Discord webhook is set up yet. ' + j.hint }; return j.channels || []; },
@@ -293,6 +293,7 @@
         fd.append('channel', o.channel || 'default');
         fd.append('payload_json', JSON.stringify(o.payload || {}));
         if (o.file) fd.append('file', o.file.blob, o.file.name);
+        if (o.edit) fd.append('edit', String(o.edit));
         return discord.call('POST', fd);
       }
     };

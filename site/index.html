@@ -660,15 +660,40 @@ table.data tr.me td, table.data tr.picked td, .data tr.me { background: var(--me
 .champ-years { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; } .champ-years li { padding: 6px 0; border-bottom: 1px solid var(--line); } .champ-years b { display: inline-block; min-width: 64px; }
 
 .hub-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 14px; } .hub-bar .hub-tabs { margin: 0; } .stand-tabs { display: flex; width: fit-content; flex-wrap: wrap; }
+
+/* ---------- the grid page ---------- */
+.grid-rc { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 0 0 14px; padding: 10px 14px; background: var(--panel); border: 1px solid var(--line); }
+.grid-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 12px; } .grid-openonly { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px; border: 1px solid var(--line-strong); font-weight: 600; }
+.grid-tiles { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 10px; } .grid-tiles small { display: block; }
+.grid-key { display: flex; flex-wrap: wrap; gap: 14px; margin: 0 0 10px; font-size: 13.5px; color: var(--muted); } .grid-key span { display: inline-flex; align-items: center; gap: 6px; }
+.gk { display: inline-block; width: 14px; height: 14px; } .gk-P { background: #3A1D20; border: 2px solid var(--red); } .gk-O { background: #13261B; border: 2px solid #7CD69C; } .gk-R { background: var(--panel-2); border: 1px solid var(--line); } .gk-V { border: 1px dashed var(--line-strong); }
+.grid-table-wrap { background: var(--panel); } .grid-table { width: 100%; min-width: 1100px; border-collapse: collapse; } .grid-table th, .grid-table td { padding: 5px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+.grid-table thead th { font-size: 13px; color: var(--muted); font-weight: 600; padding: 8px; }
+.gt-team { border-left: 6px solid var(--team); padding: 6px 12px !important; white-space: nowrap; } .gt-team b { font-size: 16px; font-style: italic; } .gt-team small { display: block; color: var(--muted); font-weight: 400; } .gt-car { margin-top: 4px; }
+.gc { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 8px; align-items: center; width: 100%; min-height: 46px; padding: 5px 8px; text-align: left; font: inherit; color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); cursor: pointer; }
+button.gc:hover, button.gc:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; } div.gc { cursor: default; }
+.gc-P { background: #3A1D20; border: 2px solid var(--red); } .gc-O { background: #13261B; border: 2px solid #7CD69C; } .gc-V { background: transparent; border: 1px dashed var(--line-strong); color: var(--muted); }
+.gc-face { width: 32px; height: 36px; display: grid; place-items: center; background: #3A3D45; color: #C9CCD2; font-weight: 700; font-size: 12px; overflow: hidden; } .gc-face img { width: 100%; height: 100%; object-fit: cover; }
+.gc-txt { min-width: 0; display: flex; flex-direction: column; } .gc-txt b { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .gc-txt small { font-size: 12px; color: var(--muted); } .gc-P .gc-txt small { color: #FF8A80; } .gc-O .gc-txt small { color: #7CD69C; }
+.gc-cta { font-size: 12.5px; font-weight: 700; padding: 3px 8px; background: var(--red); color: #FFFFFF; } .gc-dim { color: var(--line-strong); }
+.finder-sec { margin: 0 0 16px; } .finder-sec h2 { display: flex; align-items: center; gap: 10px; }
+.seat-open-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 14px; }
+.seat-open { background: var(--panel); border: 2px solid #7CD69C; border-top: 8px solid var(--team); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.so-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; } .so-head h3 { margin: 0; font-size: 26px; font-style: italic; } .so-head span { color: var(--muted); }
+.so-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; } .so-facts div { background: var(--panel-2); padding: 8px 10px; } .so-facts b { display: block; font-size: 18px; font-style: italic; } .so-facts span { font-size: 13px; color: var(--muted); }
+.seat-could-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+.seat-could { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 10px; background: var(--panel-2); border-left: 6px solid var(--team); }
+.held-list { display: flex; flex-wrap: wrap; gap: 8px; } .held-chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; background: #3A1D20; border: 1px solid var(--red); } .held-chip i { width: 10px; height: 10px; background: var(--team); }
+.seat-app { padding: 8px 0; border-bottom: 1px solid var(--line); } .seat-app p { margin: 4px 0; }
 </style>
 </head>
 <body>
 <div id="auth-root"><div class="boot"><div class="boot-card"><span class="brand-mark big" aria-hidden="true"></span><h1>F1 SIM</h1><p>Loading…</p></div></div></div>
 <div id="app"></div>
-<script>window.F1SIM_BUILD = 'f1sim-0.38.0'; window.F1SIM_VERSION = '0.38.0';</script>
+<script>window.F1SIM_BUILD = 'f1sim-0.39.0'; window.F1SIM_VERSION = '0.39.0';</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
-<script src="config.js?v=f1sim-0.38.0"></script>
-<script src="bridge.js?v=f1sim-0.38.0"></script>
+<script src="config.js?v=f1sim-0.39.0"></script>
+<script src="bridge.js?v=f1sim-0.39.0"></script>
 <noscript>F1 SIM needs JavaScript switched on.</noscript>
 </body>
 </html>

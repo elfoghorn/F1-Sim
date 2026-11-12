@@ -132,9 +132,13 @@ export async function onRequestPost({ request, env }) {
   }
   out.append('payload_json', JSON.stringify(clean));
 
-  const r = await fetch(hook + '?wait=true', { method: 'POST', body: out });
+  /* Editing a message this webhook posted earlier (the grid kept up to date): the attachments are replaced. */
+  const edit = String(form.get('edit') || '');
+  const editing = /^\d{15,21}$/.test(edit);
+  const r = await fetch(editing ? `${hook}/messages/${edit}?wait=true` : hook + '?wait=true', { method: editing ? 'PATCH' : 'POST', body: out });
+  if (editing && r.status === 404) return reply(404, { error: 'That Discord message is gone; post a new one.', gone: true });
   if (r.status === 429) { const j = await r.json().catch(() => ({})); return reply(429, { error: `Discord is rate-limiting posts. Try again in ${Math.ceil(Number(j.retry_after) || 5)} seconds.` }); }
   if (!r.ok) { const t = await r.text().catch(() => ''); return reply(502, { error: `Discord refused the post (${r.status}).`, detail: t.slice(0, 300) }); }
   const msg = await r.json().catch(() => ({}));
-  return reply(200, { ok: true, channel: name, messageId: msg.id || null, mentioned, bot: !!(env.DISCORD_BOT_TOKEN && env.DISCORD_GUILD_ID) });
+  return reply(200, { ok: true, channel: name, messageId: msg.id || null, edited: editing, mentioned, bot: !!(env.DISCORD_BOT_TOKEN && env.DISCORD_GUILD_ID) });
 }

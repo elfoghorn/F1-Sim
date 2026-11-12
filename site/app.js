@@ -1,4 +1,4 @@
-/* F1 SIM v0.38.0 (build f1sim-0.38.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v0.39.0 (build f1sim-0.39.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -6614,7 +6614,7 @@ function teamsCtx() {
 function teamDrivers(t, sid, sea, st) {
   if (sea === curSeasonId(sid)) return list('f1_seats').filter(s => s.teamId === t.id && s.role === 'driver').sort((a, b) => (a.car || 0) - (b.car || 0)).map(s => {
     const c = s.holderCharId ? get('characters', s.holderCharId) : null, p = c ? F1.person(f1PcId(c.id)) : F1.person(s.defaultPersonId) || {}, pid = c ? f1PcId(c.id) : s.defaultPersonId;
-    const i = st.drivers.findIndex(d => d.personId === pid); return { pid, name: c ? c.name : p.name || 'Open seat', num: c ? c.number : p.num, player: !!c, canon: !c && !!p.name, c, pos: i + 1, pts: i >= 0 ? st.drivers[i].pts : 0 }; });
+    const i = st.drivers.findIndex(d => d.personId === pid); return { pid, name: c ? c.name : p.name || 'Open seat', num: c ? c.number : p.num, player: !!c, canon: !c && !!p.name && !!s.open, c, pos: i + 1, pts: i >= 0 ? st.drivers[i].pts : 0 }; });
   return st.drivers.map((d, i) => Object.assign({}, d, { pos: i + 1 })).filter(d => d.teamId === t.id).slice(0, 3).map(d => ({ pid: d.personId, name: d.name, num: (F1.person(d.personId) || {}).num, player: !!d.charId, c: d.charId ? get('characters', d.charId) : null, pos: d.pos, pts: d.pts }));
 }
 function teamStaffLine(t) {
@@ -6672,7 +6672,7 @@ function teamLineup(t) {
   const seats = list('f1_seats').filter(s => s.teamId === t.id).sort((a, b) => ({ driver: 0, principal: 1, engineer: 2 }[a.role] - { driver: 0, principal: 1, engineer: 2 }[b.role]) || (a.car || 0) - (b.car || 0));
   return seats.map(s => { const c = s.holderCharId ? get('characters', s.holderCharId) : null, p = !c && s.defaultPersonId ? F1.person(s.defaultPersonId) : null;
     const role = s.role === 'driver' ? `Driver, car ${s.car || 1}` : s.role === 'principal' ? 'Team principal' : `Race engineer${s.car ? `, car ${s.car}` : ''}`;
-    return { role, c, pid: c ? f1PcId(c.id) : p ? p.id : null, name: c ? c.name : p ? p.name : 'Open post', player: !!c, open: !c && !p, canon: !c && !!p, num: c ? c.number : p ? p.num : '' }; });
+    return { role, c, pid: c ? f1PcId(c.id) : p ? p.id : null, name: c ? c.name : p ? p.name : 'Open post', player: !!c, open: !c && !p, real: !c && !!p, canon: !c && !!p && !!s.open, num: c ? c.number : p ? p.num : '' }; });
 }
 route('teamview', 'Team', function () {
   const t = get('f1_teams', S.ui.teamView); if (!t) return '<div class="empty">Choose a team from Teams.</div>';
@@ -7737,7 +7737,7 @@ const picControls = (pid, has) => `<label class="btn small file-btn">${has ? 'Ch
 const _teamviewPics = ROUTES.teamview.view;
 ROUTES.teamview.view = function () {
   const h = _teamviewPics(), t = get('f1_teams', S.ui.teamView); if (!t || !S.isGm || (S.ui.teamTab || 'season') !== 'season') return h;
-  const canon = teamLineup(t).filter(m => m.canon);
+  const canon = teamLineup(t).filter(m => m.real);
   if (!canon.length) return h;
   const box = `<details class="card pics-box"><summary><b>Pictures for real people</b> <span class="muted small">${canon.filter(m => personPic(m.pid)).length} of ${canon.length} have one</span></summary>
     <div class="pics-list">${canon.map(m => { const pic = personPic(m.pid); return `<div class="pics-row"><span class="tm-face">${pic ? `<img src="${esc(pic)}" alt="">` : esc(initials(m.name))}</span><span><b>${esc(m.name)}</b><br><small class="muted">${esc(m.role)}</small></span><div class="btn-row">${picControls(m.pid, !!pic)}</div></div>`; }).join('')}</div>
@@ -7919,6 +7919,174 @@ route('champ', 'Championship', function () {
   return `${back}<div class="page-head"><div><p class="eyebrow">Raced in F1 SIM</p><h1>${esc(s.name)}</h1><p>${esc(leagueCard(sid, null).status)}</p></div></div>${tabs}${body}`;
 });
 if (LIMITED_ROUTES.indexOf('champ') === -1) LIMITED_ROUTES.push('champ');
+
+/* =====================================================================
+   F1 SIM — the Grid page.
+   Players start on "Find a seat": seats for their character's role,
+   open ones first (Apply), then ones that could open (Interested), then
+   ones players hold. "Whole grid" shows every team as a row and every
+   seat as a chip: Player, Open seat (taking applications), Real person,
+   or Vacant post. Race Control clicks a seat to fill it, hand it back
+   or open it, and sees who has applied or is interested. The grid can
+   be posted to Discord as one message that keeps itself up to date.
+   ===================================================================== */
+'use strict';
+
+if (!DISCORD_PURPOSES.some(p => p[0] === 'grid')) DISCORD_PURPOSES.push(['grid', 'The grid (one post, kept up to date)', 'DISCORD_WEBHOOK_GRID']);
+const SEAT_ROLE_OF = { driver: 'driver', principal: 'principal', engineer: 'engineer' };
+const seatState = s => s.holderCharId ? 'P' : s.open ? 'O' : s.defaultPersonId ? 'R' : 'V';
+const STATE_NAME = { P: 'Player', O: 'Open seat', R: 'Real', V: 'Vacant post' };
+const seatApps = s => list('f1_applications').filter(a => a.seatId === s.id && a.status === 'pending');
+const seatInterest = s => list('f1_applications').filter(a => a.seatId === s.id && a.status === 'interest');
+function gridCols(teams) {
+  const seats = teams.flatMap(t => F1.seats(t.id)), cars = r => [...new Set(seats.filter(s => s.role === r).map(s => s.car || 1))].sort((a, b) => a - b);
+  return cars('driver').map(c => ['driver', c, `Driver, car ${c}`]).concat([['principal', null, 'Team principal']]).concat(cars('engineer').map(c => ['engineer', c, `Race engineer, car ${c}`]));
+}
+const seatFor = (tid, role, car) => F1.seats(tid).find(s => s.role === role && (role === 'principal' || (s.car || 1) === car));
+
+/* ---------------------------------------------------------------- a seat chip */
+function chipHtml(s) {
+  const st = seatState(s), o = f1Occupant(s), pid = o.person ? o.person.id : null, c = o.charId ? get('characters', o.charId) : null, pic = personPic(pid, c);
+  const me = currentChar(), apps = seatApps(s), ints = seatInterest(s), mineApp = me && apps.find(a => a.charId === me.id);
+  const name = st === 'V' ? 'Vacant post' : o.name;
+  const sub = st === 'P' ? `Player${c && c.number && s.role === 'driver' ? ' · #' + c.number : ''}${S.charId && s.holderCharId === S.charId ? ' · You' : ''}`
+    : st === 'O' ? `Open · ${plural(apps.length, 'application')}${S.isGm && ints.length ? ` · ${ints.length} interested` : ''}`
+    : st === 'R' ? `Real ${s.role === 'driver' ? 'driver' : s.role === 'principal' ? 'principal' : 'engineer'}${S.isGm && ints.length ? ` · ${ints.length} interested` : ''}` : (S.isGm && ints.length ? `${ints.length} interested` : '');
+  const face = `<span class="gc-face">${pic ? `<img src="${esc(pic)}" alt="">` : esc(st === 'V' ? '+' : initials(name))}</span>`;
+  const body = `${face}<span class="gc-txt"><b>${esc(name)}</b><small>${esc(sub)}</small></span>`;
+  const label = `${seatTitle(s)}, ${F1.team(s.teamId).name}: ${name}, ${STATE_NAME[st].toLowerCase()}`;
+  if (S.isGm) return `<button class="gc gc-${st}" data-act="seat-edit" data-id="${esc(s.id)}" aria-label="${esc(label)}. Change">${body}</button>`;
+  const roleOk = me && SEAT_ROLE_OF[me.role] === s.role && charApproved(me) && !s.holderCharId;
+  if (st === 'O' && roleOk) return `<button class="gc gc-O gc-act" data-act="${mineApp ? 'app-withdraw' : 'seat-apply'}" data-id="${esc(mineApp ? mineApp.id : s.id)}" aria-label="${esc(label)}. ${mineApp ? 'Withdraw your application' : 'Apply'}">${body}<span class="gc-cta">${mineApp ? 'Applied ✓' : 'Apply'}</span></button>`;
+  if (pid) return `<button class="gc gc-${st}" data-act="career" data-id="${esc(pid)}" aria-label="${esc(label)}">${body}</button>`;
+  return `<div class="gc gc-${st}">${body}</div>`;
+}
+
+/* ---------------------------------------------------------------- the whole grid */
+ACTIONS['grid-role'] = d => { S.ui.gridRole = d.r; render(); };
+CHANGES['grid-open'] = (v, d, el) => { S.ui.gridOpen = !!(el && el.checked); render(); };
+function wholeGridHtml(teams) {
+  const role = S.ui.gridRole || 'all', openOnly = !!S.ui.gridOpen, cols = gridCols(teams).filter(c => role === 'all' || c[0] === role);
+  const all = teams.flatMap(t => F1.seats(t.id)), cnt = r => all.filter(s => s.role === r), held = r => cnt(r).filter(s => s.holderCharId).length, open = r => cnt(r).filter(s => s.open).length;
+  const pending = all.reduce((n, s) => n + seatApps(s).length, 0);
+  const tiles = [[`${held('driver')} of ${cnt('driver').length}`, 'Driver seats held by players', `${open('driver')} open for applications`],
+    [`${held('principal')} of ${cnt('principal').length}`, 'Team principals are players', `${open('principal')} open for applications`],
+    [`${held('engineer')} of ${cnt('engineer').length}`, 'Race engineers are players', `${cnt('engineer').filter(s => !s.holderCharId && !s.defaultPersonId).length} posts vacant`],
+    [String(pending), 'Applications waiting', S.isGm ? 'Click a seat to decide' : 'Race Control decides']];
+  const rows = teams.map(t => { const st = standingsFor(t.seriesId || 'f1', curSeasonId(t.seriesId || 'f1')), i = st.teams.findIndex(x => x.teamId === t.id);
+    const cells = cols.map(([r, car]) => { const s = seatFor(t.id, r, car); if (!s) return '<td></td>'; if (openOnly && !s.open) return '<td><span class="gc-dim">–</span></td>'; return `<td>${chipHtml(s)}</td>`; }).join('');
+    if (openOnly && !cols.some(([r, car]) => (seatFor(t.id, r, car) || {}).open)) return '';
+    return `<tr><th scope="row" class="gt-team" style="--team:${esc(f1Colour(t.id))}"><button class="link-btn" data-act="team-open" data-id="${esc(t.id)}"><b>${esc(t.name)}</b></button><small>${esc(engineLabel(t.id))}${i >= 0 ? ` · P${i + 1}` : ''}</small>${S.isGm ? `<button class="btn small ghost gt-car" data-act="car-edit" data-id="${esc(t.id)}">Car</button>` : ''}</th>${cells}</tr>`; }).join('');
+  return `<div class="grid-tools"><div class="seg" role="tablist" aria-label="Seats">${[['all', 'All seats'], ['driver', 'Drivers'], ['principal', 'Team principals'], ['engineer', 'Race engineers']].map(([k, l]) => `<button role="tab" aria-selected="${role === k}" data-act="grid-role" data-r="${k}">${esc(l)}</button>`).join('')}</div>
+      <label class="grid-openonly"><input type="checkbox" data-change="grid-open" ${openOnly ? 'checked' : ''}> Open seats only</label></div>
+    <div class="metrics grid-tiles">${tiles.map(([v, k, s]) => `<div class="metric"><b>${esc(v)}</b><span>${esc(k)}</span><small class="muted">${esc(s)}</small></div>`).join('')}</div>
+    <div class="grid-key">${['P', 'O', 'R', 'V'].map(k => `<span><i class="gk gk-${k}"></i>${esc({ P: 'Player', O: 'Open seat: taking applications', R: 'Real person (not open)', V: 'Vacant post' }[k])}</span>`).join('')}</div>
+    <div class="scroll-x grid-table-wrap"><table class="grid-table"><thead><tr><th>Team</th>${cols.map(c => `<th>${esc(c[2])}</th>`).join('')}</tr></thead><tbody>${rows || `<tr><td colspan="${cols.length + 1}" class="muted">No open seats right now.</td></tr>`}</tbody></table></div>
+    <p class="muted small">${S.isGm ? 'Click any seat to put a character in it, hand it back to the real person, or open it for applications.' : 'Open seats taking applications for your role have an Apply button. Click anyone to see their page.'}</p>`;
+}
+
+/* ---------------------------------------------------------------- finding a seat */
+ACTIONS['grid-tab'] = d => { S.ui.gridTab = d.t; render(); };
+ACTIONS['seat-interest'] = d => { const c = currentChar(), s = get('f1_seats', d.id); if (!c || !s) return;
+  const mine = list('f1_applications').find(a => a.charId === c.id && a.seatId === s.id && a.status === 'interest');
+  run(async () => { if (mine) await Data.remove('f1_applications', mine.id);
+    else await Data.put('f1_applications', newId('int'), { userId: asOwner(), charId: c.id, charName: c.name, seatId: s.id, teamId: s.teamId, role: s.role, status: 'interest', kind: 'interest', createdAt: nowIso() }); },
+    mine ? 'No longer marked as interested.' : 'Race Control can see you’re interested in this seat.'); };
+function finderHtml(c, teams) {
+  const role = SEAT_ROLE_OF[c.role];
+  if (!role) return `<div class="card notice"><p>${esc(c.name)} is a ${esc(charRoleName(c.role).toLowerCase())}: that role doesn’t take a seat. Their story happens around the paddock.</p></div>`;
+  if (!charApproved(c)) return `<div class="card notice"><p>Once Race Control approves ${esc(c.name)}, you can apply for open seats here.</p></div>`;
+  const sid = curSeriesId(), st = standingsFor(sid, curSeasonId(sid)), seats = teams.flatMap(t => F1.seats(t.id)).filter(s => s.role === role);
+  const pos = tid => { const i = st.teams.findIndex(x => x.teamId === tid); return i >= 0 ? { p: `P${i + 1}`, pts: st.teams[i].pts } : { p: '–', pts: 0 }; };
+  const open = seats.filter(s => s.open && !s.holderCharId), could = seats.filter(s => !s.open && !s.holderCharId), held = seats.filter(s => s.holderCharId);
+  const roleWord = role === 'driver' ? 'driver seats' : role === 'principal' ? 'team principal seats' : 'race engineer posts';
+  const lineup = t => F1.seats(t.id).filter(x => x.role === 'driver').map(x => `${f1Occupant(x).name}${x.holderCharId ? ' (player)' : ''}`).join(' and ');
+  const openCard = s => { const t = F1.team(s.teamId), o = f1Occupant(s), ps = pos(t.id), app = list('f1_applications').find(a => a.charId === c.id && a.seatId === s.id && a.status === 'pending');
+    return `<article class="seat-open" style="--team:${esc(f1Colour(t.id))}"><div class="so-head"><div><h3>${esc(t.name)}</h3><span>${esc(seatTitle(s))}${o.real ? ` · in place of ${esc(o.real.name)}` : ''}</span></div><span class="tag open">${plural(seatApps(s).length, 'application')}</span></div>
+      <div class="so-facts"><div><b>${esc(ps.p)}</b><span>Constructors’</span></div><div><b>${ps.pts}</b><span>Points</span></div><div><b>${esc(engineLabel(t.id))}</b><span>Engine</span></div></div>
+      <p class="muted small">${role === 'driver' ? 'Team' : 'Drivers'}: ${esc(lineup(t))}.</p>
+      <div class="btn-row">${app ? `<span class="tag player">Applied</span><button class="btn" data-act="app-withdraw" data-id="${esc(app.id)}">Withdraw</button>` : `<button class="btn primary" data-act="seat-apply" data-id="${esc(s.id)}">Apply for this seat</button>`}<button class="btn ghost" data-act="team-open" data-id="${esc(t.id)}">See the team</button></div></article>`; };
+  const couldRow = s => { const t = F1.team(s.teamId), o = f1Occupant(s), ps = pos(t.id), mine = list('f1_applications').some(a => a.charId === c.id && a.seatId === s.id && a.status === 'interest');
+    return `<div class="seat-could" style="--team:${esc(f1Colour(t.id))}"><span><b>${esc(t.name)}</b>${role !== 'principal' ? ` <span class="muted small">${esc(seatTitle(s).replace(/^.*, /, ''))}</span>` : ''}<br><small class="muted">${esc(o.real ? o.real.name : 'Vacant post')}${ps.p !== '–' ? ` · ${esc(ps.p)}` : ''}</small></span>
+      <button class="btn small ${mine ? 'on' : ''}" data-act="seat-interest" data-id="${esc(s.id)}" aria-pressed="${mine}">${mine ? 'Interested ✓' : 'Interested'}</button></div>`; };
+  const other = allSeries().filter(x => x.id !== sid).map(x => [x, list('f1_seats').filter(s => s.role === role && s.open && !s.holderCharId && ((get('f1_teams', s.teamId) || {}).seriesId || 'f1') === x.id).length]).filter(x => x[1]);
+  return `<section class="finder-sec"><h2>Open now <span class="tag open">taking applications</span></h2>${open.length ? `<div class="seat-open-grid">${open.map(openCard).join('')}</div>` : `<p class="muted">No ${roleWord} are open for applications right now. Mark the ones you’d like below: Race Control sees who’s interested when deciding what to open.</p>`}</section>
+    <section class="card"><h2>Could open</h2><p class="muted small">${role === 'engineer' ? 'Posts that aren’t open yet.' : `Held by real ${role === 'driver' ? 'drivers' : 'team principals'}.`} Race Control opens seats when a team wants a player there; mark the ones you’d like.</p>${could.length ? `<div class="seat-could-grid">${could.map(couldRow).join('')}</div>` : '<p class="muted">None.</p>'}</section>
+    ${held.length ? `<section class="card"><h2>Held by players</h2><div class="held-list">${held.map(s => `<span class="held-chip" style="--team:${esc(f1Colour(s.teamId))}"><i></i><b>${esc(F1.team(s.teamId).name)}</b> ${esc(f1Occupant(s).name)}</span>`).join('')}</div></section>` : ''}
+    ${other.length ? `<p class="muted small">Other series: ${other.map(([x, n]) => `${esc(x.name)} has ${plural(n, 'open ' + (role === 'driver' ? 'driver seat' : role === 'principal' ? 'team principal seat' : 'engineer post'))}`).join('; ')}. Switch series at the top of the page.</p>` : ''}`;
+}
+
+/* ---------------------------------------------------------------- the page */
+const _gridViewOld = ROUTES.grid.view;
+ROUTES.grid.view = function () {
+  const teams = F1.teams(); if (!teams.length) return _gridViewOld();
+  const c = currentChar(), mine = f1MySeats(), canFind = !!(c && SEAT_ROLE_OF[c.role]);
+  const tab = S.ui.gridTab || (!S.isGm && canFind && !mine.length ? 'find' : 'grid');
+  const tabs = (canFind || !S.isGm) && c ? `<div class="seg" role="tablist" aria-label="View"><button role="tab" aria-selected="${tab === 'find'}" data-act="grid-tab" data-t="find">Find a seat</button><button role="tab" aria-selected="${tab === 'grid'}" data-act="grid-tab" data-t="grid">Whole grid</button></div>` : '';
+  const gd = gridDoc(curSeriesId());
+  const rc = S.isGm ? `<div class="grid-rc"><button class="btn" data-act="grid-post">${gd.messageId ? 'Update the grid on Discord' : 'Post the grid to Discord'}</button><label class="small"><input type="checkbox" data-change="grid-auto" ${gd.auto ? 'checked' : ''}> Keep the Discord grid up to date as seats change</label>${gd.at ? `<span class="muted small">Last posted ${esc(fmtWhen(gd.at))}${gd.channel ? ` to #${esc(gd.channel)}` : ''}</span>` : ''}
+      <label class="small"><input type="checkbox" data-change="transfer-toggle" ${typeof transfersOn === 'function' && transfersOn() ? 'checked' : ''}> Post a transfer card when I move a character to another team</label></div>` : '';
+  const mineHtml = mine.length ? `<div class="card your-seat" style="--team:${esc(f1Colour(mine[0].teamId))}"><b>Your seat:</b> ${mine.map(s => `${esc(seatTitle(s))}, ${esc(F1.team(s.teamId).name)}${f1Occupant(s).real ? `, in place of ${esc(f1Occupant(s).real.name)}` : ''}`).join('; ')}. Your pit wall is on Race Weekend whenever a weekend is open.</div>` : '';
+  const head = `<div class="page-head"><div><p class="eyebrow">${esc(curSeries().name)} · ${esc(curSeason().name)} season</p><h1>${tab === 'find' && c ? `Find a seat for ${esc(c.name)}` : 'The Grid'}</h1>
+      <p>${tab === 'find' && c ? `${esc(charRoleName(c.role))}${mine.length ? '' : ', without a seat'}. Showing ${esc(c.role === 'driver' ? 'driver seats' : c.role === 'principal' ? 'team principal seats' : 'race engineer posts')}.` : 'Who sits where. Players race or run teams in place of the real people until the seat is handed back.'}</p></div>${tabs}</div>`;
+  return head + rc + mineHtml + (tab === 'find' && c ? finderHtml(c, teams) : wholeGridHtml(teams))
+    + (S.isGm ? `<p class="muted small" style="margin-top:16px"><button class="btn small ghost" data-act="f1-load">Reload today’s grid</button></p>` : '');
+};
+
+/* ---------------------------------------------------------------- Race Control's seat panel */
+ACTIONS['seat-edit'] = d => { if (!S.isGm) return; S.ui.seatEdit = d.id; openDrawer('seat'); };
+DRAWERS.seat = function () {
+  const s = get('f1_seats', S.ui.seatEdit); if (!s) return '';
+  const t = F1.team(s.teamId), o = f1Occupant(s), st = seatState(s), apps = seatApps(s), ints = seatInterest(s);
+  return `<header><div><h2>${esc(t.name)}: ${esc(seatTitle(s).toLowerCase())}</h2><p>${esc(st === 'V' ? 'No one in the post' : o.name)} · ${esc(STATE_NAME[st])}${o.player && o.real ? `, in place of ${esc(o.real.name)}` : ''}</p></div><button class="btn ghost" data-act="close-drawer">Close</button></header>
+    <div class="body"><h3>Who sits here</h3>${f1SeatControls(s)}
+    <p class="muted small">Pick a character to put them here, or the first option to hand the seat back. “Open it” lets players apply.</p>
+    <h3>Applications ${apps.length ? `<span class="count">${apps.length}</span>` : ''}</h3>${apps.length ? apps.map(a => `<div class="seat-app"><b>${esc(a.charName)}</b> <span class="muted small">${esc(fmtWhen(a.createdAt))}</span>${a.note ? `<p class="small">${esc(a.note)}</p>` : ''}<div class="btn-row"><button class="btn small primary" data-act="app-decide" data-id="${esc(a.id)}" data-ok="1">Give them the seat</button><button class="btn small" data-act="app-decide" data-id="${esc(a.id)}" data-ok="0">Turn down</button></div></div>`).join('') : '<p class="muted small">None.</p>'}
+    <h3>Interested ${ints.length ? `<span class="count">${ints.length}</span>` : ''}</h3>${ints.length ? `<p>${ints.map(a => esc(a.charName)).join(', ')}</p><p class="muted small">Open the seat to let them apply.</p>` : '<p class="muted small">Nobody yet.</p>'}</div>`;
+};
+
+/* ---------------------------------------------------------------- the grid on Discord, kept up to date */
+const gridDoc = sid => get('f1_settings', `discord-grid-${sid}`) || {};
+CHANGES['grid-auto'] = (v, d, el) => { const sid = curSeriesId(), on = !!(el && el.checked);
+  run(async () => { await Data.put('f1_settings', `discord-grid-${sid}`, Object.assign({}, clone(gridDoc(sid)), { auto: on })); }, on ? 'The Discord grid will update itself as seats change.' : 'The Discord grid won’t update itself.'); };
+async function drawGridImage(sid) {
+  const teams = list('f1_teams').filter(t => (t.seriesId || 'f1') === sid).sort((a, b) => (a.order || 0) - (b.order || 0)), cols = gridCols(teams);
+  const W = 1920, top = 170, rowH = Math.min(76, Math.floor((1080 - top - 60) / Math.max(1, teams.length))), H = top + rowH * teams.length + 70;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d'), T = EXP_THEMES.dark;
+  try { await Promise.all(['700 40px "Titillium Web"', '600 20px "Titillium Web"'].map(f => document.fonts.load(f))); } catch (e) { /* fall back */ }
+  const logo = await loadImg(leagueLogo());
+  g.fillStyle = '#1C1D22'; g.fillRect(0, 0, W, H);
+  const me = drawMark(g, 50, 44, Object.assign({}, T, { ink: '#FFFFFF' }), logo); g.fillStyle = '#FFFFFF'; g.font = cond(700, 46); g.fillText(`${seriesDoc(sid).name} grid`, me + 30, 84);
+  g.font = bodyF(500, 22); g.fillStyle = T.muted; g.fillText(`${seasonDoc(curSeasonId(sid)).name} season`, me + 30, 118);
+  const KEY = { P: ['#3A1D20', '#E10600', 'Player'], O: ['#13261B', '#7CD69C', 'Open seat'], R: ['#2E3037', '#3A3D45', 'Real person'], V: ['#202126', '#4A4E57', 'Vacant post'] };
+  let kx = W - 50; g.textAlign = 'right'; ['V', 'R', 'O', 'P'].forEach(k => { g.font = bodyF(600, 20); g.fillStyle = '#C9CCD2'; g.fillText(KEY[k][2], kx, 84); kx -= g.measureText(KEY[k][2]).width + 10; g.fillStyle = KEY[k][0]; g.fillRect(kx - 20, 66, 20, 20); g.strokeStyle = KEY[k][1]; g.lineWidth = 2; g.strokeRect(kx - 19, 67, 18, 18); kx -= 46; }); g.textAlign = 'left';
+  const teamW = 250, cw = (W - 100 - teamW) / cols.length;
+  g.font = bodyF(600, 18); g.fillStyle = T.muted; cols.forEach((c, i) => g.fillText(c[2], 50 + teamW + i * cw + 8, top - 14));
+  teams.forEach((t, r) => { const y = top + r * rowH; g.fillStyle = f1Colour(t.id); g.fillRect(50, y + 4, 8, rowH - 8); g.fillStyle = '#FFFFFF'; fitText(g, t.name, z => cond(700, z), 30, teamW - 30); g.fillText(t.name, 70, y + rowH / 2 + 10);
+    cols.forEach(([role, car], i) => { const s = seatFor(t.id, role, car); if (!s) return; const st = seatState(s), o = f1Occupant(s), x = 50 + teamW + i * cw + 4, w = cw - 8, h = rowH - 8;
+      g.fillStyle = KEY[st][0]; g.fillRect(x, y + 4, w, h); g.strokeStyle = KEY[st][1]; g.lineWidth = st === 'P' || st === 'O' ? 3 : 1; g.strokeRect(x + 1, y + 5, w - 2, h - 2);
+      const nm = st === 'V' ? '–' : o.name; g.fillStyle = st === 'V' ? '#8A8F98' : '#FFFFFF'; fitText(g, nm, z => bodyF(700, z), 22, w - 20); g.fillText(nm, x + 10, y + 4 + h / 2 + (st === 'V' ? 8 : 0));
+      if (st !== 'V') { g.font = bodyF(500, 15); g.fillStyle = st === 'P' ? '#FF8A80' : st === 'O' ? '#7CD69C' : '#A7ABB3'; g.fillText(st === 'O' ? 'Open for applications' : KEY[st][2], x + 10, y + 4 + h / 2 + 22); } }); });
+  g.font = bodyF(500, 18); g.fillStyle = T.muted; g.textAlign = 'right'; g.fillText(`Updated ${stampText()}`, W - 50, H - 26); g.textAlign = 'left';
+  return new Promise(ok => cv.toBlob(ok, 'image/png'));
+}
+async function postGrid(sid) {
+  const api = await window.claude.use('discord'), chans = await discordChannels().catch(() => ['default']), ch = pickChannel('grid', sid, chans), doc = gridDoc(sid);
+  const blob = await drawGridImage(sid), file = { blob, name: `${sid}-grid.png` }, payload = { content: `**${seriesDoc(sid).name} grid**, ${seasonDoc(curSeasonId(sid)).name} season\n-# Kept up to date by F1 SIM · last change <t:${Math.floor(Date.now() / 1000)}:R>` };
+  let r, edited = false;
+  if (doc.messageId && doc.channel === ch) { try { r = await api.post({ channel: ch, payload, file, edit: doc.messageId }); edited = true; } catch (e) { if (e.code !== 'gone') throw e; } }
+  if (!r) r = await api.post({ channel: ch, payload, file });
+  await Data.put('f1_settings', `discord-grid-${sid}`, Object.assign({}, clone(gridDoc(sid)), { messageId: (r && r.messageId) || doc.messageId || null, channel: ch, at: nowIso() }));
+  return { ch, edited };
+}
+ACTIONS['grid-post'] = () => { if (!S.isGm) return; const sid = curSeriesId();
+  run(async () => { const x = await postGrid(sid); S.ui.gridPosted = x; await Data.audit('discord.grid', `${seriesDoc(sid).name} grid ${x.edited ? 'updated' : 'posted'} on Discord #${x.ch}`); }, 'Done: the grid is on Discord.'); };
+let gridTimer = null;
+function gridChanged(sid) { if (!S.isGm || !gridDoc(sid).auto) return; clearTimeout(gridTimer); gridTimer = setTimeout(() => postGrid(sid).then(x => toast(`Discord grid ${x.edited ? 'updated' : 'posted'} in #${x.ch}.`)).catch(e => toast(`The Discord grid didn’t update: ${e.message || e}`, true)), 4000); }
+const _f1AssignGrid = f1Assign;
+f1Assign = async function (seatId, charId) { const s = get('f1_seats', seatId), sid = s ? ((get('f1_teams', s.teamId) || {}).seriesId || 'f1') : null; const r = await _f1AssignGrid(seatId, charId); if (sid) gridChanged(sid); return r; };
+const _seatOpenGrid = ACTIONS['seat-open'];
+ACTIONS['seat-open'] = d => { const s = get('f1_seats', d.id); _seatOpenGrid(d); if (s) gridChanged((get('f1_teams', s.teamId) || {}).seriesId || 'f1'); };
 
 /* start-up: every part has registered its routes, drawers and actions */
 init();

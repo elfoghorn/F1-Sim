@@ -25,6 +25,20 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v0.39.0: the new Grid page
+
+12 November 2026. Build `f1sim-0.39.0`. **No database update** (the Discord relay is updated: it can now edit a message it posted).
+
+| Area | What it does |
+| --- | --- |
+| Find a seat | Players without a seat start here: "Find a seat for …", for their character's role. Open now: big cards for seats taking applications (team, seat, who's in it now, the team's position, points and engine, the line-up) with Apply for this seat, or Applied and Withdraw. Could open: the other seats for that role, each with Interested, so Race Control can see who'd take it. Held by players. Open seats in other series are mentioned. Players waiting for approval are told they can apply once approved. |
+| Whole grid | Every team as a row and every seat as a chip (two drivers, team principal, race engineers; F3's three cars too): Player, Open seat (taking applications, with the number of applications), Real person, or Vacant post, with pictures. Filter by role, or show open seats only. Tiles count player-held seats, open seats and applications waiting. Players can apply straight from an open seat's chip; clicking anyone opens their page. Team names open the team page. |
+| Race Control | The whole grid is Race Control's view. Clicking any seat opens a panel: who sits there (the same controls as before: put a character in, hand it back, open it for applications, ratings), the applications with Give them the seat or Turn down, and who's interested. The Car button stays on each team. |
+| The grid on Discord | "Post the grid to Discord" posts an image of the whole grid (to `DISCORD_WEBHOOK_GRID`, else the default channel). Posting again edits the same message instead of adding a new one; if it was deleted, a new one is posted. With "Keep the Discord grid up to date" on, it updates itself a few seconds after any seat change. |
+| Open for players | On Teams, "(open for players)" now appears only on seats Race Control has opened for applications. |
+
+---
+
 ## v0.38.0: the championship hub
 
 12 November 2026. Build `f1sim-0.38.0`. **No database update.**
