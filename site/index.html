@@ -555,6 +555,8 @@ table.data tr.me td, table.data tr.picked td, .data tr.me { background: var(--me
 .role-tile.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--panel)); color: var(--accent); font-weight: 600; }
 button.role-tile:hover:not(.on) { border-color: var(--line-strong); color: var(--ink); }
 span.role-tile { cursor: default; }
+.seat-status { display: block; font-size: 11px; font-weight: 400; color: var(--muted); margin-top: 2px; }
+.role-tile.on .seat-status { color: inherit; opacity: 0.7; }
 /* ---------- new character stepper ---------- */
 .newchar-stepper { display: flex; align-items: center; padding: 0 0 20px; }
 .newchar-step { display: flex; align-items: center; gap: 8px; background: none; border: none; padding: 0; cursor: pointer; font: inherit; color: var(--muted); }
