@@ -1,4 +1,4 @@
-/* F1 SIM v0.26.0 (build f1sim-0.26.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v0.26.1 (build f1sim-0.26.1): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -6311,7 +6311,7 @@ function genFixHtml(c) {
     ? `<p>You can change them once. Your ratings are cleared for a fresh roll, and Race Control sees every earlier roll.</p><div class="btn-row"><button class="btn" data-act="gen-rechoose">Change background or years</button></div>`
     : '<p class="muted">You’ve already changed them once. Ask Race Control if they need changing again.</p>'}${own ? rollsHistoryHtml(c) : ''}</section>`;
   else if (own && (g.history || []).length) h += `<section class="card"><h2>Earlier attempts</h2>${rollsHistoryHtml(c)}</section>`;
-  if (S.isGm) h += `<section class="card rc-gen"><h2>Race Control: ratings</h2><p class="small">${g.rolls ? `Roll ${g.rolls} of ${maxRolls(c)}` : 'Not rolled yet'}${g.extra ? `, including ${plural(g.extra, 'extra re-roll')}` : ''}. Background changed by the player: ${g.changes ? 'yes' : 'no'}.</p>
+  if (S.isGm && charStatus(c) !== 'pending') h += `<section class="card rc-gen"><h2>Race Control: ratings</h2><p class="small">${g.rolls ? `Roll ${g.rolls} of ${maxRolls(c)}` : 'Not rolled yet'}${g.extra ? `, including ${plural(g.extra, 'extra re-roll')}` : ''}. Background changed by the player: ${g.changes ? 'yes' : 'no'}.</p>
     <label class="field">Note to the player (optional)<textarea id="rcg-${esc(c.id)}" rows="2" data-bind="ui/form/rcnote/${esc(c.id)}"></textarea></label>
     <div class="btn-row"><button class="btn" data-act="gen-extra" data-id="${esc(c.id)}">Give an extra re-roll</button><button class="btn" data-act="gen-reset" data-id="${esc(c.id)}">Reset the ratings</button></div></section>`;
   return h;
@@ -6324,6 +6324,82 @@ ROUTES.character.view = function () {
   const at = marks.map(m => h.indexOf(m)).filter(i => i >= 0).sort((a, b) => a - b)[0];
   return at == null ? h + add : h.slice(0, at) + add + h.slice(at);
 };
+
+/* =====================================================================
+   F1 SIM — approvals.
+   On the Race Control page, waiting applications (and approved
+   characters with career seasons to check) sit as compact rows; clicking
+   one opens the full application, where Race Control decides: a summary,
+   the note to the player, the acceptance post, Approve or Return, and
+   for drivers an extra re-roll or a reset. Career seasons are marked
+   canon or not canon right in the application's career record.
+   ===================================================================== */
+'use strict';
+
+const thumbOf = c => c.portraitUrl ? `<img src="${esc(c.portraitUrl)}" alt="">` : `<span>${esc(initials(c.name))}</span>`;
+function appFlags(c) {
+  const f = [], waiting = careerRows(c).filter(r => (r.status || 'pending') === 'pending');
+  if (!c.portraitUrl) f.push('No picture'); if (!String(c.faceclaim || '').trim()) f.push('No face claim');
+  if (waiting.some(isMajor)) f.push('Major achievement to check');
+  return f;
+}
+function appRowHtml(c, sub) {
+  const flags = appFlags(c), waiting = careerRows(c).filter(r => (r.status || 'pending') === 'pending').length, pref = prefLine(c);
+  return `<button class="app-row" data-act="char-open" data-id="${esc(c.id)}" aria-label="Open ${esc(c.name)}’s application">
+    <span class="app-thumb">${thumbOf(c)}</span>
+    <span class="app-main"><b>${esc(c.name)}</b><span class="muted small">${esc(charRoleName(c.role))}${c.nationality ? ', ' + esc(c.nationality) : ''}. ${esc(sub)}</span>
+      ${pref ? `<span class="small">${esc(pref.replace(/ “.*$/, ''))}</span>` : ''}</span>
+    <span class="app-tags">${waiting ? `<span class="tag open">${plural(waiting, 'season')} to check</span>` : ''}${flags.map(x => `<span class="tag flag">${esc(x)}</span>`).join('')}</span>
+    <span class="app-go" aria-hidden="true">Open ›</span></button>`;
+}
+chargenQueueHtml = function () {
+  const pend = list('characters').filter(c => !c.retired && charStatus(c) === 'pending').sort((a, b) => String(a.submittedAt).localeCompare(String(b.submittedAt)));
+  const changes = list('characters').filter(c => !c.retired && charStatus(c) === 'approved' && careerRows(c).some(r => (r.status || 'pending') === 'pending'));
+  return `<section><h2 class="section-h">Character applications ${pend.length ? `<span class="count">${pend.length}</span>` : ''}</h2>
+      ${pend.length ? `<div class="app-list">${pend.map(c => appRowHtml(c, `Sent ${fmtWhen(c.submittedAt)}`)).join('')}</div>` : '<p class="muted">No characters waiting.</p>'}</section>
+    ${changes.length ? `<section><h2 class="section-h">Career record changes <span class="count">${changes.length}</span></h2><div class="app-list">${changes.map(c => appRowHtml(c, 'Approved; new or changed seasons')).join('')}</div></section>` : ''}`;
+};
+
+/* ---------------------------------------------------------------- the decision, on the application page */
+function decisionHtml(c) {
+  const g = c.gen || {}, driver = c.role === 'driver', waiting = careerRows(c).filter(r => (r.status || 'pending') === 'pending');
+  const check = (ok, label) => `<li class="${ok ? 'ok' : 'miss'}"><span aria-hidden="true">${ok ? '✓' : '!'}</span>${label}</li>`;
+  return `<section class="card decision"><h2>Race Control: decision</h2>
+    <p class="small">Sent ${esc(fmtWhen(c.submittedAt))}${c.discord ? `. Discord: @${esc(c.discord)}` : ''}.</p>
+    <ul class="checks">
+      ${check(!!c.portraitUrl, c.portraitUrl ? 'Picture added' : 'No picture')}
+      ${check(!!String(c.faceclaim || '').trim(), c.faceclaim ? `Face claim: ${esc(c.faceclaim)}` : 'No face claim')}
+      ${check(!!String(c.bio || '').trim(), 'Story written')}
+      ${PREF_ROLES.indexOf(c.role) !== -1 ? check(prefDone(c), prefLine(c) ? esc(prefLine(c)) : 'No team preference') : ''}
+      ${driver ? check(!!g.rolls, g.rolls ? `${esc((bracketOf(g.bracket) || {}).name || '')}, roll ${g.rolls} of ${maxRolls(c)}${g.changes ? '; background changed once' : ''}${(g.history || []).length ? `; ${plural(g.history.length, 'earlier attempt')} below` : ''}` : 'Not rolled') : ''}
+      ${careerRows(c).length ? check(!waiting.some(isMajor), `${plural(careerRows(c).length, 'career season')}${waiting.length ? `, ${waiting.length} still to mark (approving makes them canon)` : ''}`) : ''}
+    </ul>
+    <label class="field">Note to the player (needed to return it)<textarea id="dec-${esc(c.id)}" rows="2" data-bind="ui/form/rcnote/${esc(c.id)}">${esc(((S.ui.form.rcnote || {})[c.id]) || '')}</textarea></label>
+    <label class="small"><input type="checkbox" data-bind="ui/form/postAccept/${esc(c.id)}" ${((S.ui.form.postAccept || {})[c.id]) !== false ? 'checked' : ''}> Post the acceptance card to Discord${c.discord ? `, mentioning @${esc(c.discord)}` : ' (no Discord username, so no @mention)'}</label>
+    <div class="btn-row"><button class="btn primary" data-act="gen-approve" data-id="${esc(c.id)}">Approve</button><button class="btn" data-act="gen-return" data-id="${esc(c.id)}">Return with the note</button>
+      ${driver ? `<button class="btn" data-act="gen-extra" data-id="${esc(c.id)}">Give an extra re-roll</button><button class="btn" data-act="gen-reset" data-id="${esc(c.id)}">Reset the ratings</button>` : ''}
+      <button class="btn ghost" data-act="nav" data-route="control">Back to Race Control</button></div></section>`;
+}
+const _characterViewApprovals = ROUTES.character.view;
+ROUTES.character.view = function () {
+  const h = _characterViewApprovals(), c = get('characters', S.ui.charEdit);
+  if (!c || !S.isGm || charStatus(c) !== 'pending') return h;
+  const at = h.indexOf('</ol>');
+  return at < 0 ? decisionHtml(c) + h : h.slice(0, at + 5) + decisionHtml(c) + h.slice(at + 5);
+};
+/* In the application's career record, Race Control marks seasons canon or not canon. */
+careerAppHtml = function (c) {
+  const rows = careerRows(c), can = careerEditable(c), f = S.ui.form.cr, rc = S.isGm && c.userId !== S.uid;
+  return `<section class="card"><h2>Career record</h2>
+    <p class="muted small">Seasons before F1 SIM, in any series: single-seaters, endurance, rally, touring and more. Each season waits for Race Control; only canon seasons show on the character page.</p>
+    ${rows.length ? careerTableHtml(rows, { manage: can && !rc, review: S.isGm ? c.id : false }) : '<p class="muted">No seasons added yet.</p>'}
+    ${can && !rc ? (f ? careerFormHtml(f) : '<div class="btn-row"><button class="btn" data-act="cr-add">Add a season</button></div>') : ''}</section>`;
+};
+/* After a decision, Race Control goes back to the list. */
+const _genReturnBack = ACTIONS['gen-return'];
+ACTIONS['gen-return'] = d => { const onPage = S.route === 'character'; _genReturnBack(d); if (onPage) waitFor(() => charStatus(get('characters', d.id) || {}) === 'returned', 8000).then(ok => { if (ok && S.route === 'character') go('control'); }); };
+const _genApproveBack = ACTIONS['gen-approve'];
+ACTIONS['gen-approve'] = d => { const onPage = S.route === 'character'; _genApproveBack(d); if (onPage) waitFor(() => charStatus(get('characters', d.id) || {}) === 'approved', 8000).then(ok => { if (ok && S.route === 'character') go('control'); }); };
 
 /* start-up: every part has registered its routes, drawers and actions */
 init();

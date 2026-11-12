@@ -25,6 +25,18 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v0.26.1: approvals as a list
+
+12 November 2026. Build `f1sim-0.26.1`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Applications list | On the Race Control page, waiting applications are compact rows: picture, name, role, nationality, when it was sent, the team preference, and tags for seasons to check, major achievements, no picture or no face claim. Click a row to open the application. Approved characters with new or changed career seasons are listed the same way. |
+| Decision on the application | A waiting application opens with "Race Control: decision" at the top: a checklist (picture, face claim, story, team preference, background and rolls, career seasons still to mark), the note to the player, the acceptance-post tick box, Approve, Return with the note, and for drivers Give an extra re-roll and Reset the ratings. After approving or returning, Race Control goes back to the list. |
+| Career seasons | In the application's career record, Race Control marks each season Canon or Not canon; approving makes the rest canon. |
+
+---
+
 ## v0.26.0: edit on the application page, and fixing the rolls
 
 12 November 2026. Build `f1sim-0.26.0`. **No database update.**
