@@ -2074,13 +2074,13 @@ function f1Record(personId) {
   });
   return out;
 }
-/* Driver development: 1 point for every 4 Grands Prix started, per season of a series, up to 1 for every 4 rounds on its calendar.
+/* Driver development: 2 points for every 3 Grands Prix started, per season of a series, up to 2 for every 3 rounds on its calendar.
    Years of experience scale it (younger drivers earn more). Unspent points carry on to the next season. */
 function devSeasons(personId) {
   const m = new Map();
   f1Record(personId).filter(x => x.w.session === 'gp').forEach(x => { const k = wSeries(x.w) + '|' + wSeason(x.w); m.set(k, (m.get(k) || 0) + 1); });
-  return [...m.entries()].map(([k, starts]) => { const [sid, season] = k.split('|'), s = seriesDoc(sid), rounds = (s.calendar && s.calendar.length) || list('f1_tracks').length || 23, cap = Math.floor(rounds / RACES_PER_DEV);
-    return { sid, season, starts, cap, earned: Math.min(cap, Math.floor(starts / RACES_PER_DEV)) }; });
+  return [...m.entries()].map(([k, starts]) => { const [sid, season] = k.split('|'), s = seriesDoc(sid), rounds = (s.calendar && s.calendar.length) || list('f1_tracks').length || 23, cap = Math.floor(rounds / RACES_PER_DEV) * DEV_PTS_PER_BATCH;
+    return { sid, season, starts, cap, earned: Math.min(cap, Math.floor(starts / RACES_PER_DEV) * DEV_PTS_PER_BATCH) }; });
 }
 function devEarned(personId) {
   const growth = (F1.person(personId) || {}).growth || 1;
@@ -2095,7 +2095,7 @@ function f1DevApply(v3, charId) {
   let left = devEarned(pid);
   list('f1_dev').filter(x => x.charId === charId && DEV_ATTRS.indexOf(x.attr) !== -1).sort((a, b) => String(a.at).localeCompare(String(b.at))).forEach(x => {
     const cost = devCost(out[x.attr] || 0); if (cost > left || (out[x.attr] || 0) >= 99) return;
-    out[x.attr] = (out[x.attr] || 0) + 1; left -= cost;
+    out[x.attr] = Math.round(((out[x.attr] || 0) + 0.8) * 10) / 10; left -= cost;
   });
   Object.defineProperty(out, 'devLeft', { value: left, enumerable: false });
   return out;
@@ -2103,8 +2103,8 @@ function f1DevApply(v3, charId) {
 ACTIONS['dev-spend'] = d => {
   const c = currentChar(); if (!c || c.id !== d.char) return;
   const base = Object.assign({}, F1_ROOKIE, F1.person(f1PcId(c.id)) || {}), now = f1DevApply(base, c.id);
-  if (devCost(now[d.attr] || 0) > now.devLeft) { toast('Not enough development points yet. Drivers earn 1 for every 4 Grands Prix.', true); return; }
-  run(async () => { await Data.put('f1_dev', newId('dev'), { userId: asOwner(), charId: c.id, attr: d.attr, at: nowIso() }); }, `${F1_RATINGS.find(r => r[0] === d.attr)[1]} up by one.`);
+  if (devCost(now[d.attr] || 0) > now.devLeft) { toast('Not enough development points yet. Drivers earn 2 points for every 3 Grands Prix.', true); return; }
+  run(async () => { await Data.put('f1_dev', newId('dev'), { userId: asOwner(), charId: c.id, attr: d.attr, at: nowIso() }); }, `${F1_RATINGS.find(r => r[0] === d.attr)[1]} up by 0.8.`);
 };
 ACTIONS.career = d => { S.ui.career = d.id; go('career'); };
 const careerLink = (personId, name) => personId ? `<button class="linkish" data-act="career" data-id="${esc(personId)}">${esc(name)}</button>` : esc(name);
@@ -2112,12 +2112,12 @@ const careerLink = (personId, name) => personId ? `<button class="linkish" data-
 function devPanelHtml(charId) {
   const base = Object.assign({}, F1_ROOKIE, F1.person(f1PcId(charId)) || {}), now = f1DevApply(base, charId), mine = S.charId === charId;
   const p = F1.person(f1PcId(charId)) || {}, seasons = devSeasons(f1PcId(charId)), here = seasons.find(x => x.sid === curSeriesId() && x.season === curSeasonId()), s = curSeries();
-  const cap = Math.floor((((s.calendar && s.calendar.length) || list('f1_tracks').length || 23)) / RACES_PER_DEV), starts = here ? here.starts : 0, got = here ? here.earned : 0;
+  const cap = Math.floor((((s.calendar && s.calendar.length) || list('f1_tracks').length || 23)) / RACES_PER_DEV) * DEV_PTS_PER_BATCH, starts = here ? here.starts : 0, got = here ? here.earned : 0;
   const growth = p.growth && p.growth !== 1 ? ` Their years of experience make each point worth ×${p.growth}.` : '';
-  return `<div class="dev"><p><b>${plural(now.devLeft, 'development point')}</b> to spend. Drivers earn 1 for every ${RACES_PER_DEV} Grands Prix, up to ${cap} a season.${growth}</p>
-    <p class="muted small">This season: ${plural(starts, 'Grand Prix', 'Grands Prix')}, ${got} of ${cap} earned${got < cap ? `, the next after ${RACES_PER_DEV - (starts % RACES_PER_DEV)} more` : ''}. Unspent points carry on to next season.</p>
-    <table class="data compact"><tbody>${F1_RATINGS.map(([k, l]) => `<tr><td>${esc(l)}</td><td class="num"><b>${now[k]}</b>${now[k] !== base[k] ? ` <span class="f1-up">+${now[k] - base[k]}</span>` : ''}</td>
-      <td class="num">${mine && k !== 'experience' && now[k] < 99 ? `<button class="btn small" data-act="dev-spend" data-char="${esc(charId)}" data-attr="${k}" ${devCost(now[k]) > now.devLeft ? 'disabled' : ''}>+1 for ${plural(devCost(now[k]), 'point')}</button>` : k === 'experience' ? '<span class="muted small">Grows with races</span>' : ''}</td></tr>`).join('')}</tbody></table></div>`;
+  return `<div class="dev"><p><b>${plural(now.devLeft, 'development point')}</b> to spend. Drivers earn ${DEV_PTS_PER_BATCH} for every ${RACES_PER_DEV} Grands Prix, up to ${cap} a season.${growth}</p>
+    <p class="muted small">This season: ${plural(starts, 'Grand Prix', 'Grands Prix')}, ${got} of ${cap} earned${got < cap ? `, the next batch after ${RACES_PER_DEV - (starts % RACES_PER_DEV)} more` : ''}. Unspent points carry on to next season.</p>
+    <table class="data compact"><tbody>${F1_RATINGS.map(([k, l]) => `<tr><td>${esc(l)}</td><td class="num"><b>${now[k]}</b>${now[k] !== base[k] ? ` <span class="f1-up">+${Math.round((now[k] - base[k]) * 10) / 10}</span>` : ''}</td>
+      <td class="num">${mine && k !== 'experience' && now[k] < 99 ? `<button class="btn small" data-act="dev-spend" data-char="${esc(charId)}" data-attr="${k}" ${devCost(now[k]) > now.devLeft ? 'disabled' : ''}>+0.8 for ${plural(devCost(now[k]), 'point')}</button>` : k === 'experience' ? '<span class="muted small">Grows with races</span>' : ''}</td></tr>`).join('')}</tbody></table></div>`;
 }
 
 route('career', 'Career', function () {
@@ -2553,7 +2553,7 @@ function weekendGuideHtml() {
     <li><b>Practice.</b> Your race engineer (or you, if no player engineers your car) uses four runs. You describe what the car is doing; the more experienced you are, the clearer that feedback. The set-up they lock in is worth up to three tenths a lap.</li>
     <li><b>Qualifying.</b> One flying lap in each session: the car, your pace, the set-up, and a little luck from your consistency.</li>
     <li><b>The race.</b> Every lap uses your ratings: pace for speed, consistency for scatter, overtaking and defence in every fight, experience and mental strength for mistakes. From the pit wall you choose push, standard or manage, call your own stops, and can refuse a team order.</li>
-    <li><b>Over the season.</b> You earn a development point for every 4 Grands Prix you start, up to a cap each season. Spend them in Team HQ to raise your ratings. Above 80 and 90, each point costs more.</li></ol>
+    <li><b>Over the season.</b> You earn 2 development points for every 3 Grands Prix you start, up to a cap each season. Spend them in Team HQ to raise your ratings by 0.8 per point. Above 80 and 90, each point costs more.</li></ol>
     <table class="data compact"><tbody>${WEEKEND_MAP.map(([k, v]) => `<tr><td class="nowrap"><b>${esc(k)}</b></td><td>${esc(v)}</td></tr>`).join('')}</tbody></table></section>`;
 }
 route('character', 'Character', function () {
@@ -4676,7 +4676,7 @@ route('career', 'Character', function () {
 
 /* =====================================================================
    F1 SIM — team development points.
-   A team earns 2 development points for every 4 Grands Prix of the
+   A team earns 2 development points for every 3 Grands Prix of the
    season. The team principal spends them on the car, a step at a time.
    Points and what they bought reset each season (how much of the car's
    development carries over is Race Control's choice when the new season
@@ -4685,7 +4685,8 @@ route('career', 'Character', function () {
    ===================================================================== */
 'use strict';
 
-const RACES_PER_DEV = 4;
+const RACES_PER_DEV = 3;
+const DEV_PTS_PER_BATCH = 2;
 const TEAM_DEV_EACH = 2;
 const TEAM_DEV = [
   ['carPace', 'Overall pace', 0.3], ['topSpeed', 'Top speed', 0.5], ['cornering', 'Cornering', 0.5],
@@ -4711,7 +4712,7 @@ ACTIONS['team-dev'] = d => {
   if (!c || !F1.seats(d.team).some(s => s.role === 'principal' && s.holderCharId === c.id)) { toast('Only the team principal spends the team’s development points.', true); return; }
   if (w && w.status !== 'practice') { toast('Car development waits until the race weekend is over.', true); return; }
   const st = teamDevApply(d.team, Object.assign({}, get('f1_teams', d.team)));
-  if (st.left < 1) { toast('No team development points left. The team earns 2 for every 4 Grands Prix.', true); return; }
+  if (st.left < 1) { toast(`No team development points left. The team earns ${TEAM_DEV_EACH} for every ${RACES_PER_DEV} Grands Prix.`, true); return; }
   run(async () => { await Data.put('f1_dev', newId('tdev'), { userId: asOwner(), charId: c.id, teamId: d.team, kind: 'team', attr: d.attr, seasonId: curSeasonId(), at: nowIso() }); },
     `${(TEAM_DEV.find(t => t[0] === d.attr) || [])[1]} improved.`);
 };
@@ -4721,7 +4722,7 @@ function teamDevHtml(tid) {
   const c = currentChar(), isTp = !!(c && F1.seats(tid).some(s => s.role === 'principal' && s.holderCharId === c.id)), toNext = RACES_PER_DEV - (n % RACES_PER_DEV);
   const counts = {}; if (hasPlayerTp(tid)) teamDevSpends(tid).slice(0, st.used).forEach(x => { counts[x.attr] = (counts[x.attr] || 0) + 1; });
   return `<section class="card"><h2>Team development points</h2>
-    <div class="metrics"><div class="metric"><b>${st.left}</b><span>To spend</span></div><div class="metric"><b>${st.earned}</b><span>Earned this season</span></div><div class="metric"><b>${toNext}</b><span>${toNext === 1 ? 'Grand Prix' : 'Grands Prix'} to the next 2</span></div></div>
+    <div class="metrics"><div class="metric"><b>${st.left}</b><span>To spend</span></div><div class="metric"><b>${st.earned}</b><span>Earned this season</span></div><div class="metric"><b>${toNext}</b><span>${toNext === 1 ? 'Grand Prix' : 'Grands Prix'} to the next ${TEAM_DEV_EACH}</span></div></div>
     <p class="muted small">The team earns ${TEAM_DEV_EACH} points for every ${RACES_PER_DEV} Grands Prix. Points and what they bought reset each season. ${hasPlayerTp(tid) ? (isTp ? 'Spend them between race weekends.' : 'The team principal spends them.') : 'With no player in charge, the team puts them into pace by itself.'}</p>
     <table class="data compact"><tbody>${TEAM_DEV.map(([k, l, step]) => `<tr><td>${esc(l)}</td><td class="num"><b>${esc(eff[k])}</b>${counts[k] ? ` <span class="f1-up">+${Math.round(counts[k] * step * 10) / 10}</span>` : ''}</td>
       <td class="num">${isTp ? `<button class="btn small" data-act="team-dev" data-team="${esc(tid)}" data-attr="${k}" ${st.left < 1 ? 'disabled' : ''}>+${step} for 1 point</button>` : ''}</td></tr>`).join('')}</tbody></table></section>`;
