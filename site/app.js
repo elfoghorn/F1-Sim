@@ -1,4 +1,4 @@
-/* F1 SIM v0.24.1 (build f1sim-0.24.1): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v0.25.0 (build f1sim-0.25.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -1050,6 +1050,7 @@ function render() {
   app.querySelector('.shell').classList.toggle('nav-open', S.navOpen);
   document.getElementById('topbar').innerHTML = topbarHtml();
   document.getElementById('side').innerHTML = navHtml();
+  if (typeof playerLimited === 'function' && playerLimited() && LIMITED_ROUTES.indexOf(S.route) === -1) S.route = 'home';
   const r = ROUTES[S.route] || ROUTES.home;
   let body;
   if (r.gm && !S.isGm) body = '<div class="empty">This page is for Race Control.</div>';
@@ -2502,7 +2503,7 @@ function chargenQueueHtml() {
   const pend = list('characters').filter(c => !c.retired && charStatus(c) === 'pending').sort((a, b) => String(a.submittedAt).localeCompare(String(b.submittedAt)));
   return `<section><h2 class="section-h">Character applications ${pend.length ? `<span class="count">${pend.length}</span>` : ''}</h2>
     ${pend.length ? `<div class="cards">${pend.map(c => { const b = bracketOf((c.gen || {}).bracket), r = c.role === 'driver' ? rolledRatings(c) : null;
-      return `<article class="card">${c.portraitUrl ? `<img class="app-photo" src="${esc(c.portraitUrl)}" alt="${esc(c.name)}">` : ''}<h3>${esc(c.name)}</h3><p class="small">${c.faceclaim ? `Face claim: <b>${esc(c.faceclaim)}</b>` : '<span class="tag flag">No face claim given</span>'}${c.portraitUrl ? '' : ' <span class="tag flag">No picture</span>'}</p><p class="muted small">${esc(charRoleName(c.role))}${c.nationality ? ', ' + esc(c.nationality) : ''}${c.code ? ', ' + esc(c.code) : ''}${c.number ? ' #' + esc(c.number) : ''}. Sent ${esc(fmtWhen(c.submittedAt))}.</p>
+      return `<article class="card">${c.portraitUrl ? `<img class="app-photo" src="${esc(c.portraitUrl)}" alt="${esc(c.name)}">` : ''}<h3>${esc(c.name)}</h3><p class="small">${c.faceclaim ? `Face claim: <b>${esc(c.faceclaim)}</b>` : '<span class="tag flag">No face claim given</span>'}${c.portraitUrl ? '' : ' <span class="tag flag">No picture</span>'}</p>${PREF_ROLES.indexOf(c.role) !== -1 ? `<p class="small">${prefLine(c) ? esc(prefLine(c)) : '<span class="muted">No team preference given.</span>'}</p>` : ''}<p class="muted small">${esc(charRoleName(c.role))}${c.nationality ? ', ' + esc(c.nationality) : ''}${c.code ? ', ' + esc(c.code) : ''}${c.number ? ' #' + esc(c.number) : ''}. Sent ${esc(fmtWhen(c.submittedAt))}.</p>
         ${paras(c.bio)}
         ${careerRows(c).length ? `<h4>Career record</h4>${careerTableHtml(careerRows(c), { review: c.id })}<p class="muted small">Mark any season you won’t accept as not canon; approving makes the rest canon.</p>` : ''}
         ${r ? `<p><b>${esc(b.name)}</b>. ${esc(b.blurb)}</p>${ratingsTableHtml(r)}<details><summary>Every roll</summary>${rollHistoryHtml(c)}<p class="muted small">Rolls are worked out from the character, so these are exactly what the player saw.</p></details>` : ''}
@@ -2538,7 +2539,7 @@ route('character', 'Character', function () {
   if (!c || (c.userId !== S.uid && !S.isGm)) return '<div class="empty">Choose a character from Your characters.</div>';
   const st = charStatus(c), ed = editable(c), g = c.gen || {}, b = bracketOf(g.bracket), driver = c.role === 'driver', r = driver ? rolledRatings(c) : null;
   const roll = driver && g.rolls ? rollValues(c.id, g.rolls, g.bracket) : null, order = validOrder(g.order) ? g.order : ROLL_ATTRS.map((x, i) => i);
-  const steps = [['Who they are', !!String(c.bio || '').trim()], ['Picture and face claim', !!(c.portraitUrl && String(c.faceclaim || '').trim())], ...(driver ? [['Background', !!b], ['Years', !!g.years], ['Roll and arrange', !!g.rolls]] : []), ['Race Control', st === 'approved']];
+  const steps = [['Who they are', !!String(c.bio || '').trim()], ['Picture and face claim', !!(c.portraitUrl && String(c.faceclaim || '').trim())], ...(driver ? [['Background', !!b], ['Years', !!g.years], ['Roll and arrange', !!g.rolls]] : []), ...(PREF_ROLES.indexOf(c.role) !== -1 ? [['Team', prefDone(c)]] : []), ['Race Control', st === 'approved']];
   let h = `<div class="page-head"><div><p class="eyebrow">${esc(charRoleName(c.role))}</p><h1>${esc(c.name)}</h1><p><span class="tag ${st === 'approved' ? 'player' : st === 'pending' ? 'open' : st === 'returned' ? 'flag' : ''}">${esc(STATUS_TEXT[st])}</span></p></div>
       <div class="btn-row"><button class="btn" data-act="char-edit" data-id="${esc(c.id)}">Edit details</button><button class="btn" data-act="sheet-open" data-id="${esc(c.id)}">Export</button><button class="btn ghost" data-act="nav" data-route="characters">All characters</button></div></div>
     <ol class="stages" aria-label="Application">${steps.map(([l, done], i) => `<li class="${done ? 'done' : (steps.findIndex(s => !s[1]) === i ? 'now' : '')}">${esc(l)}</li>`).join('')}</ol>`;
@@ -2567,6 +2568,7 @@ route('character', 'Character', function () {
       ${ed ? `<div class="btn-row"><button class="btn ${g.rolls ? '' : 'primary'}" data-act="gen-roll" ${g.rolls >= MAX_ROLLS ? 'disabled' : ''}>${g.rolls ? `Re-roll (${MAX_ROLLS - g.rolls} left)` : 'Roll the ratings'}</button></div>` : ''}
       ${g.rolls > 1 ? `<details><summary>Earlier rolls</summary>${rollHistoryHtml(c)}</details>` : ''}</section>`;
   }
+  h += teamPrefHtml(c);
   if (ed) h += `<section class="card"><h2>Send to Race Control</h2><p>Race Control reads the application${driver ? ' and sees every roll' : ''}, then approves it or sends it back with a note. ${driver ? 'Once approved, you can apply for a seat.' : 'Once approved, you can apply for a seat or take part in the paddock.'}</p>
     <div class="btn-row"><button class="btn primary" data-act="gen-submit">Send the application</button></div></section>`;
   if (st === 'pending') h += `<section class="card"><h2>With Race Control</h2><p>Sent ${esc(fmtWhen(c.submittedAt))}. You’ll see the result here and on Home.</p></section>`;
@@ -4645,7 +4647,7 @@ route('career', 'Character', function () {
         return `<tr><td>${esc(t.name || '')}${x.w.session === 'sprint' ? ' sprint' : ''}${wSeries(x.w) !== 'f1' ? ` <span class="muted small">${esc(seriesDoc(wSeries(x.w)).short)}</span>` : ''}</td><td class="num">${x.r.grid}</td><td class="num">${x.r.position ? 'P' + x.r.position : 'Out'}</td><td class="num">${x.r.points || ''}</td></tr>`; }).join('')}</tbody></table></section>` : ''}
     ${isDriver ? `<button class="btn" data-act="card-open" data-id="${esc(p.id)}" data-kind="card">Make a driver card</button>` : ''}</aside>`;
   const exportBtn = c && (c.userId === S.uid || S.isGm) ? `<div class="btn-row" style="justify-content:flex-end"><button class="btn" data-act="sheet-open" data-id="${esc(c.id)}">Export the character sheet</button></div>` : '';
-  return h + exportBtn + `<div class="char-cols" style="--team:${esc(color)}">${left}${mid}${right}</div>` + careerRecordHtml(p, c);
+  return h + exportBtn + `<div class="char-cols" style="--team:${esc(color)}">${left}${mid}${right}</div>` + careerRecordHtml(p, c) + winsHtml(p, c);
 });
 
 /* =====================================================================
@@ -6131,6 +6133,100 @@ route('admin', 'Accounts and backups', function () {
       <div class="btn-row"><button class="btn primary" data-act="backup">Download a backup</button>
         <label class="btn file-btn">Restore a backup<input type="file" accept="application/json,.json" data-change="restore" class="sr-only"></label></div></section>`;
 }, { gm: true, owner: true });
+
+/* =====================================================================
+   F1 SIM — team preference, wins and podiums by championship, and what
+   new players see.
+   Drivers, race engineers and team principals pick the team they'd like
+   to join (a first and second choice, why, or any team) on their
+   application; Race Control sees it when reviewing and makes the call.
+   Every character page shows wins and podiums by championship: F1 SIM
+   races counted automatically, other series from canon career seasons.
+   Players without an approved character see only Home, The Grid, the
+   Calendar, the Championship, Seasons and Your characters.
+   ===================================================================== */
+'use strict';
+
+/* ---------------------------------------------------------------- team preference */
+const PREF_ROLES = ['driver', 'engineer', 'principal'];
+const prefOf = c => (c && c.teamPref) || {};
+const prefEditable = c => !!c && (c.userId === S.uid || S.isGm) && ['draft', 'returned', 'pending'].indexOf(charStatus(c)) !== -1;
+function prefSeriesId(c) { const p = prefOf(c); return S.ui.prefSeries || (p.first ? ((get('f1_teams', p.first) || {}).seriesId || 'f1') : curSeriesId()); }
+function savePref(c, patch, msg) { const doc = charDoc(c.id); doc.teamPref = Object.assign({}, prefOf(doc), patch, { at: nowIso() }); return run(async () => { await Data.put('characters', c.id, doc); }, msg); }
+ACTIONS['tp-first'] = d => { const c = get('characters', S.ui.charEdit); if (!prefEditable(c)) return; const p = prefOf(c);
+  savePref(c, Object.assign({ first: d.team, any: false }, p.second === d.team ? { second: '' } : {})); };
+CHANGES['tp-second'] = v => { const c = get('characters', S.ui.charEdit); if (prefEditable(c)) savePref(c, { second: v }); };
+CHANGES['tp-why'] = v => { const c = get('characters', S.ui.charEdit); if (prefEditable(c)) savePref(c, { why: String(v || '').trim().slice(0, 200) }); };
+CHANGES['tp-any'] = (v, d, el) => { const c = get('characters', S.ui.charEdit); if (prefEditable(c)) savePref(c, { any: !!(el && el.checked) }); };
+CHANGES['tp-series'] = v => { S.ui.prefSeries = v; render(); };
+const teamName = id => (get('f1_teams', id) || {}).name || '';
+function prefLine(c) {
+  const p = prefOf(c); if (PREF_ROLES.indexOf(c.role) === -1) return '';
+  if (!p.first && !p.second) return p.any ? 'Happy to go to any team.' : '';
+  return `Wants: ${[p.first ? `${teamName(p.first)} (first choice)` : '', p.second ? `${teamName(p.second)} (second)` : ''].filter(Boolean).join(', ')}${p.any ? ', or any team' : ''}.${p.why ? ` “${p.why}”` : ''}`;
+}
+const prefDone = c => PREF_ROLES.indexOf(c.role) === -1 || !!(prefOf(c).first || prefOf(c).any);
+function teamPrefHtml(c) {
+  if (PREF_ROLES.indexOf(c.role) === -1) return '';
+  const p = prefOf(c), can = prefEditable(c);
+  if (!can) return prefLine(c) ? `<section class="card"><h2>Team you’d like to join</h2><p>${esc(prefLine(c))}</p></section>` : '';
+  const sid = prefSeriesId(c), teams = list('f1_teams').filter(t => (t.seriesId || 'f1') === sid).sort((a, b) => (a.order || 0) - (b.order || 0));
+  const seriesList = allSeries().filter(s => list('f1_teams').some(t => (t.seriesId || 'f1') === s.id));
+  const role = c.role === 'principal' ? 'principal' : c.role === 'engineer' ? 'engineer' : 'driver', roleWord = { driver: 'seats', engineer: 'engineer posts', principal: 'principal post' }[role];
+  const card = t => { const seats = list('f1_seats').filter(s => s.teamId === t.id && s.role === role), held = seats.filter(s => s.holderCharId).length;
+    return `<button class="card tp-team ${p.first === t.id ? 'on' : ''}" style="--team:${esc(t.color || '#888')}" data-act="tp-first" data-team="${esc(t.id)}" aria-pressed="${p.first === t.id}">
+      <b>${esc(t.name)}</b><span class="muted small">${esc(engineLabel(t.id))}. ${seats.length ? (held ? `${held} of ${seats.length} ${roleWord} held by players` : `${seats.length === 1 ? 'Open to players' : `All ${seats.length} ${roleWord} open to players`}`) : ''}</span></button>`; };
+  return `<section class="card" id="team-pref"><h2>Team you’d like to join</h2>
+    <p>Pick the team you’d most like to join, and a second choice. Race Control makes the final call when they approve you, based on the grid, your background and your story.</p>
+    ${seriesList.length > 1 ? `<label class="field" style="max-width:280px">Series<select id="tp-series" data-change="tp-series">${seriesList.map(s => `<option value="${esc(s.id)}" ${s.id === sid ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>` : ''}
+    <h3>First choice</h3><div class="tp-grid">${teams.map(card).join('')}</div>
+    <div class="form-grid" style="margin-top:14px"><label class="field">Second choice<select id="tp-second" data-change="tp-second"><option value="">None</option>${teams.filter(t => t.id !== p.first).map(t => `<option value="${esc(t.id)}" ${p.second === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>
+      <label class="field">Why this team? (optional)<input id="tp-why" type="text" maxlength="200" data-change="tp-why" value="${esc(p.why || '')}" placeholder="e.g. grew up watching them at Silverstone"></label></div>
+    <label class="small"><input id="tp-any" type="checkbox" data-change="tp-any" ${p.any ? 'checked' : ''}> Happy to go to any team</label></section>`;
+}
+
+/* ---------------------------------------------------------------- wins and podiums by championship (everyone sees it) */
+function winsByChampionship(p, c) {
+  const by = new Map(), add = (k, o) => { const x = by.get(k) || { name: k, seasons: 0, titles: 0, wins: 0, podiums: 0, best: 99 }; x.seasons += 1; x.titles += o.t; x.wins += o.w; x.podiums += o.p; x.best = Math.min(x.best, o.b || 99); by.set(k, x); };
+  careerRows(c).filter(r => r.status === 'canon').forEach(r => add(seriesLabel(r), { t: String(r.pos) === '1' ? 1 : 0, w: Number(r.wins) || 0, p: Number(r.podiums) || 0, b: Number(r.pos) || 99 }));
+  if (p) simSeasons(p.id).forEach(o => add(`F1 SIM: ${o.seriesName}`, { t: o.done && o.pos === 1 ? 1 : 0, w: o.wins, p: o.podiums, b: o.pos }));
+  return [...by.values()].sort((a, b) => b.titles - a.titles || b.wins - a.wins || b.podiums - a.podiums);
+}
+function winsHtml(p, c) {
+  const isDriver = p && (!p.kind || p.kind === 'driver');
+  if (!isDriver) return '';
+  const rows = winsByChampionship(p, c); if (!rows.length) return '';
+  const maxP = Math.max(1, ...rows.map(x => x.podiums)), tot = rows.reduce((s, x) => ({ t: s.t + x.titles, w: s.w + x.wins, p: s.p + x.podiums }), { t: 0, w: 0, p: 0 });
+  return `<section class="card wins-champ"><h2>Wins and podiums by championship</h2>
+    <div class="metrics"><div class="metric"><b>${tot.t}</b><span>${tot.t === 1 ? 'Title' : 'Titles'}</span></div><div class="metric"><b>${tot.w}</b><span>Wins</span></div><div class="metric"><b>${tot.p}</b><span>Podiums</span></div><div class="metric"><b>${rows.length}</b><span>${rows.length === 1 ? 'Championship' : 'Championships'}</span></div></div>
+    <div class="scroll-x"><table class="data"><thead><tr><th>Championship</th><th class="num">Seasons</th><th class="num">Titles</th><th class="num">Wins</th><th class="num">Podiums</th><th class="bars-h">Wins and podiums</th><th>Best finish</th></tr></thead><tbody>
+    ${rows.map(x => `<tr><td><b>${esc(x.name)}</b></td><td class="num">${x.seasons}</td><td class="num">${x.titles ? `<span class="tag trophy">${x.titles}</span>` : 0}</td><td class="num">${x.wins}</td><td class="num">${x.podiums}</td>
+      <td><div class="wp-bar" role="img" aria-label="${x.wins} wins and ${x.podiums} podiums"><span class="p" style="width:${x.podiums / maxP * 100}%"></span><span class="w" style="width:${x.wins / maxP * 100}%"></span></div></td>
+      <td>${x.best === 1 && x.titles ? 'Champion' : x.best < 99 ? ordinal(x.best) : '–'}</td></tr>`).join('')}</tbody></table></div>
+    <p class="muted small"><span class="key w"></span> wins <span class="key p"></span> podiums. F1 SIM races count automatically; other championships come from the canon career record.</p></section>`;
+}
+
+/* ---------------------------------------------------------------- what players see before approval */
+const LIMITED_ROUTES = ['home', 'grid', 'calendar', 'standings', 'seasons', 'characters', 'character', 'career'];
+function playerLimited() { return S.phase === 'ready' && !S.isGm && !myChars().some(c => !c.retired && charStatus(c) === 'approved'); }
+const _navHtmlLimited = navHtml;
+navHtml = function () {
+  if (!playerLimited()) return _navHtmlLimited();
+  const item = ([r, ic, label]) => `<button class="nav-item" data-act="nav" data-route="${r}" ${S.route === r ? 'aria-current="page"' : ''}>${icon(ic)}<span>${esc(label)}</span></button>`;
+  let h = `<div class="nav-group">${NAV.filter(x => LIMITED_ROUTES.indexOf(x[0]) !== -1).map(item).join('')}</div>`;
+  if (window.F1SIM_VERSION && window.F1SIM_VERSION.indexOf('__') !== 0) h += `<p class="nav-version">F1 SIM v${esc(window.F1SIM_VERSION)}</p>`;
+  return h;
+};
+const _goLimited = go;
+go = function (r) { if (playerLimited() && LIMITED_ROUTES.indexOf(r) === -1) { if (ROUTES[r]) toast('That opens once Race Control approves your character.'); r = 'home'; } return _goLimited(r); };
+const _homeLimited = ROUTES.home.view;
+ROUTES.home.view = function () {
+  const h = _homeLimited();
+  if (!playerLimited() || S.phase !== 'ready') return h;
+  const mine = myChars().filter(c => !c.retired), pend = mine.find(c => charStatus(c) === 'pending');
+  return `<section class="card notice limited-note"><h2>Welcome to the paddock</h2><p>${pend ? `${esc(pend.name)}’s application is with Race Control.` : mine.length ? 'Finish your character’s application and send it to Race Control.' : 'Start by creating your character.'} The rest of the site (Team HQ, Race Weekend, the Test Track, Characters and the Paddock) opens once your character is approved.</p>
+    <div class="btn-row"><button class="btn primary" data-act="nav" data-route="characters">${mine.length ? 'Your characters' : 'Create a character'}</button></div></section>` + h;
+};
 
 /* start-up: every part has registered its routes, drawers and actions */
 init();

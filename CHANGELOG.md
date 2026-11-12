@@ -25,6 +25,19 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v0.25.0: team preference, wins and podiums, and the new-player menu
+
+12 November 2026. Build `f1sim-0.25.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Team preference | Drivers, race engineers and team principals get a "Team" step in their application: pick a first-choice team from cards showing every team in its colours with its engine and how many seats (or posts) players already hold, a second choice, why (optional), or "Happy to go to any team". A series picker shows Formula 2, Formula 3 and other series' teams. It can be changed until approval, then shows read-only. Media and paddock characters don't get the step. |
+| Race Control's review | Each application shows the preference ("Wants: McLaren (first choice), Williams (second)", with the reason), or "No team preference given". Race Control still seats the character. |
+| Wins and podiums by championship | A new section on every driver's character page, for everyone to see: titles, wins, podiums and championships in total, and a row per championship (seasons, titles, wins, podiums, a wins and podiums bar, best finish). F1 SIM races count automatically; other championships come from canon career seasons. |
+| What new players see | Until a player has an approved character, the menu shows only Home, The Grid, Calendar, Championship, Seasons and Your characters (character pages still open from The Grid and the Championship). Other pages send them Home with a note, and Home says the rest opens once Race Control approves their character. |
+
+---
+
 ## v0.24.1: F1 Academy, simpler career record, Discord username only
 
 12 November 2026. Build `f1sim-0.24.1`. **No database update.** Optional: a Discord bot to turn usernames into pings (SETUP.md, Discord).
