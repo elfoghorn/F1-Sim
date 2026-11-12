@@ -1183,7 +1183,7 @@ function charFormFields(f, skipRole) {
       ${txt('nationality', 'Nationality', 'placeholder="e.g. Scottish"')}
       ${f.role === 'driver' ? txt('code', 'Three-letter code (drivers)', 'maxlength="3" placeholder="e.g. HAR"') + `<label class="field">Car number (drivers)<input id="ch-number" type="number" min="1" max="99" data-bind="ui/form/ch/number" data-type="number" value="${esc(f.number || '')}"></label>` : ''}
       ${txt('discord', 'Discord username (for @mentions)', 'autocomplete="off" placeholder="e.g. amelia.hart"')}
-      ${txt('nickname', 'Nickname (optional)')}${txt('birthplace', 'Where they're from (optional)')}
+      ${txt('nickname', 'Nickname (optional)')}${txt('birthplace', 'Where they\'re from (optional)')}
     </div>
     <label class="field">Personality<textarea id="ch-personality" rows="4" maxlength="4000" data-bind="ui/form/ch/personality" placeholder="How they come across: temperament, quirks, how they handle pressure, the media and their team-mate">${esc(f.personality || '')}</textarea></label>
     <label class="field">Backstory<textarea id="ch-bio" rows="6" data-bind="ui/form/ch/bio" placeholder="Where they come from and how they got into the paddock">${esc(f.bio || '')}</textarea></label>
