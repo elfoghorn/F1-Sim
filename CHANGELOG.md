@@ -25,6 +25,17 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v0.39.1: each series' grid goes to its own channel
+
+12 November 2026. Build `f1sim-0.39.1`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Grid channels | Each series' grid now goes to its own grid channel (`DISCORD_WEBHOOK_F2_GRID`), else that series' teams channel (`DISCORD_WEBHOOK_F1_TEAMS`, `_F2_TEAMS`, `_F3_TEAMS`), else `DISCORD_WEBHOOK_GRID`, else `DISCORD_WEBHOOK_TEAMS`, else the default. Before, without a grid webhook it went to the default channel. The Grid page says which channel it will go to. |
+| Either spelling | `DISCORD_WEBHOOK_F1_TEAM` and `DISCORD_WEBHOOK_F1_TEAMS` (and the same for every series, and the general `DISCORD_WEBHOOK_TEAM`/`TEAMS`) both work, for grids and team cards. |
+
+---
+
 ## v0.39.0: the new Grid page
 
 12 November 2026. Build `f1sim-0.39.0`. **No database update** (the Discord relay is updated: it can now edit a message it posted).

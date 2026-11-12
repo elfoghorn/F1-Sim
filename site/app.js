@@ -1,4 +1,4 @@
-/* F1 SIM v0.39.0 (build f1sim-0.39.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v0.39.1 (build f1sim-0.39.1): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -7619,7 +7619,7 @@ if (!DISCORD_PURPOSES.some(p => p[0] === 'teams')) DISCORD_PURPOSES.push(['teams
 const teamHookName = tid => `DISCORD_WEBHOOK_TEAM_${String(tid).toUpperCase().replace(/[^A-Z0-9]+/g, '_')}`;
 function teamChannel(tid, list) {
   const sid = (get('f1_teams', tid) || {}).seriesId || 'f1';
-  return [`team-${tid}`, `${sid}-teams`, 'teams', `${sid}-standings`, 'standings', 'default'].find(c => list.indexOf(c) !== -1) || list[0] || 'default';
+  return [`team-${tid}`, `${sid}-teams`, `${sid}-team`, 'teams', 'team', `${sid}-standings`, 'standings', 'default'].find(c => list.indexOf(c) !== -1) || list[0] || 'default';
 }
 async function postTeamCard(tid, blob) {
   const t = get('f1_teams', tid), sid = t.seriesId || 'f1', list = await discordChannels().catch(() => ['default']);
@@ -8024,7 +8024,7 @@ ROUTES.grid.view = function () {
   const tab = S.ui.gridTab || (!S.isGm && canFind && !mine.length ? 'find' : 'grid');
   const tabs = (canFind || !S.isGm) && c ? `<div class="seg" role="tablist" aria-label="View"><button role="tab" aria-selected="${tab === 'find'}" data-act="grid-tab" data-t="find">Find a seat</button><button role="tab" aria-selected="${tab === 'grid'}" data-act="grid-tab" data-t="grid">Whole grid</button></div>` : '';
   const gd = gridDoc(curSeriesId());
-  const rc = S.isGm ? `<div class="grid-rc"><button class="btn" data-act="grid-post">${gd.messageId ? 'Update the grid on Discord' : 'Post the grid to Discord'}</button><label class="small"><input type="checkbox" data-change="grid-auto" ${gd.auto ? 'checked' : ''}> Keep the Discord grid up to date as seats change</label>${gd.at ? `<span class="muted small">Last posted ${esc(fmtWhen(gd.at))}${gd.channel ? ` to #${esc(gd.channel)}` : ''}</span>` : ''}
+  const rc = S.isGm ? `<div class="grid-rc"><button class="btn" data-act="grid-post">${gd.messageId ? 'Update the grid on Discord' : 'Post the grid to Discord'}</button><label class="small"><input type="checkbox" data-change="grid-auto" ${gd.auto ? 'checked' : ''}> Keep the Discord grid up to date as seats change</label>${gd.at ? `<span class="muted small">Last posted ${esc(fmtWhen(gd.at))}${gd.channel ? ` to #${esc(gd.channel)}` : ''}</span>` : S.discordCh ? `<span class="muted small">Goes to #${esc(gridChannel(curSeriesId(), S.discordCh))}</span>` : ''}
       <label class="small"><input type="checkbox" data-change="transfer-toggle" ${typeof transfersOn === 'function' && transfersOn() ? 'checked' : ''}> Post a transfer card when I move a character to another team</label></div>` : '';
   const mineHtml = mine.length ? `<div class="card your-seat" style="--team:${esc(f1Colour(mine[0].teamId))}"><b>Your seat:</b> ${mine.map(s => `${esc(seatTitle(s))}, ${esc(F1.team(s.teamId).name)}${f1Occupant(s).real ? `, in place of ${esc(f1Occupant(s).real.name)}` : ''}`).join('; ')}. Your pit wall is on Race Weekend whenever a weekend is open.</div>` : '';
   const head = `<div class="page-head"><div><p class="eyebrow">${esc(curSeries().name)} · ${esc(curSeason().name)} season</p><h1>${tab === 'find' && c ? `Find a seat for ${esc(c.name)}` : 'The Grid'}</h1>
@@ -8046,6 +8046,8 @@ DRAWERS.seat = function () {
 };
 
 /* ---------------------------------------------------------------- the grid on Discord, kept up to date */
+/* A series' grid goes to its own grid channel, else its teams channel (DISCORD_WEBHOOK_F2_TEAMS or _TEAM), else the general ones. */
+function gridChannel(sid, list) { return [`${sid}-grid`, `${sid}-teams`, `${sid}-team`, 'grid', 'teams', 'team', 'default'].find(c => list.indexOf(c) !== -1) || list[0] || 'default'; }
 const gridDoc = sid => get('f1_settings', `discord-grid-${sid}`) || {};
 CHANGES['grid-auto'] = (v, d, el) => { const sid = curSeriesId(), on = !!(el && el.checked);
   run(async () => { await Data.put('f1_settings', `discord-grid-${sid}`, Object.assign({}, clone(gridDoc(sid)), { auto: on })); }, on ? 'The Discord grid will update itself as seats change.' : 'The Discord grid won’t update itself.'); };
@@ -8071,7 +8073,7 @@ async function drawGridImage(sid) {
   return new Promise(ok => cv.toBlob(ok, 'image/png'));
 }
 async function postGrid(sid) {
-  const api = await window.claude.use('discord'), chans = await discordChannels().catch(() => ['default']), ch = pickChannel('grid', sid, chans), doc = gridDoc(sid);
+  const api = await window.claude.use('discord'), chans = await discordChannels().catch(() => ['default']), ch = gridChannel(sid, chans), doc = gridDoc(sid);
   const blob = await drawGridImage(sid), file = { blob, name: `${sid}-grid.png` }, payload = { content: `**${seriesDoc(sid).name} grid**, ${seasonDoc(curSeasonId(sid)).name} season\n-# Kept up to date by F1 SIM · last change <t:${Math.floor(Date.now() / 1000)}:R>` };
   let r, edited = false;
   if (doc.messageId && doc.channel === ch) { try { r = await api.post({ channel: ch, payload, file, edit: doc.messageId }); edited = true; } catch (e) { if (e.code !== 'gone') throw e; } }
