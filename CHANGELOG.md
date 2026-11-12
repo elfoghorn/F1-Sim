@@ -25,6 +25,21 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v0.22.0: career records
+
+12 November 2026. Build `f1sim-0.22.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Career record on the application | A new card on every application page. Players add seasons one at a time: year or years, series, class or category, team, starts, wins, podiums, poles, championship finish and notes. Seasons can be edited or removed. |
+| Series | Single-seaters (Formula 1 for returning veterans, Formula 2, Formula 3, Formula Regional, Formula 4, Super Formula, Formula E, IndyCar, Indy NXT, karting), endurance (WEC, Le Mans 24 Hours, IMSA, European Le Mans Series, GT World Challenge), rally (WRC, WRC2, Dakar; starts become rallies and poles become stage wins), touring (DTM, BTCC, Supercars) and any other series by name. |
+| Admin approval | Every season waits for Race Control. Titles and wins in the top series (Formula 1, Formula 2, IndyCar, Super Formula, Formula E, WEC, Le Mans, IMSA, WRC) are flagged as major achievements. In the application review, Race Control marks seasons canon or not canon; approving the character makes the rest canon. |
+| Later changes | A season added or changed after approval goes back to awaiting approval, and appears in a new "Career record changes" list on the Race Control page. |
+| On the character page | A Career record section: totals (titles, starts, wins, podiums, poles), the character's F1 SIM seasons worked out from their results (series, team, starts, wins, podiums, poles, points and championship position, marked "so far" for the current season), then their canon seasons grouped as single-seaters, endurance, rally, touring and other. |
+| Who sees what | Everyone sees canon seasons. The owner and Race Control also see seasons awaiting approval or not canon, marked as such. |
+
+---
+
 ## v0.21.0: race incidents
 
 11 November 2026. Build `f1sim-0.21.0`. **No database update.**

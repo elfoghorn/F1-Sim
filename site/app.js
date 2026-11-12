@@ -1,4 +1,4 @@
-/* F1 SIM v0.21.0 (build f1sim-0.21.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v0.22.0 (build f1sim-0.22.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -2490,6 +2490,7 @@ function chargenQueueHtml() {
     ${pend.length ? `<div class="cards">${pend.map(c => { const b = bracketOf((c.gen || {}).bracket), r = c.role === 'driver' ? rolledRatings(c) : null;
       return `<article class="card"><h3>${esc(c.name)}</h3><p class="muted small">${esc(charRoleName(c.role))}${c.nationality ? ', ' + esc(c.nationality) : ''}${c.code ? ', ' + esc(c.code) : ''}${c.number ? ' #' + esc(c.number) : ''}. Sent ${esc(fmtWhen(c.submittedAt))}.</p>
         ${paras(c.bio)}
+        ${careerRows(c).length ? `<h4>Career record</h4>${careerTableHtml(careerRows(c), { review: c.id })}<p class="muted small">Mark any season you won’t accept as not canon; approving makes the rest canon.</p>` : ''}
         ${r ? `<p><b>${esc(b.name)}</b>. ${esc(b.blurb)}</p>${ratingsTableHtml(r)}<details><summary>Every roll</summary>${rollHistoryHtml(c)}<p class="muted small">Rolls are worked out from the character, so these are exactly what the player saw.</p></details>` : ''}
         <label class="field">Note to the player (needed to return it)<textarea id="rcn-${esc(c.id)}" rows="2" data-bind="ui/form/rcnote/${esc(c.id)}"></textarea></label>
         <div class="btn-row"><button class="btn primary" data-act="gen-approve" data-id="${esc(c.id)}">Approve</button><button class="btn" data-act="gen-return" data-id="${esc(c.id)}">Return with the note</button></div></article>`; }).join('')}</div>`
@@ -2530,6 +2531,7 @@ route('character', 'Character', function () {
   h += offersHtml(c.id);
   h += `<section class="card"><h2>Who they are</h2>${c.bio ? paras(c.bio) : '<p class="muted">No background written yet. Use Edit details.</p>'}
     <p class="muted small">${[c.nationality, c.code, c.number ? '#' + c.number : '', c.discord ? 'Discord: ' + c.discord : ''].filter(Boolean).map(esc).join('. ')}</p></section>`;
+  h += careerAppHtml(c);
   if (driver) {
     h += `<section class="card"><h2>Background</h2>${g.rolls ? `<p><b>${esc(b.name)}</b>. ${esc(b.blurb)}</p>` : `<p class="muted">Where your driver comes from sets their starting range and experience. It’s fixed once you roll.</p>
       <div class="cards brackets">${BRACKETS.map(x => `<button class="card bracket ${g.bracket === x.id ? 'on' : ''}" data-act="gen-bracket" data-id="${x.id}" aria-pressed="${g.bracket === x.id}" ${ed ? '' : 'disabled'}>
@@ -4627,7 +4629,7 @@ route('career', 'Character', function () {
     ${rec.length ? `<section class="card"><h2>Race by race</h2><table class="data compact"><thead><tr><th>Race</th><th class="num">Grid</th><th class="num">Finish</th><th class="num">Pts</th></tr></thead><tbody>${rec.slice().reverse().slice(0, 12).map(x => { const t = get('f1_tracks', x.w.trackId) || {};
         return `<tr><td>${esc(t.name || '')}${x.w.session === 'sprint' ? ' sprint' : ''}${wSeries(x.w) !== 'f1' ? ` <span class="muted small">${esc(seriesDoc(wSeries(x.w)).short)}</span>` : ''}</td><td class="num">${x.r.grid}</td><td class="num">${x.r.position ? 'P' + x.r.position : 'Out'}</td><td class="num">${x.r.points || ''}</td></tr>`; }).join('')}</tbody></table></section>` : ''}
     ${isDriver ? `<button class="btn" data-act="card-open" data-id="${esc(p.id)}" data-kind="card">Make a driver card</button>` : ''}</aside>`;
-  return h + `<div class="char-cols" style="--team:${esc(color)}">${left}${mid}${right}</div>`;
+  return h + `<div class="char-cols" style="--team:${esc(color)}">${left}${mid}${right}</div>` + careerRecordHtml(p, c);
 });
 
 /* =====================================================================
@@ -5450,6 +5452,159 @@ DRAWERS.incidents = function () {
         <div class="scroll-x"><table class="data compact"><thead><tr><th>Incident</th><th>How often</th><th>What it does</th></tr></thead><tbody>${xs.map(x => `<tr><td><b>${esc(x.label)}</b></td><td class="nowrap">${esc(incRate(x))}</td><td class="small">${esc(x.effect)}</td></tr>`).join('')}</tbody></table></div></section>`; }).join('')}
       <section class="inc-family"><h3>Red flags</h3><p class="small">The race stops. The gaps close up, every car gets fresh tyres and repairs, and the race restarts behind the safety car. A storm in the last quarter ends the race there, and the results stand.</p></section></div>`;
 };
+
+/* =====================================================================
+   F1 SIM — career records.
+   A character's racing CV. On the application, players add seasons in
+   other series (Formula 2 and 3, Formula 4, IndyCar, Super Formula,
+   Formula E, WEC and Le Mans, IMSA, WRC, DTM and more). Each season waits
+   for Race Control, who marks it canon or not canon; titles and wins in
+   the top series are flagged as major achievements. Changes after
+   approval go back for approval. The character page shows the canon
+   record beside their F1 SIM seasons, which are worked out from results.
+   ===================================================================== */
+'use strict';
+
+const CAREER_GROUPS = [
+  ['Single-seaters', ['Formula 1', 'Formula 2', 'Formula 3', 'Formula Regional', 'Formula 4', 'Super Formula', 'Formula E', 'IndyCar', 'Indy NXT', 'Karting']],
+  ['Endurance', ['WEC', 'Le Mans 24 Hours', 'IMSA', 'European Le Mans Series', 'GT World Challenge']],
+  ['Rally', ['WRC', 'WRC2', 'Dakar']],
+  ['Touring', ['DTM', 'BTCC', 'Supercars']],
+  ['Other', ['Other']]
+];
+const MAJOR_SERIES = ['Formula 1', 'Formula 2', 'IndyCar', 'Super Formula', 'Formula E', 'WEC', 'Le Mans 24 Hours', 'IMSA', 'WRC'];
+const CAREER_POS = [['', 'Not given'], ['1', 'Champion'], ['2', '2nd'], ['3', '3rd'], ['4', '4th'], ['5', '5th'], ['6', '6th'], ['7', '7th'], ['8', '8th'], ['9', '9th'], ['10', '10th'], ['11', 'Lower than 10th'], ['0', 'Part season']];
+const careerGroupOf = series => (CAREER_GROUPS.find(g => g[1].indexOf(series) !== -1) || ['Other'])[0];
+const seriesLabel = r => r.series === 'Other' ? (r.other || 'Other') : r.series;
+const posLabel = p => (CAREER_POS.find(x => x[0] === String(p)) || ['', ''])[1];
+const isMajor = r => MAJOR_SERIES.indexOf(r.series) !== -1 && (String(r.pos) === '1' || Number(r.wins) > 0);
+const CAREER_STATUS = { pending: ['Awaiting approval', 'open'], canon: ['Canon', 'player'], notcanon: ['Not canon', 'flag'] };
+
+/* ---------------------------------------------------------------- the player's side */
+const careerRows = c => (c && Array.isArray(c.career) ? c.career : []);
+const careerEditable = c => !!c && (c.userId === S.uid || S.isGm) && !c.retired;
+ACTIONS['cr-add'] = () => { S.ui.form.cr = { id: null, years: '', series: 'Formula 2', other: '', cls: '', team: '', starts: '', wins: '', podiums: '', poles: '', pos: '', notes: '' }; render(); };
+ACTIONS['cr-edit'] = d => { const c = get('characters', S.ui.charEdit), r = careerRows(c).find(x => x.id === d.rid); if (r) { S.ui.form.cr = Object.assign({}, r); render(); } };
+ACTIONS['cr-cancel'] = () => { S.ui.form.cr = null; render(); };
+CHANGES['cr-series'] = v => { if (S.ui.form.cr) { S.ui.form.cr.series = v; render(); } };
+const ordinal = n => { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); };
+ACTIONS['cr-save'] = () => {
+  const c = get('characters', S.ui.charEdit), f = S.ui.form.cr; if (!c || !f || !careerEditable(c)) return;
+  if (!String(f.years || '').trim()) { toast('Add the year or years, such as 2025 or 2023 to 2024.', true); return; }
+  if (f.series === 'Other' && !String(f.other || '').trim()) { toast('Name the series.', true); return; }
+  const num = v => v === '' || v == null ? '' : Math.max(0, Math.round(Number(v) || 0));
+  const row = { id: f.id || newId('cr'), years: String(f.years).trim().slice(0, 20), series: f.series, other: f.series === 'Other' ? String(f.other).trim().slice(0, 60) : '',
+    cls: String(f.cls || '').trim().slice(0, 40), team: String(f.team || '').trim().slice(0, 60), starts: num(f.starts), wins: num(f.wins), podiums: num(f.podiums), poles: num(f.poles),
+    pos: String(f.pos || ''), notes: String(f.notes || '').trim().slice(0, 200), status: 'pending', at: nowIso() };
+  if (row.wins !== '' && row.starts !== '' && row.wins > row.starts) { toast('More wins than starts: check the numbers.', true); return; }
+  const doc = charDoc(c.id), rows = careerRows(doc).filter(x => x.id !== row.id).concat([row]);
+  rows.sort((a, b) => String(parseInt(a.years, 10) || 0).localeCompare(String(parseInt(b.years, 10) || 0)) || 0);
+  doc.career = rows;
+  run(async () => { await Data.put('characters', c.id, doc); S.ui.form.cr = null; }, charStatus(c) === 'approved' ? 'Saved. Race Control will check it before it becomes canon.' : 'Season added.');
+};
+ACTIONS['cr-remove'] = d => {
+  const c = get('characters', S.ui.charEdit); if (!c || !careerEditable(c)) return;
+  askConfirm('Remove this season from the career record?', 'Remove', () => run(async () => { const doc = charDoc(c.id); doc.career = careerRows(doc).filter(x => x.id !== d.rid); await Data.put('characters', c.id, doc); }, 'Removed.'), true);
+};
+function careerFormHtml(f) {
+  const opt = (v, l, cur) => `<option value="${esc(v)}" ${String(cur) === String(v) ? 'selected' : ''}>${esc(l)}</option>`;
+  const num = (k, l) => `<label class="field small">${l}<input id="cr-${k}" type="number" min="0" max="999" data-bind="ui/form/cr/${k}" value="${esc(f[k] === '' || f[k] == null ? '' : f[k])}"></label>`;
+  return `<div class="career-form card"><h3>${f.id ? 'Edit this season' : 'Add a season'}</h3><div class="form-grid">
+      <label class="field">Year or years<input id="cr-years" type="text" data-bind="ui/form/cr/years" value="${esc(f.years || '')}" placeholder="e.g. 2025, or 2023 to 2024"></label>
+      <label class="field">Series<select id="cr-series" data-change="cr-series">${CAREER_GROUPS.map(([g, xs]) => `<optgroup label="${esc(g)}">${xs.map(x => opt(x, x === 'Other' ? 'Another series' : x, f.series)).join('')}</optgroup>`).join('')}</select></label>
+      ${f.series === 'Other' ? `<label class="field">Which series<input id="cr-other" type="text" data-bind="ui/form/cr/other" value="${esc(f.other || '')}" placeholder="e.g. Super GT"></label>` : ''}
+      <label class="field">Class or category (optional)<input id="cr-cls" type="text" data-bind="ui/form/cr/cls" value="${esc(f.cls || '')}" placeholder="${/WEC|Le Mans|IMSA|European/.test(f.series) ? 'e.g. Hypercar, LMP2, LMGT3' : /WRC|Dakar/.test(f.series) ? 'e.g. Rally1, Rally2' : 'e.g. Senior, Rookie'}"></label>
+      <label class="field">Team<input id="cr-team" type="text" data-bind="ui/form/cr/team" value="${esc(f.team || '')}"></label>
+      ${num('starts', /WRC|Dakar/.test(f.series) ? 'Rallies' : 'Starts')}${num('wins', 'Wins')}${num('podiums', 'Podiums')}${num('poles', /WRC|Dakar/.test(f.series) ? 'Stage wins' : 'Poles')}
+      <label class="field">Championship<select id="cr-pos" data-bind="ui/form/cr/pos">${CAREER_POS.map(([v, l]) => opt(v, l, f.pos)).join('')}</select></label></div>
+    <label class="field">Notes (optional)<input id="cr-notes" type="text" data-bind="ui/form/cr/notes" value="${esc(f.notes || '')}" placeholder="e.g. Class win at Le Mans; rookie of the year"></label>
+    <p class="muted small">Titles and wins in the top series count as major achievements: they only become canon once Race Control approves them.</p>
+    <div class="btn-row"><button class="btn primary" data-act="cr-save">${f.id ? 'Save the season' : 'Add the season'}</button><button class="btn ghost" data-act="cr-cancel">Cancel</button></div></div>`;
+}
+/* The career record card on the application page. */
+function careerAppHtml(c) {
+  const rows = careerRows(c), can = careerEditable(c), f = S.ui.form.cr;
+  return `<section class="card"><h2>Career record</h2>
+    <p class="muted small">Seasons before F1 SIM, in any series: single-seaters, endurance, rally, touring and more. Each season waits for Race Control; only canon seasons show on the character page.</p>
+    ${rows.length ? careerTableHtml(rows, { manage: can, review: false }) : '<p class="muted">No seasons added yet.</p>'}
+    ${can ? (f ? careerFormHtml(f) : '<div class="btn-row"><button class="btn" data-act="cr-add">Add a season</button></div>') : ''}</section>`;
+}
+function careerTableHtml(rows, o) {
+  const opts = o || {}, cell = v => v === '' || v == null ? '<span class="muted">–</span>' : esc(v);
+  return `<div class="scroll-x"><table class="data compact career"><thead><tr><th>Years</th><th>Series</th><th>Team</th><th class="num">Starts</th><th class="num">Wins</th><th class="num">Podiums</th><th class="num">Poles</th><th>Championship</th>${opts.status !== false ? '<th></th>' : ''}${opts.manage || opts.review ? '<th></th>' : ''}</tr></thead><tbody>
+    ${rows.map(r => { const st = CAREER_STATUS[r.status || 'pending'] || CAREER_STATUS.pending;
+      return `<tr><td>${esc(r.years)}</td><td><b>${esc(seriesLabel(r))}</b>${r.cls ? ` <span class="muted small">${esc(r.cls)}</span>` : ''}${r.notes ? `<div class="muted small">${esc(r.notes)}</div>` : ''}</td><td>${cell(r.team)}</td>
+        <td class="num">${cell(r.starts)}</td><td class="num">${cell(r.wins)}</td><td class="num">${cell(r.podiums)}</td><td class="num">${cell(r.poles)}</td><td>${String(r.pos) === '1' ? '<span class="tag trophy">Champion</span>' : r.pos ? esc(posLabel(r.pos)) : '<span class="muted">–</span>'}</td>
+        ${opts.status !== false ? `<td>${isMajor(r) && r.status !== 'canon' ? '<span class="tag flag">Major achievement</span> ' : ''}<span class="tag ${st[1]}">${st[0]}</span></td>` : ''}
+        ${opts.manage ? `<td class="nowrap"><button class="btn small" data-act="cr-edit" data-rid="${esc(r.id)}">Edit</button> <button class="btn small ghost" data-act="cr-remove" data-rid="${esc(r.id)}">Remove</button></td>` : ''}
+        ${opts.review ? `<td class="nowrap"><button class="btn small ${r.status === 'canon' ? 'primary' : ''}" data-act="cr-judge" data-cid="${esc(opts.review)}" data-rid="${esc(r.id)}" data-v="canon" aria-pressed="${r.status === 'canon'}">Canon</button> <button class="btn small ${r.status === 'notcanon' ? 'primary' : ''}" data-act="cr-judge" data-cid="${esc(opts.review)}" data-rid="${esc(r.id)}" data-v="notcanon" aria-pressed="${r.status === 'notcanon'}">Not canon</button></td>` : ''}</tr>`; }).join('')}</tbody></table></div>`;
+}
+
+/* ---------------------------------------------------------------- Race Control's side */
+ACTIONS['cr-judge'] = d => {
+  if (!S.isGm) return; const c = get('characters', d.cid); if (!c) return;
+  const doc = charDoc(c.id); doc.career = careerRows(doc).map(r => r.id === d.rid ? Object.assign({}, r, { status: d.v, judgedAt: nowIso() }) : r);
+  const r = careerRows(c).find(x => x.id === d.rid) || {};
+  run(async () => { await Data.put('characters', c.id, doc); await Data.audit('career.judge', `${c.name}: ${r.years} ${seriesLabel(r)} marked ${d.v === 'canon' ? 'canon' : 'not canon'}`); });
+};
+/* Approving a character makes any seasons still waiting canon (Race Control marks the ones it won't accept first). */
+const _genApproveCareer = ACTIONS['gen-approve'];
+ACTIONS['gen-approve'] = d => {
+  const c = get('characters', d.id);
+  if (c && careerRows(c).some(r => (r.status || 'pending') === 'pending')) {
+    const doc = charDoc(c.id); doc.career = careerRows(doc).map(r => (r.status || 'pending') === 'pending' ? Object.assign({}, r, { status: 'canon', judgedAt: nowIso() }) : r);
+    Data.put('characters', c.id, doc).then(() => _genApproveCareer(d)).catch(e => toast(e.message || String(e), true));
+    return;
+  }
+  _genApproveCareer(d);
+};
+/* Approved characters with new or changed seasons. */
+function careerQueueHtml() {
+  const waiting = list('characters').filter(c => !c.retired && charStatus(c) === 'approved' && careerRows(c).some(r => (r.status || 'pending') === 'pending'));
+  if (!waiting.length) return '';
+  return `<section><h2 class="section-h">Career record changes <span class="count">${waiting.length}</span></h2>
+    ${waiting.map(c => `<article class="card"><h3>${esc(c.name)}</h3><p class="muted small">${esc(charRoleName(c.role))}. New or changed seasons are awaiting approval.</p>${careerTableHtml(careerRows(c), { review: c.id })}</article>`).join('')}</section>`;
+}
+
+/* ---------------------------------------------------------------- the character page */
+/* F1 SIM seasons from the results: one row per series and season. */
+function simSeasons(personId) {
+  const by = new Map();
+  f1Record(personId).forEach(x => { const k = wSeries(x.w) + '|' + wSeason(x.w), o = by.get(k) || { sid: wSeries(x.w), sea: wSeason(x.w), starts: 0, wins: 0, podiums: 0, poles: 0, pts: 0, team: x.r.teamId };
+    o.pts += x.r.points || 0; o.team = x.r.teamId;
+    if (x.w.session === 'gp') { o.starts += 1; if (x.r.position === 1) o.wins += 1; if (x.r.position && x.r.position <= 3) o.podiums += 1; if (x.pole) o.poles += 1; }
+    by.set(k, o); });
+  return [...by.values()].map(o => {
+    const tally = new Map();
+    list('f1_weekends').filter(w => w.status === 'finished' && wSeries(w) === o.sid && wSeason(w) === o.sea).forEach(w => (w.results || []).forEach(r => {
+      const t = tally.get(r.personId) || { pts: 0, wins: 0 }; t.pts += r.points || 0; if (w.session !== 'sprint' && r.position === 1) t.wins += 1; tally.set(r.personId, t); }));
+    const order = [...tally.entries()].sort((a, b) => b[1].pts - a[1].pts || b[1].wins - a[1].wins).map(e => e[0]);
+    const sd = seasonDoc(o.sea);
+    return Object.assign(o, { pos: order.indexOf(personId) + 1, done: sd.status === 'archived', seasonName: sd.name, seriesName: seriesDoc(o.sid).name });
+  }).sort((a, b) => String(a.seasonName).localeCompare(String(b.seasonName)));
+}
+function careerRecordHtml(p, c) {
+  const sim = (p && (p.kind === 'driver' || !p.kind)) ? simSeasons(p.id) : [];
+  const own = !!(c && (c.userId === S.uid || S.isGm));
+  const rows = careerRows(c).filter(r => r.status === 'canon' || own);
+  if (!sim.length && !rows.length) return own && c && c.role === 'driver' ? `<section class="card career-record"><h2>Career record</h2><p class="muted">No seasons yet. Add their career before F1 SIM on the application page.</p><div class="btn-row"><button class="btn" data-act="char-open" data-id="${esc(c.id)}">Add a season</button></div></section>` : '';
+  const canon = rows.filter(r => r.status === 'canon');
+  const titles = canon.filter(r => String(r.pos) === '1').length + sim.filter(o => o.done && o.pos === 1).length;
+  const sum = k => canon.reduce((s, r) => s + (Number(r[k]) || 0), 0) + sim.reduce((s, o) => s + (o[k] || 0), 0);
+  const groups = CAREER_GROUPS.map(([g]) => [g, rows.filter(r => careerGroupOf(r.series) === g)]).filter(x => x[1].length);
+  return `<section class="card career-record"><h2>Career record</h2>
+    <div class="metrics"><div class="metric"><b>${titles}</b><span>${titles === 1 ? 'Title' : 'Titles'}</span></div><div class="metric"><b>${sum('starts')}</b><span>Starts</span></div><div class="metric"><b>${sum('wins')}</b><span>Wins</span></div><div class="metric"><b>${sum('podiums')}</b><span>Podiums</span></div><div class="metric"><b>${sum('poles')}</b><span>Poles</span></div></div>
+    ${sim.length ? `<h3>F1 SIM</h3><div class="scroll-x"><table class="data compact career"><thead><tr><th>Season</th><th>Series</th><th>Team</th><th class="num">Starts</th><th class="num">Wins</th><th class="num">Podiums</th><th class="num">Poles</th><th class="num">Points</th><th>Championship</th></tr></thead><tbody>
+      ${sim.map(o => `<tr><td>${esc(o.seasonName)}</td><td><b>${esc(o.seriesName)}</b></td><td><span class="f1-bar" style="background:${esc(f1Colour(o.team))}"></span>${esc((F1.team(o.team) || {}).name || '')}</td><td class="num">${o.starts}</td><td class="num">${o.wins}</td><td class="num">${o.podiums}</td><td class="num">${o.poles}</td><td class="num"><b>${o.pts}</b></td>
+        <td>${o.done && o.pos === 1 ? '<span class="tag trophy">Champion</span>' : o.pos ? `${ordinal(o.pos)}${o.done ? '' : ' <span class="muted small">so far</span>'}` : ''}</td></tr>`).join('')}</tbody></table></div>` : ''}
+    ${groups.map(([g, rs]) => `<h3>${esc(g)}</h3>${careerTableHtml(rs, { status: own })}`).join('')}
+    ${own && rows.some(r => r.status !== 'canon') ? '<p class="muted small">Only you and Race Control see seasons that aren’t canon yet.</p>' : ''}</section>`;
+}
+ACTIONS['char-open'] = d => { S.ui.charEdit = d.id; go('character'); };
+
+/* Race Control's queue also lists approved characters with seasons to check. */
+const _chargenQueueCareer = chargenQueueHtml;
+chargenQueueHtml = function () { return _chargenQueueCareer() + careerQueueHtml(); };
 
 /* =====================================================================
    F1 SIM — Home, Paddock, Race Control desk, accounts and backups.
