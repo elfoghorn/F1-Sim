@@ -1,4 +1,4 @@
-/* F1 SIM v1.0.9 (build f1sim-1.0.9): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v1.1.0 (build f1sim-1.1.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -919,7 +919,11 @@ const clone = o => o == null ? o : JSON.parse(JSON.stringify(o));
 const plural = (n, w, pl) => n + ' ' + (n === 1 ? w : (pl || w + 's'));
 const fmtDate = iso => iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
 const fmtWhen = iso => iso ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
-const list = col => Object.keys(S.store[col] || {}).map(id => Object.assign({}, S.store[col][id], { id }));
+const listAll = col => Object.keys(S.store[col] || {}).map(id => Object.assign({}, S.store[col][id], { id }));
+/* GP and Endurance are separate sections: these collections show only the current section's records (untagged ones are GP). */
+const DISC_COLS = { characters: 1, f1_posts: 1, f1_notices: 1, audit: 1, f1_relations: 1 };
+const docDisc = (col, d) => col === 'f1_relations' ? ((S.store.characters || {})[d.charId] || {}).discipline || d.discipline || 'gp' : d.discipline || 'gp';
+const list = col => { const all = listAll(col); return DISC_COLS[col] && S.disc ? all.filter(d => docDisc(col, d) === S.disc) : all; };
 const get = (col, id) => id && S.store[col] && S.store[col][id] ? Object.assign({}, S.store[col][id], { id }) : null;
 function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
 function lsSet(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { /* storage unavailable */ } }
@@ -952,6 +956,7 @@ const Data = {
   async put(col, id, data) {
     const bucket = S.store[col] = S.store[col] || {};
     const had = Object.prototype.hasOwnProperty.call(bucket, id), prev = bucket[id];
+    if (DISC_COLS[col] && col !== 'f1_relations' && !had && data && data.discipline === undefined) data = Object.assign({}, data, { discipline: S.disc || 'gp' });
     bucket[id] = clone(data);
     /* A new character is inserted, never upserted: an ID already in use is refused instead of overwriting someone else. */
     try { const ref = S.db.collection(col).doc(id); if (col === 'characters' && !had && ref.create) await ref.create(data); else await ref.set(data); }
@@ -1000,7 +1005,7 @@ const actingForOther = () => { const c = currentChar(); return !!(c && c.userId 
 const asOwner = () => { const c = currentChar(); return (c && c.userId) || S.uid; };
 function resolveChar() {
   const mine = myChars(), saved = lsGet('f1sim.char');
-  if (S.isGm) { const c = get('characters', saved); S.charId = c && !c.retired ? c.id : null; return; }
+  if (S.isGm) { const c = get('characters', saved); S.charId = c && !c.retired && (c.discipline || 'gp') === (S.disc || 'gp') ? c.id : null; return; }
   S.charId = (mine.find(c => c.id === saved) || mine[0] || {}).id || null;
 }
 
@@ -1173,9 +1178,9 @@ ACTIONS['ch-role-btn'] = d => {
 /* The character form's fields. skipRole=true omits the role tiles (newchar page renders them separately). */
 function charFormFields(f, skipRole) {
   const txt = (k, label, extra) => `<label class="field">${label}<input id="ch-${k}" type="text" data-bind="ui/form/ch/${k}" value="${esc(f[k] || '')}" ${extra || ''}></label>`;
-  return `<div class="ch-photo-row"><div class="ch-photo">${f.portraitUrl ? `<img src="${esc(f.portraitUrl)}" alt="The character's picture">` : '<span class="muted small">No picture yet</span>'}</div>
+  return `<div class="ch-photo-row"><div class="ch-photo">${f.portraitUrl ? `<img src="${esc(f.portraitUrl)}" alt="The character’s picture">` : '<span class="muted small">No picture yet</span>'}</div>
       <div><h3>Picture and face claim</h3><div class="btn-row"><label class="btn small file-btn">${f.portraitUrl ? 'Change the picture' : 'Upload a picture'}<input type="file" accept="image/*" class="sr-only" data-change="ch-portrait"></label>${f.portraitUrl ? '<button class="btn small ghost" data-act="ch-portrait-remove">Remove</button>' : ''}${S.ui.chUploading ? '<span class="muted small">Uploading…</span>' : ''}</div>
-      <p class="muted small">JPEG, PNG or WebP; a head-and-shoulders shot works best. It's saved with the character.</p>
+      <p class="muted small">JPEG, PNG or WebP; a head-and-shoulders shot works best. It’s saved with the character.</p>
       ${txt('faceclaim', 'Face claim', 'placeholder="Who the picture shows, e.g. the actor or model" autocomplete="off"')}</div></div>
     <div class="form-grid">
       ${txt('name', 'Name', 'autocomplete="off" required')}
@@ -1183,7 +1188,7 @@ function charFormFields(f, skipRole) {
       ${txt('nationality', 'Nationality', 'placeholder="e.g. Scottish"')}
       ${f.role === 'driver' ? txt('code', 'Three-letter code (drivers)', 'maxlength="3" placeholder="e.g. HAR"') + `<label class="field">Car number (drivers)<input id="ch-number" type="number" min="1" max="99" data-bind="ui/form/ch/number" data-type="number" value="${esc(f.number || '')}"></label>` : ''}
       ${txt('discord', 'Discord username (for @mentions)', 'autocomplete="off" placeholder="e.g. amelia.hart"')}
-      ${txt('nickname', 'Nickname (optional)')}${txt('birthplace', 'Where they\'re from (optional)')}
+      ${txt('nickname', 'Nickname (optional)')}${txt('birthplace', 'Where they’re from (optional)')}
     </div>
     <label class="field">Personality<textarea id="ch-personality" rows="4" maxlength="4000" data-bind="ui/form/ch/personality" placeholder="How they come across: temperament, quirks, how they handle pressure, the media and their team-mate">${esc(f.personality || '')}</textarea></label>
     <label class="field">Backstory<textarea id="ch-bio" rows="6" data-bind="ui/form/ch/bio" placeholder="Where they come from and how they got into the paddock">${esc(f.bio || '')}</textarea></label>
@@ -1197,7 +1202,7 @@ function charDrawerPrefHtml(f) {
   if (PREF_ROLES.indexOf(f.role || 'driver') === -1) return '';
   const tp = f.teamPref || {}, role = f.role === 'principal' ? 'principal' : f.role === 'engineer' ? 'engineer' : 'driver';
   const roleWord = { driver: 'seats', engineer: 'engineer posts', principal: 'principal post' }[role];
-  const sid = S.ui.newcharSeries || (tp.first ? ((get('f1_teams', tp.first) || {}).seriesId || 'f1') : 'f1');
+  const sid = S.ui.newcharSeries && allSeries().some(s => s.id === S.ui.newcharSeries) ? S.ui.newcharSeries : (tp.first ? ((get('f1_teams', tp.first) || {}).seriesId || 'f1') : curSeriesId());
   const seriesList = allSeries().filter(s => list('f1_teams').some(t => (t.seriesId || 'f1') === s.id));
   const teams = list('f1_teams').filter(t => (t.seriesId || 'f1') === sid).sort((a, b) => (a.order || 0) - (b.order || 0));
   if (!teams.length) return '';
@@ -1208,7 +1213,7 @@ function charDrawerPrefHtml(f) {
     const firstSeats = list('f1_seats').filter(s => s.teamId === tp.first && s.role === role).sort((a, b) => (a.order || 0) - (b.order || 0));
     if (firstSeats.length < 2) return '';
     return `<div class="field" style="margin-top:12px">Which seat<div class="role-tiles">
-      ${firstSeats.map((s, i) => `<button class="role-tile${tp.seat === s.id ? ' on' : ''}" data-act="ch-pref-seat" data-seat="${esc(s.id)}" type="button" aria-pressed="${tp.seat === s.id}">Seat ${i + 1}<span class="seat-status">${s.holderCharId ? 'held' : 'open'}</span></button>`).join('')}
+      ${firstSeats.map(s => `<button class="role-tile${tp.seat === s.id ? ' on' : ''}" data-act="ch-pref-seat" data-seat="${esc(s.id)}" type="button" aria-pressed="${tp.seat === s.id}">${esc(`Car ${s.car || 1}${s.slot ? ` · ${'ABCDEF'[s.slot - 1]}` : ''}`)}<span class="seat-status">${s.holderCharId ? 'held' : 'open'}</span></button>`).join('')}
       <button class="role-tile${!tp.seat ? ' on' : ''}" data-act="ch-pref-seat" data-seat="" type="button" aria-pressed="${!tp.seat}">No preference<span class="seat-status">&nbsp;</span></button>
     </div></div>`;
   })() : '';
@@ -1243,7 +1248,7 @@ route('newchar', 'New character', function () {
     <nav class="newchar-stepper" aria-label="Application steps">
       ${stepBtn(1, 'About them', true)}
       <span class="step-line" aria-hidden="true"></span>
-      ${stepBtn(2, 'Background & ratings', false)}
+      ${stepBtn(2, 'Background and ratings', false)}
       <span class="step-line" aria-hidden="true"></span>
       ${stepBtn(3, 'Submit to Race Control', false)}
     </nav>
@@ -1399,7 +1404,7 @@ ACTIONS['seat-open'] = d => { const s = get('f1_seats', d.id); if (!s) return;
   run(async () => { await Data.put('f1_seats', s.id, Object.assign(clone(S.store.f1_seats[s.id]), { open: !s.open })); }, s.open ? 'Seat closed to applications.' : 'Seat open for applications.'); };
 
 /* ---------------------------------------------------------------- applying for a seat */
-const seatTitle = s => s.role === 'principal' ? 'Team principal' : s.role === 'driver' ? `Driver, car ${s.car}` : `Race engineer, car ${s.car}`;
+const seatTitle = s => s.role === 'principal' ? 'Team principal' : s.role === 'driver' ? `Driver, car ${s.car}${s.slot ? ` (${'ABCDEF'[s.slot - 1]})` : ''}` : `Race engineer, car ${s.car}`;
 const ROLE_FOR_SEAT = { principal: ['principal'], driver: ['driver'], engineer: ['engineer'] };
 ACTIONS['seat-apply'] = d => {
   const c = currentChar(); if (!c) { toast('Create a character first, on Your characters.', true); return; }
@@ -3655,14 +3660,15 @@ const wSeries = w => w.seriesId || 'f1';
 const wSeason = w => w.seasonId || `${wSeries(w)}-1`;
 const recSeason = x => x.seasonId || `${(F1.team(x.teamId) || {}).seriesId || 'f1'}-1`;
 function adjustTrack(t, s, round) {
-  return Object.assign({}, t, { round, laps: Math.max(5, Math.round(t.laps * (s.lapFactor || 1))), sprintLaps: Math.max(4, Math.round(t.laps * (s.sprintFactor || 0.33))), hasSprint: s.sprintEvery ? true : t.hasSprint });
+  const ev = (s.events || {})[t.id];
+  return Object.assign({}, t, ev ? { name: ev[0], raceLength: ev[1] } : {}, { round, laps: Math.max(5, Math.round(t.laps * (s.lapFactor || 1))), sprintLaps: Math.max(4, Math.round(t.laps * (s.sprintFactor || 0.33))), hasSprint: s.sprintEvery ? true : t.hasSprint });
 }
 /* The rest of the app reads everything through these, so the whole site follows the series switch. */
 Object.assign(F1, {
   teams: () => list('f1_teams').filter(t => (t.seriesId || 'f1') === curSeriesId()).sort((a, b) => (a.order || 0) - (b.order || 0)),
   seats: teamId => { const ids = teamId ? null : new Set(F1.teams().map(t => t.id)); return list('f1_seats').filter(s => teamId ? s.teamId === teamId : ids.has(s.teamId)).sort((a, b) => (a.order || 0) - (b.order || 0)); },
   tracks: () => { const s = curSeries(), all = list('f1_tracks').sort((a, b) => (a.round || 0) - (b.round || 0)), cal = s.calendar;
-    return (cal && cal.length ? cal.map(id => all.find(t => t.id === id)).filter(Boolean) : all).map((t, i) => adjustTrack(t, s, i + 1)); },
+    return (cal && cal.length ? cal.map(id => all.find(t => t.id === id)).filter(Boolean) : all.filter(t => (t.discipline || 'gp') === 'gp')).map((t, i) => adjustTrack(t, s, i + 1)); },
   track: id => { const t = get('f1_tracks', id); if (!t) return null; const s = curSeries(), cal = s.calendar || [], i = cal.indexOf(id); return adjustTrack(t, s, cal.length ? (i >= 0 ? i + 1 : '') : t.round); },
   weekends: () => list('f1_weekends').filter(w => wSeries(w) === curSeriesId() && wSeason(w) === curSeasonId()).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))),
   allWeekends: () => list('f1_weekends').sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))),
@@ -3828,7 +3834,7 @@ route('series', 'Series', function () {
   return `<div class="page-head"><div><h1>Series</h1><p>Run several series side by side. Each has its own teams, seats, calendar, points and rules; characters can hold one seat in each, and keep their ratings everywhere.</p></div></div>
     <section class="card"><h2>Running now</h2><table class="data"><tbody>${all.map(s => `<tr><td><span class="f1-bar" style="background:${esc(s.color)}"></span><b>${esc(s.name)}</b> <span class="muted">${esc(s.short)}</span></td>
       <td>${esc(seasonDoc(curSeasonId(s.id)).name)} season${seasonDoc(curSeasonId(s.id)).status === 'archived' ? ' (catalogued)' : ''}</td><td class="muted small">${esc(s.blurb || '')}</td></tr>`).join('')}</tbody></table></section>
-    <section class="card"><h2>Add a series</h2><div class="cards">${Object.keys(SERIES_TEMPLATES).filter(k => k !== 'f1' && !get('f1_series', k)).map(k => { const t = SERIES_TEMPLATES[k];
+    <section class="card"><h2>Add a series</h2><div class="cards">${Object.keys(SERIES_TEMPLATES).filter(k => k !== 'f1' && !get('f1_series', k) && (SERIES_TEMPLATES[k].discipline || 'gp') === 'gp').map(k => { const t = SERIES_TEMPLATES[k];
       return `<article class="card" style="--team:${esc(t.color)}"><h3>${esc(t.name)}</h3><p>${esc(t.blurb)}</p><p class="muted small">${t.teams.length} teams, ${t.carsPerTeam} cars each. ${t.quali === 'single' ? 'One qualifying session.' : ''} ${t.mandatoryStop ? 'A pit stop is required.' : 'No pit stops.'} Races ${Math.round(t.lapFactor * 100)}% of F1 distance; sprints too.</p>
         <button class="btn small primary" data-act="series-add" data-key="${k}">Set up ${esc(t.short)}</button></article>`; }).join('') || '<p class="muted">Formula 2 and Formula 3 are set up.</p>'}</div>
       <h3 style="margin-top:16px">Or build your own</h3><div class="form-grid">
@@ -7269,7 +7275,8 @@ function approvalSeats(c) {
 function defaultApprovalSeat(c) {
   const held = list('f1_seats').find(s => s.holderCharId === c.id && SEAT_ROLE[c.role] === s.role); if (held) return held.id;
   const opts = approvalSeats(c).filter(o => o.free), p = c.teamPref || {};
-  const pick = (p.first && opts.find(o => o.t.id === p.first)) || (p.second && opts.find(o => o.t.id === p.second)) || (p.any && opts[0]);
+  /* The seat the player picked comes first, if it's still free. */
+  const pick = (p.seat && opts.find(o => o.s.id === p.seat)) || (p.first && opts.find(o => o.t.id === p.first)) || (p.second && opts.find(o => o.t.id === p.second)) || (p.any && opts[0]);
   return pick ? pick.s.id : '';
 }
 const chosenApprovalSeat = c => { const f = S.ui.form.approveSeat || {}; return Object.prototype.hasOwnProperty.call(f, c.id) ? f[c.id] : defaultApprovalSeat(c); };
@@ -7918,20 +7925,21 @@ const seatApps = s => list('f1_applications').filter(a => a.seatId === s.id && a
 const seatInterest = s => list('f1_applications').filter(a => a.seatId === s.id && a.status === 'interest');
 function gridCols(teams) {
   const seats = teams.flatMap(t => F1.seats(t.id)), cars = r => [...new Set(seats.filter(s => s.role === r).map(s => s.car || 1))].sort((a, b) => a - b);
-  return cars('driver').map(c => ['driver', c, `Car ${c}`]).concat([['principal', null, 'Team principal']]).concat(cars('engineer').map(c => ['engineer', c, `Car ${c}`]));
+  const crews = [...new Set(seats.filter(s => s.role === 'driver').map(s => `${s.car || 1}:${s.slot || 0}`))].map(k => k.split(':').map(Number)).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  return crews.map(([c, sl]) => ['driver', c, sl ? `Car ${c} · ${'ABCDEF'[sl - 1]}` : `Car ${c}`, sl]).concat([['principal', null, 'Team principal', 0]]).concat(cars('engineer').map(c => ['engineer', c, `Car ${c}`, 0]));
 }
-const seatFor = (tid, role, car) => F1.seats(tid).find(s => s.role === role && (role === 'principal' || (s.car || 1) === car));
+const seatFor = (tid, role, car, slot) => F1.seats(tid).find(s => s.role === role && (role === 'principal' || ((s.car || 1) === car && (role !== 'driver' || (s.slot || 0) === (slot || 0)))));
 
 /* ---------------------------------------------------------------- a seat chip */
 function chipHtml(s) {
   const st = seatState(s), o = f1Occupant(s), pid = o.person ? o.person.id : null, c = o.charId ? get('characters', o.charId) : null, pic = personPic(pid, c);
   const me = currentChar(), apps = seatApps(s), ints = seatInterest(s), mineApp = me && apps.find(a => a.charId === me.id);
-  const name = st === 'V' ? 'Vacant post' : !o.person && !o.charId ? 'Open post' : o.name;
+  const name = st === 'V' ? 'Vacant post' : !o.person && !o.charId ? (s.role === 'driver' ? 'Open seat' : 'Open post') : o.name;
   const sub = st === 'P' ? `Player${c && c.number && s.role === 'driver' ? ' · #' + c.number : ''}${S.charId && s.holderCharId === S.charId ? ' · You' : ''}`
     : st === 'O' ? `Open${apps.length ? ` · ${apps.length} applied` : ''}${S.isGm && ints.length ? ` · ${ints.length} interested` : ''}`
     : st === 'R' ? `Real ${s.role === 'driver' ? 'driver' : s.role === 'principal' ? 'principal' : 'engineer'}${S.isGm && ints.length ? ` · ${ints.length} interested` : ''}` : (S.isGm && ints.length ? `${ints.length} interested` : '');
   const face = `<span class="gc-face">${pic ? `<img src="${esc(pic)}" alt="">` : esc(st === 'V' || (!o.person && !o.charId) ? '+' : initials(name))}</span>`;
-  const body = `${face}<span class="gc-txt"><em class="gc-role">${esc(s.role === 'driver' ? `Driver ${s.car || 1}` : s.role === 'principal' ? 'Team principal' : `Engineer ${s.car || 1}`)}</em><b>${esc(name)}</b><small>${esc(sub)}</small></span>`;
+  const body = `${face}<span class="gc-txt"><em class="gc-role">${esc(s.role === 'driver' ? `Driver ${s.car || 1}${s.slot ? 'ABCDEF'[s.slot - 1] : ''}` : s.role === 'principal' ? 'Team principal' : `Engineer ${s.car || 1}`)}</em><b>${esc(name)}</b><small>${esc(sub)}</small></span>`;
   const label = `${seatTitle(s)}, ${F1.team(s.teamId).name}: ${name}, ${STATE_NAME[st].toLowerCase()}`;
   if (S.isGm) return `<button class="gc gc-${st}" data-act="seat-edit" data-id="${esc(s.id)}" aria-label="${esc(label)}. Change">${body}</button>`;
   const roleOk = me && SEAT_ROLE_OF[me.role] === s.role && charApproved(me) && !s.holderCharId;
@@ -7952,14 +7960,14 @@ function wholeGridHtml(teams) {
     [`${held('engineer')} of ${cnt('engineer').length}`, 'Race engineers are players', `${open('engineer')} open for applications${cnt('engineer').filter(s => !s.holderCharId && !s.defaultPersonId && !s.open).length ? `, ${cnt('engineer').filter(s => !s.holderCharId && !s.defaultPersonId && !s.open).length} vacant` : ''}`],
     [String(pending), 'Applications waiting', S.isGm ? 'Click a seat to decide' : 'Race Control decides']];
   const rows = teams.map(t => { const st = standingsFor(t.seriesId || 'f1', curSeasonId(t.seriesId || 'f1')), i = st.teams.findIndex(x => x.teamId === t.id);
-    const cells = cols.map(([r, car], ci) => { const cls = `g-${r}${ci === 0 || cols[ci - 1][0] !== r ? ' g-first' : ''}`, s = seatFor(t.id, r, car); if (!s) return `<td class="${cls}"></td>`; if (openOnly && !s.open) return `<td class="${cls}"><span class="gc-dim">–</span></td>`; return `<td class="${cls}">${chipHtml(s)}</td>`; }).join('');
-    if (openOnly && !cols.some(([r, car]) => (seatFor(t.id, r, car) || {}).open)) return '';
+    const cells = cols.map(([r, car, , sl], ci) => { const cls = `g-${r}${ci === 0 || cols[ci - 1][0] !== r ? ' g-first' : ''}`, s = seatFor(t.id, r, car, sl); if (!s) return `<td class="${cls}"></td>`; if (openOnly && !s.open) return `<td class="${cls}"><span class="gc-dim">–</span></td>`; return `<td class="${cls}">${chipHtml(s)}</td>`; }).join('');
+    if (openOnly && !cols.some(([r, car, , sl]) => (seatFor(t.id, r, car, sl) || {}).open)) return '';
     return `<tr><th scope="row" class="gt-team" style="--team:${esc(f1Colour(t.id))}"><button class="link-btn" data-act="team-open" data-id="${esc(t.id)}"><b>${esc(t.name)}</b></button><small>${esc(engineLabel(t.id))}${i >= 0 ? ` · P${i + 1}` : ''}</small>${S.isGm ? `<button class="btn small ghost gt-car" data-act="car-edit" data-id="${esc(t.id)}">Car</button>` : ''}</th>${cells}</tr>`; }).join('');
   return `<div class="grid-tools"><div class="seg" role="tablist" aria-label="Seats">${[['all', 'All seats'], ['driver', 'Drivers'], ['principal', 'Team principals'], ['engineer', 'Race engineers']].map(([k, l]) => `<button role="tab" aria-selected="${role === k}" data-act="grid-role" data-r="${k}">${esc(l)}</button>`).join('')}</div>
       <label class="grid-openonly"><input type="checkbox" data-change="grid-open" ${openOnly ? 'checked' : ''}> Open seats only</label></div>
     <div class="metrics grid-tiles">${tiles.map(([v, k, s]) => `<div class="metric"><b>${esc(v)}</b><span>${esc(k)}</span><small class="muted">${esc(s)}</small></div>`).join('')}</div>
     <div class="grid-key">${['P', 'O', 'R', 'V'].map(k => `<span><i class="gk gk-${k}"></i>${esc({ P: 'Player', O: 'Open seat: taking applications', R: 'Real person (not open)', V: 'Vacant post' }[k])}</span>`).join('')}</div>
-    <div class="scroll-x grid-table-wrap"><table class="grid-table"><thead><tr class="g-groups"><th rowspan="2">Team</th>${[['driver', 'Drivers'], ['principal', 'Team principal'], ['engineer', 'Race engineers']].map(([r, l]) => { const n = cols.filter(c => c[0] === r).length; return n ? `<th colspan="${n}" class="g-${r} g-first">${esc(l)}</th>` : ''; }).join('')}</tr><tr>${cols.map((c, ci) => `<th class="g-${c[0]}${ci === 0 || cols[ci - 1][0] !== c[0] ? ' g-first' : ''}">${esc(c[0] === 'principal' ? '' : c[2])}</th>`).join('')}</tr></thead><tbody>${rows || `<tr><td colspan="${cols.length + 1}" class="muted">No open seats right now.</td></tr>`}</tbody></table></div>
+    <div class="scroll-x grid-table-wrap"><table class="grid-table" style="min-width:${220 + cols.length * 165}px"><thead><tr class="g-groups"><th rowspan="2">Team</th>${[['driver', 'Drivers'], ['principal', 'Team principal'], ['engineer', 'Race engineers']].map(([r, l]) => { const n = cols.filter(c => c[0] === r).length; return n ? `<th colspan="${n}" class="g-${r} g-first">${esc(l)}</th>` : ''; }).join('')}</tr><tr>${cols.map((c, ci) => `<th class="g-${c[0]}${ci === 0 || cols[ci - 1][0] !== c[0] ? ' g-first' : ''}">${esc(c[0] === 'principal' ? '' : c[2])}</th>`).join('')}</tr></thead><tbody>${rows || `<tr><td colspan="${cols.length + 1}" class="muted">No open seats right now.</td></tr>`}</tbody></table></div>
     <p class="muted small">${S.isGm ? 'Click any seat to put a character in it, hand it back to the real person, or open it for applications.' : 'Open seats taking applications for your role have an Apply button. Click anyone to see their page.'}</p>`;
 }
 
@@ -8047,9 +8055,9 @@ async function drawGridImage(sid) {
     g.fillStyle = GC[r][0]; g.fillRect(x0, top - 64, w, 4); g.font = bodyF(700, 20); g.fillText(GC[r][1], x0, top - 72); if (idx[0] > 0) { g.fillStyle = '#565A63'; g.fillRect(x0 - 6, top - 60, 2, rowH * teams.length + 56); } });
   g.font = bodyF(600, 17); g.fillStyle = T.muted; cols.forEach((c, i) => g.fillText(c[0] === 'principal' ? '' : c[2], 50 + teamW + i * cw + 8, top - 14));
   teams.forEach((t, r) => { const y = top + r * rowH; g.fillStyle = f1Colour(t.id); g.fillRect(50, y + 4, 8, rowH - 8); g.fillStyle = '#FFFFFF'; fitText(g, t.name, z => cond(700, z), 30, teamW - 30); g.fillText(t.name, 70, y + rowH / 2 + 10);
-    cols.forEach(([role, car], i) => { const s = seatFor(t.id, role, car); if (!s) return; const st = seatState(s), o = f1Occupant(s), x = 50 + teamW + i * cw + 4, w = cw - 8, h = rowH - 8;
+    cols.forEach(([role, car, , sl], i) => { const s = seatFor(t.id, role, car, sl); if (!s) return; const st = seatState(s), o = f1Occupant(s), x = 50 + teamW + i * cw + 4, w = cw - 8, h = rowH - 8;
       g.fillStyle = KEY[st][0]; g.fillRect(x, y + 4, w, h); g.strokeStyle = KEY[st][1]; g.lineWidth = st === 'P' || st === 'O' ? 3 : 1; g.strokeRect(x + 1, y + 5, w - 2, h - 2);
-      const nm = st === 'V' ? '–' : !o.person && !o.charId ? 'Open post' : o.name; g.fillStyle = st === 'V' ? '#8A8F98' : '#FFFFFF'; fitText(g, nm, z => bodyF(700, z), 22, w - 20); g.fillText(nm, x + 10, y + 4 + h / 2 + (st === 'V' ? 8 : 0));
+      const nm = st === 'V' ? '–' : !o.person && !o.charId ? (role === 'driver' ? 'Open seat' : 'Open post') : o.name; g.fillStyle = st === 'V' ? '#8A8F98' : '#FFFFFF'; fitText(g, nm, z => bodyF(700, z), 22, w - 20); g.fillText(nm, x + 10, y + 4 + h / 2 + (st === 'V' ? 8 : 0));
       if (st !== 'V') { g.font = bodyF(500, 15); g.fillStyle = st === 'P' ? '#FF8A80' : st === 'O' ? '#7CD69C' : '#A7ABB3'; g.fillText(st === 'O' ? 'Open for applications' : KEY[st][2], x + 10, y + 4 + h / 2 + 22); } }); });
   g.font = bodyF(500, 18); g.fillStyle = T.muted; g.textAlign = 'right'; g.fillText(`Updated ${stampText()}`, W - 50, H - 26); g.textAlign = 'left';
   return new Promise(ok => cv.toBlob(ok, 'image/png'));
@@ -8101,22 +8109,24 @@ const INDY = ['IndyCar', 'Indy NXT', 'Indy Lights'];
 const catSeries = group => group === 'Indy' ? INDY.slice() : ((CAREER_GROUPS.find(g => g[0] === group) || [])[1] || []).filter(x => x !== 'Other' && (group !== 'Single-seaters' || INDY.indexOf(x) === -1));
 const catOfChamp = name => { if (INDY.indexOf(name) !== -1) return 'indy'; const g = CAREER_GROUPS.find(x => x[1].indexOf(name) !== -1); const c = g && NAV_CATS.find(k => k[2] === g[0]); return c ? c[0] : 'formula'; };
 function onRecord(name) { return list('characters').filter(c => !c.retired && charApproved(c) && careerRows(c).some(r => r.status === 'canon' && seriesLabel(r) === name)).length; }
-function activeCat() { if (S.route === 'endurance') return 'endurance'; return S.route === 'champ' && S.ui.champ && S.ui.champ.kind === 'canon' ? catOfChamp(S.ui.champ.key) : 'formula'; }
+function activeCat() { const rec = S.route === 'champ' && S.ui.champ && S.ui.champ.kind === 'canon' ? catOfChamp(S.ui.champ.key) : null; if (rec) return rec; return S.disc === 'endurance' ? 'endurance' : 'formula'; }
 function topNavHtml() {
-  const league = allSeries().length ? allSeries() : [curSeries()], cur = curSeriesId(), act = activeCat(), leagueNames = new Set(league.map(s => s.name));
+  const gpAll = typeof allSeriesIn === 'function' ? allSeriesIn('gp') : allSeries(), league = gpAll.length ? gpAll : [seriesDoc('f1')], endAll = typeof allSeriesIn === 'function' ? allSeriesIn('endurance') : [];
+  const cur = curSeriesId(), act = activeCat(), leagueNames = new Set(league.concat(endAll).map(s => s.name)), gpCur = S.disc === 'gp' ? curSeries() : seriesDoc((S.seriesBy || {}).gp || 'f1');
   const champBtn = name => { const n = onRecord(name), on = act !== 'formula' && S.ui.champ && S.ui.champ.key === name;
     return `<button class="tn-item ${on ? 'on' : ''}" data-act="champ-open" data-kind="canon" data-key="${esc(name)}"><span>${esc(name)}</span><small>${n ? plural(n, 'character') + ' on record' : 'No records yet'}</small></button>`; };
-  return `<nav class="topnav" aria-label="Championships">${NAV_CATS.map(([k, label, group]) => {
+  return `<span class="sec-pill ${esc(S.disc || 'gp')}" title="The section you’re in">${esc(S.disc === 'endurance' ? 'Endurance' : 'GP')}</span><nav class="topnav" aria-label="Championships">${NAV_CATS.map(([k, label, group]) => {
     const on = act === k, others = catSeries(group).filter(n => !leagueNames.has(n));
-    const sum = k === 'formula' ? `${esc(label)}<b>${esc(curSeries().name)}</b>` : `${esc(label)}${on && S.route === 'endurance' ? '<b>Simulator</b>' : on && S.ui.champ ? `<b>${esc(S.ui.champ.key)}</b>` : ''}`;
+    const sum = k === 'formula' ? `${esc(label)}<b>${esc(gpCur.name)}</b>` : k === 'endurance' && S.disc === 'endurance' && act === 'endurance' ? `${esc(label)}<b>${esc(S.route === 'endurance' ? 'Roadmap' : endAll.some(x => x.id === cur) ? curSeries().short || curSeries().name : 'Section')}</b>` : `${esc(label)}${on && S.ui.champ ? `<b>${esc(S.ui.champ.key)}</b>` : ''}`;
     const panel = k === 'formula'
-      ? `<p class="tn-h">Racing in F1 SIM</p>${league.map(s => `<button class="tn-item ${s.id === cur && act === 'formula' ? 'on' : ''}" data-act="nav-series" data-id="${esc(s.id)}"><span><i style="background:${esc(s.color || '#E10600')}"></i>${esc(s.name)}</span><small>${s.id === cur ? 'Showing now' : 'Switch the site to it'}</small></button>`).join('')}
-        ${S.isGm ? '<button class="tn-item tn-link" data-act="nav" data-route="series"><span>Set up a series</span></button>' : ''}
+      ? `<p class="tn-h">Racing in F1 SIM</p>${league.map(s => `<button class="tn-item ${S.disc === 'gp' && s.id === cur && act === 'formula' ? 'on' : ''}" data-act="nav-series" data-disc="gp" data-id="${esc(s.id)}"><span><i style="background:${esc(s.color || '#E10600')}"></i>${esc(s.name)}</span><small>${S.disc === 'gp' && s.id === cur ? 'Showing now' : 'Switch the site to it'}</small></button>`).join('')}
+        ${S.isGm ? '<button class="tn-item tn-link" data-act="disc-go" data-disc="gp" data-route="series"><span>Set up a series</span></button>' : ''}
         <p class="tn-h">Other championships <span>career records</span></p>${others.map(champBtn).join('')}`
-      : (k === 'endurance' ? `<p class="tn-h">The simulator</p><button class="tn-item tn-sim ${S.route === 'endurance' ? 'on' : ''}" data-act="nav" data-route="endurance"><span>Endurance racing</span><small>In development · roadmap and the 2027 WEC</small></button><p class="tn-h">Championships <span>career records</span></p>` : `<p class="tn-note">Not raced in F1 SIM yet. Each opens its leaderboard and champions from characters’ career records.</p>`) + others.map(champBtn).join('');
+      : (k === 'endurance' ? `<p class="tn-h">Racing in F1 SIM</p>${endAll.map(x => `<button class="tn-item ${S.disc === 'endurance' && x.id === cur && S.route !== 'endurance' ? 'on' : ''}" data-act="disc-go" data-disc="endurance" data-id="${esc(x.id)}"><span><i style="background:${esc(x.color || '#0A4DA2')}"></i>${esc(x.name)}</span><small>${S.disc === 'endurance' && x.id === cur ? 'Showing now' : 'Go to the Endurance section'}</small></button>`).join('') || `<button class="tn-item" data-act="disc-go" data-disc="endurance" data-route="home"><span>The Endurance section</span><small>No endurance series yet</small></button>`}${S.isGm ? '<button class="tn-item tn-link" data-act="disc-go" data-disc="endurance" data-route="series"><span>Set up a series</span></button>' : ''}<button class="tn-item tn-sim ${S.route === 'endurance' ? 'on' : ''}" data-act="disc-go" data-disc="endurance" data-route="endurance"><span>The endurance simulator</span><small>Roadmap and the 2027 WEC</small></button><p class="tn-h">Championships <span>career records</span></p>` : `<p class="tn-note">Not raced in F1 SIM yet. Each opens its leaderboard and champions from characters’ career records.</p>`) + others.map(champBtn).join('');
     return `<details class="tn-menu ${on ? 'on' : ''}"><summary>${sum}</summary><div class="tn-panel" role="menu">${panel}</div></details>`; }).join('')}</nav>`;
 }
 ACTIONS['nav-series'] = d => {
+  if (d.disc && d.disc !== S.disc && typeof switchDisc === 'function') { switchDisc(d.disc, d.id); return; }
   CHANGES['series-switch'](d.id); S.ui.teamsSeries = null;
   if (['champ', 'teamview', 'career', 'character', 'series'].indexOf(S.route) !== -1) go('grid'); else render();
 };
@@ -8306,8 +8316,8 @@ const WEC_2027 = [['Prologue', 'Official Prologue (group test)', 'Lusail, Qatar'
   ['3', '6 Hours of Silverstone', 'Silverstone, Britain', '23–25 April', '6 hours'], ['4', '6 Hours of Spa-Francorchamps', 'Spa, Belgium', '13–15 May', '6 hours'], ['5', '24 Hours of Le Mans', 'Circuit de la Sarthe, France', '9–13 June', '24 hours'],
   ['6', '6 Hours of São Paulo', 'Interlagos, Brazil', '9–11 July', '6 hours'], ['7', 'Lone Star Le Mans', 'Circuit of the Americas, USA', '10–12 September', '6 hours'], ['8', '6 Hours of Fuji', 'Fuji Speedway, Japan', '24–26 September', '6 hours'], ['9', '8 Hours of Bahrain', 'Bahrain', '4–6 November', '8 hours']];
 const ENDURANCE_PHASES = [
-  ['1', 'The Endurance section', 'This page, the menu entry, the roadmap, the 2027 WEC season and classes, and the endurance career records.', 'done'],
-  ['2', 'Endurance series and grid', 'A WEC series: Hypercar and LMGT3 classes, real teams and cars, three drivers per car, team principals and engineers, driver ratings by category (Platinum to Bronze), the calendar with race lengths, and the grid, teams and characters working for it.', 'next'],
+  ['1', 'The Endurance section', 'The menu entry, the roadmap, the 2027 WEC season and classes, and the endurance career records.', 'done'],
+  ['2', 'Endurance series and grid', 'In place: the Endurance section as its own copy of the site (its own series, characters, paddock, connections and records), the FIA WEC 2027 Hypercar entry with three-driver crews, and its calendar and Prologue. Still to come: LMGT3, real driver line-ups and driver categories (Platinum to Bronze).', 'next'],
   ['3', 'The endurance race engine', 'Timed races (6, 8, 10 or 24 hours), several classes on track at once with traffic and passing, fuel and tyre stints, driver stints and maximum drive time, day and night, weather through the race, slow zones, full-course yellows and safety cars, and Balance of Performance.', 'later'],
   ['4', 'The endurance race weekend', 'Practice, Hyperpole qualifying, a race in hours shown live, and the pit wall: stint plans, driver changes, fuel and tyre calls, and night running, with the three involvement levels.', 'later'],
   ['5', 'Le Mans and the other events', 'The 24 Hours of Le Mans with Test Day and LMP2, the Qatar 1812km, and a lighter European Le Mans Series and IMSA.', 'later'],
@@ -8379,9 +8389,9 @@ async function purgeIds(ids, names) {
   for (const [col, id] of sc.remove) await Data.remove(col, id);
   for (const [col, id] of sc.edit) { const [nd, ch] = pruneDeep(clone(S.store[col][id]), ids); if (ch) await Data.put(col, id, nd); }
   /* Activity log lines naming them, unless another character still has that name. */
-  const keep = new Set(list('characters').map(c => String(c.name).trim().toLowerCase()));
+  const keep = new Set(listAll('characters').map(c => String(c.name).trim().toLowerCase()));
   for (const nm of names.filter(n => n && !keep.has(String(n).trim().toLowerCase())))
-    for (const a of list('audit').filter(x => String(x.text || '').indexOf(nm) !== -1)) await Data.remove('audit', a.id);
+    for (const a of listAll('audit').filter(x => String(x.summary || x.text || '').indexOf(nm) !== -1)) await Data.remove('audit', a.id);
   return sc;
 }
 
@@ -8404,7 +8414,7 @@ ACTIONS['chdel-run'] = () => {
 
 /* ---------------------------------------------------------------- leftovers from characters that no longer exist */
 function findOrphans() {
-  const live = new Set(list('characters').map(c => c.id)), found = new Map();
+  const live = new Set(listAll('characters').map(c => c.id)), found = new Map();
   const note = (cid, name) => { if (!cid || live.has(cid)) return; const o = found.get(cid) || { id: cid, names: new Set() }; if (name) o.names.add(String(name)); found.set(cid, o); };
   const walk = v => { if (Array.isArray(v)) return v.forEach(walk); if (!v || typeof v !== 'object') return;
     if (typeof v.charId === 'string') note(v.charId, v.name || v.charName || v.holderName);
@@ -8440,6 +8450,93 @@ ROUTES.character.view = function () {
   return h + `<p class="muted small char-id">Character ID: <code>${esc(c.id)}</code> <button class="btn small ghost" data-act="copy-text" data-text="${esc(c.id)}">Copy</button></p>`;
 };
 if (!ACTIONS['copy-text']) ACTIONS['copy-text'] = d => { try { navigator.clipboard.writeText(d.text); toast('Copied.'); } catch (e) { toast('Couldn’t copy: select it instead.', true); } };
+
+/* =====================================================================
+   F1 SIM — separate sections: GP and Endurance.
+   The section is the top-level context. Each section has its own
+   series, characters, paddock posts, connections, notifications and
+   activity; every page works the same in both, showing only that
+   section's records. Only the top bar moves between sections. The
+   endurance race simulator itself comes in Phases 3 and 4: until then
+   Race Weekend, the Test Track and Team HQ say so in Endurance.
+   ===================================================================== */
+'use strict';
+
+S.disc = lsGet('f1sim.disc') === 'endurance' ? 'endurance' : 'gp';
+S.seriesBy = (() => { try { return JSON.parse(lsGet('f1sim.seriesBy') || '{}') || {}; } catch (e) { return {}; } })();
+const DISC_NAME = { gp: 'GP', endurance: 'Endurance' };
+const seriesDisc = s => (s && (s.discipline || (SERIES_TEMPLATES[s.template || s.id] || {}).discipline)) || 'gp';
+const _allSeriesEvery = allSeries;
+const allSeriesIn = d => _allSeriesEvery().filter(s => seriesDisc(s) === d);
+allSeries = function () { return allSeriesIn(S.disc || 'gp'); };
+function ensureDisc() {
+  const ids = allSeries().map(s => s.id);
+  if (ids.indexOf(S.series) === -1) S.series = ids.indexOf(S.seriesBy[S.disc]) !== -1 ? S.seriesBy[S.disc] : (ids[0] || (S.disc === 'endurance' ? 'wec' : 'f1'));
+  const c = S.charId && get('characters', S.charId); if (c && (c.discipline || 'gp') !== S.disc) resolveChar();
+}
+function switchDisc(d, sid, route) {
+  if (d !== 'gp' && d !== 'endurance') return;
+  S.seriesBy[S.disc] = S.series; S.seriesBy[d] = sid || S.seriesBy[d]; lsSet('f1sim.seriesBy', JSON.stringify(S.seriesBy));
+  S.disc = d; lsSet('f1sim.disc', d); S.series = null; S.ui.teamsSeries = null; S.ui.histChamp = null; S.ui.teamId = null; S.ui.f1view = null; S.ui.gridTab = null; S.ui.standView = null;
+  ensureDisc(); if (sid) { S.series = sid; lsSet('f1sim.series', sid); }
+  resolveChar(); go(route || 'home');
+}
+ACTIONS['disc-go'] = d => switchDisc(d.disc, d.id || null, d.route || null);
+const _renderDisc = render;
+render = function () { ensureDisc(); return _renderDisc.apply(this, arguments); };
+
+/* ---------------------------------------------------------------- FIA WEC 2027, Hypercar */
+SERIES_TEMPLATES.wec = { name: 'FIA World Endurance Championship', short: 'WEC', color: '#0A4DA2', discipline: 'endurance', firstSeason: '2027', level: 'elite', carsPerTeam: 2, crew: 3,
+  points: [25, 18, 15, 12, 10, 8, 6, 4, 2, 1], lapFactor: 1, teams: [], calendar: ['qatar', 'imola', 'britain', 'belgium', 'lemans', 'brazil', 'usa', 'fuji', 'bahrain'] };
+/* Event names and lengths, and race days, from the FIA WEC calendar published on 12 June 2026. */
+const WEC_EVENTS = { qatar: ['Qatar 1812km', '1812 km'], imola: ['6 Hours of Imola', '6 hours'], britain: ['6 Hours of Silverstone', '6 hours'], belgium: ['6 Hours of Spa-Francorchamps', '6 hours'],
+  lemans: ['24 Hours of Le Mans', '24 hours'], brazil: ['6 Hours of São Paulo', '6 hours'], usa: ['Lone Star Le Mans', '6 hours'], fuji: ['6 Hours of Fuji', '6 hours'], bahrain: ['8 Hours of Bahrain', '8 hours'] };
+const WEC_DATES = { qatar: '2027-03-27', imola: '2027-04-11', britain: '2027-04-25', belgium: '2027-05-15', lemans: '2027-06-12', brazil: '2027-07-11', usa: '2027-09-12', fuji: '2027-09-26', bahrain: '2027-11-06' };
+/* Circuits that only endurance racing visits here. */
+const END_TRACKS = [['imola', 'Emilia-Romagna', 'Autodromo Enzo e Dino Ferrari, Imola', '🇮🇹', 4.909], ['lemans', 'Le Mans', 'Circuit de la Sarthe', '🇫🇷', 13.626], ['fuji', 'Fuji', 'Fuji Speedway', '🇯🇵', 4.563]];
+/* The Hypercar entrants for 2027 as announced so far: manufacturer teams and AF Corse's customer Ferrari. Race Control can rename teams from The Grid. */
+const WEC_TEAMS = [['toyota', 'Toyota Gazoo Racing', 'Toyota', '#EB0A1E', 2], ['ferrari', 'Ferrari AF Corse', 'Ferrari', '#DC0000', 2], ['afcorse', 'AF Corse', 'Ferrari', '#F2C200', 1],
+  ['cadillac', 'Cadillac Hertz Team Jota', 'Cadillac', '#C9A227', 2], ['bmw', 'BMW M Team WRT', 'BMW', '#1C69D4', 2], ['alpine', 'Alpine Endurance Team', 'Alpine', '#0093CC', 2],
+  ['peugeot', 'Peugeot TotalEnergies', 'Peugeot', '#7A8C3C', 2], ['aston', 'Aston Martin THOR Team', 'Aston Martin', '#00665E', 2], ['genesis', 'Genesis Magma Racing', 'Genesis', '#8A2BE2', 2],
+  ['ford', 'Ford Racing', 'Ford', '#0B3D91', 2], ['mclaren', 'McLaren United Autosports', 'McLaren', '#FF8000', 2]];
+function wecRows() {
+  const rows = [], key = 'wec';
+  rows.push(['f1_series', key, { template: key, discipline: 'endurance', activeSeason: `${key}-1`, calendar: SERIES_TEMPLATES.wec.calendar.slice(), events: WEC_EVENTS, dates: WEC_DATES, classes: ['hypercar'], crew: 3,
+    tests: [{ id: 't1', name: 'Official Prologue', trackId: 'qatar', days: 2, date: '2027-03-21' }] }]);
+  END_TRACKS.forEach(([id, name, circuit, flag, km]) => { if (!get('f1_tracks', id)) rows.push(['f1_tracks', id, { id, name, circuit, flag, km, discipline: 'endurance', round: 90, laps: 1, type: 'endurance' }]); });
+  WEC_TEAMS.forEach(([slug, name, make, color, cars], ti) => {
+    const id = `${key}-${slug}`;
+    rows.push(['f1_teams', id, { seriesId: key, name, color, order: ti + 1, cls: 'hypercar', manufacturer: make, powerUnit: make, carPace: 85, topSpeed: 12, cornering: 12, reliability: 90, pitSpeed: 85, tyreLife: 78 }]);
+    const seat = (k, role, car, slot, order) => rows.push(['f1_seats', `${id}-${k}`, Object.assign({ teamId: id, role, car, order: ti * 20 + order, defaultPersonId: null, holderCharId: null, holderName: null, holderSince: null, open: true }, slot ? { slot } : {})]);
+    seat('tp', 'principal', null, 0, 0);
+    for (let c = 1; c <= cars; c++) { for (let n = 1; n <= 3; n++) seat(`c${c}d${n}`, 'driver', c, n, c * 5 + n); seat(`e${c}`, 'engineer', c, 0, c * 5 + 4); }
+  });
+  return rows;
+}
+ACTIONS['wec-add'] = () => { if (!S.isGm) return; if (get('f1_series', 'wec')) { toast('WEC is already set up.', true); return; }
+  askConfirm(`Set up the FIA WEC 2027 in Endurance: the Hypercar class with ${WEC_TEAMS.length} teams and ${WEC_TEAMS.reduce((n, t) => n + t[4], 0)} cars, three driver seats per car (all open for players), team principal and race engineer seats, and the nine-round calendar with the Prologue test?`, 'Set up WEC', () => run(async () => {
+    await f1PutAll(wecRows()); await Data.audit('series.add', 'FIA WEC 2027 (Hypercar) set up in Endurance');
+    S.series = 'wec'; lsSet('f1sim.series', 'wec'); go('grid');
+  }, 'WEC is ready: its grid is open for players’ crews.')); };
+const _seriesViewDisc = ROUTES.series.view;
+ROUTES.series.view = function () {
+  if (S.disc !== 'endurance') return _seriesViewDisc();
+  const mine = allSeries();
+  return `<div class="page-head"><div><p class="eyebrow">Endurance</p><h1>Series</h1><p>The endurance series raced in this section. They’re kept apart from GP: their own teams, crews, calendar, characters and records.</p></div></div>
+    ${mine.length ? `<section class="card"><h2>Set up</h2><ul>${mine.map(s => `<li><b>${esc(s.name)}</b> · ${plural(list('f1_teams').filter(t => t.seriesId === s.id).length, 'team')}</li>`).join('')}</ul></section>` : ''}
+    ${get('f1_series', 'wec') ? '' : `<section class="card"><h2>Add a series</h2><div class="end-class" style="--cc:#0A4DA2"><b>FIA WEC 2027: Hypercar</b><p class="small">The real 2027 Hypercar entrants as announced so far (Toyota, Ferrari and AF Corse, Cadillac, BMW, Alpine, Peugeot, Aston Martin, Genesis, and newcomers Ford and McLaren), three-driver crews, and the nine-round calendar from Qatar to Bahrain with Le Mans in June. LMGT3 follows in Phase 2.</p></div>${S.isGm ? '<button class="btn primary" data-act="wec-add">Set up WEC 2027</button>' : '<p class="muted small">Race Control sets series up.</p>'}</section>`}`;
+};
+
+/* ---------------------------------------------------------------- the simulator isn't here yet */
+const simSoon = what => `<div class="page-head"><div><p class="eyebrow">Endurance · ${esc(curSeries().name)}</p><h1>${esc(what)}</h1><p>The endurance simulator is being built in phases. Everything else in this section works now: the grid and crews, teams, the calendar, characters, connections and the paddock.</p></div></div>
+  <section class="card"><h2>When it arrives</h2><p>Endurance races (stints, driver changes, several classes, day and night) come with Phase 3, and the race weekend (practice, Hyperpole and the race, run live) with Phase 4.</p><div class="btn-row"><button class="btn" data-act="nav" data-route="endurance">See the roadmap</button><button class="btn ghost" data-act="nav" data-route="calendar">The calendar</button></div></section>`;
+[['weekend', 'Race Weekend'], ['test', 'Test Track'], ['team', 'Team HQ']].forEach(([r, label]) => { if (!ROUTES[r]) return; const v = ROUTES[r].view;
+  ROUTES[r].view = function () { return S.disc === 'endurance' ? simSoon(label) : v.apply(this, arguments); }; });
+
+/* Endurance teams are described by class and manufacturer, not an F1 power unit. */
+const CLASS_NAME = { hypercar: 'Hypercar', lmgt3: 'LMGT3', lmp2: 'LMP2' };
+const _engineLabelDisc = engineLabel;
+engineLabel = function (teamId) { const t = get('f1_teams', teamId); return t && t.cls ? `${CLASS_NAME[t.cls] || t.cls} · ${t.manufacturer || ''}` : _engineLabelDisc(teamId); };
 
 /* start-up: every part has registered its routes, drawers and actions */
 init();

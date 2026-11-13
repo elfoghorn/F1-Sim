@@ -25,6 +25,83 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v1.1.0: GP and Endurance as separate sections
+
+13 November 2026. Build `f1sim-1.1.0`. **No database update.** Built on v1.0.9c: everything in v1.0.2 to v1.0.9c is included.
+
+| Area | What it does |
+| --- | --- |
+| Separate sections | GP and Endurance are now separate sections of the site. Each has the same pages (Home, The Grid, Teams, Calendar, Championship, Seasons, Characters, Connections, Paddock and the rest) working the same way, but showing only that section's records: its own series, teams, seats, characters, paddock posts, connections, notifications, activity, championship hub and history. A label beside F1 SIM in the top bar says which section you're in. Nothing on a page links into the other section: only the top bar moves between them (GP's series switch to GP; the Endurance menu's entries switch to Endurance). Each section remembers its own series and character, and the section stays the same after a reload. |
+| Characters per section | A character belongs to the section it was made in (existing characters are GP), so an endurance character never appears in GP's lists, and the other way round. |
+| FIA WEC 2027 in Endurance | Race Control → Endurance → Series → Set up WEC 2027: the Hypercar class with the 2027 entrants as announced so far (Toyota Gazoo Racing, Ferrari AF Corse, AF Corse, Cadillac Hertz Team Jota, BMW M Team WRT, Alpine Endurance Team, Peugeot TotalEnergies, Aston Martin THOR Team, Genesis Magma Racing, Ford, McLaren United Autosports), 21 cars with three driver seats each (A, B and C), team principal and race engineer seats, all open for players. Teams are described by class and make (Hypercar · Toyota). The calendar has the nine 2027 events by name and race day (Qatar 1812km to the 8 Hours of Bahrain, with the 24 Hours of Le Mans on 12–13 June) and the Official Prologue test (21–22 March). Imola, Le Mans and Fuji are added as endurance-only circuits; they never appear on a GP calendar. |
+| The grid with crews | The Grid shows a column per crew place (Car 1 · A, B, C …) and widens to fit; seats read Driver 1A, 1B, 1C. |
+| The simulator | In Endurance, Race Weekend, the Test Track and Team HQ explain that the endurance simulator arrives in Phases 3 and 4, with links to the roadmap and calendar. |
+| Fix | Deleting a character now also removes the activity log lines naming them (v1.0.1 looked in the wrong field). |
+| The new character page | The seat a player picks is now Race Control's suggested seat when approving them (if it's still free). Seats are named the site's way (Car 1, Car 2; Car 1 · A, B, C in a crew), and the page offers the current section's teams, so Endurance characters can choose a WEC crew place. Role and seat tiles are square like the rest of the site, with a readable selected state; the step bar's first step reads Background and ratings; the form's apostrophes are typographic again. |
+
+---
+
+## v1.0.9c: escape apostrophe in the birthplace label
+
+12 November 2026, 21:06. **No database update.** Fixed a syntax error in the "Where they're from" label on the character form. (v1.0.9b, 21:02: version strings bumped so the CDN and service worker serve the new files.)
+
+---
+
+## v1.0.9: fix a quote syntax error in the character form
+
+12 November 2026, 20:53. **No database update.** Fixed a syntax error from a typographic quote inside the character form's code.
+
+---
+
+## v1.0.8: team preference and seat picker under the role
+
+12 November 2026, 20:44. **No database update.** On the new character page, the team preference moved directly below the role, with a seat picker for the first-choice team (each seat shows open or held, plus No preference).
+
+---
+
+## v1.0.7: role tiles, series filter, steps and a sticky footer
+
+12 November 2026, 20:24. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Role tiles | What they do is chosen from tiles instead of a dropdown (locked once approved). |
+| Series filter | The team grid on the new character page can be switched between series. |
+| Steps | A step bar shows where the player is: About them, Background and ratings, Submit to Race Control. |
+| Sticky footer | Cancel and Create character stay at the bottom of the screen. |
+
+---
+
+## v1.0.6: a full page for new characters
+
+12 November 2026, 20:08. **No database update.** Starting a character opens a full New character page instead of the side panel (editing an existing character still uses the panel). Players can open it before they have an approved character.
+
+---
+
+## v1.0.5: team preference when starting a character
+
+12 November 2026, 20:00. **No database update.** The first-choice team, second choice, why and "happy to go to any team" can be set when a character is started, from team cards showing how many seats are open.
+
+---
+
+## v1.0.4: fix quote syntax errors from v1.0.3
+
+12 November 2026, 17:38. **No database update.** Fixed syntax errors introduced by typographic quotes in v1.0.3.
+
+---
+
+## v1.0.3: no more money or upgrade projects in Team HQ
+
+12 November 2026, 17:22. **No database update.** The season budget, prize money, sponsor targets and ordered upgrade projects are gone from Team HQ. The car is its base numbers plus its engine and the team's development points. A team principal's sheet counts development spends instead of upgrades.
+
+---
+
+## v1.0.2: development points, faster
+
+12 November 2026, 17:16. **No database update.** Drivers earn 2 development points for every 3 Grands Prix (was 1 for every 4), up to 2 for every 3 rounds on the calendar each season, and each point raises a rating by 0.8 (was 1). Teams earn their 2 development points for every 3 Grands Prix (was every 4).
+
+---
+
 ## v1.0.1: unique character IDs, and deleting removes everything
 
 12 November 2026. Build `f1sim-1.0.1`. **DATABASE UPDATE** (migration `20261112000009_character_ids.sql`).
