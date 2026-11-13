@@ -25,6 +25,24 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v1.5.0: Endurance Phase 5, Le Mans and the other events
+
+13 November 2026. Build `f1sim-1.5.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Le Mans entries | The WEC gains the LMP2 class (with its Pro-Am cars as their own class) and the Le Mans-only entries, from the 2026 Le Mans entry list with their FIA categories: 19 LMP2 cars (Oreca 07-Gibson), Cadillac WTR's #101 Hypercar and 7 more LMGT3 cars. They race only at Le Mans and are marked "Le Mans only". Drivers already in a full-season WEC car for 2027 (Jensen, Saucy, Yelloly) keep that seat, so their Le Mans-only place starts open. A WEC set up before this version gets Add the Le Mans entries on Endurance → Series. |
+| Le Mans week | A Le Mans weekend has Test Day and four practice sessions (Free practice 3 runs at night and teaches every crew about night running), then qualifying and the real two-stage Hyperpole: the 15 fastest of each class go to Hyperpole 1, its top ten to Hyperpole 2 for pole; 11th to 15th start where Hyperpole 1 put them and the rest where qualifying did. The grid table shows all three times. |
+| Class rules | LMP2 crews need a Silver or Bronze driver and have at most one Platinum; LMP2 Pro-Am crews need a Bronze; GTD crews follow the LMGT3 rule (a Bronze, a Silver and one professional). LMP2 Pro-Am and GTD Bronzes start the race and must reach the minimum drive time; Pro-Am cars qualify with their Bronze. Race Control sees any crew breaking its rule on The Grid. |
+| Daylight | Each venue has its own sunset and sunrise for the time of year: Le Mans is dark from 22:00 to 06:00, the Qatar 1812 km runs about three hours into the night, Bahrain's 8 hours are mostly at night, and the 6-hour European races stay in daylight. |
+| More classes on track | The engine now handles any mix of classes, grouped by speed (Hypercar and GTP; LMP2; LMGT3, GTD Pro and GTD): each loses time lapping slower classes and a little being lapped. At the American circuits every neutralisation is a full-course caution behind the safety car, as in IMSA. |
+| ELMS 2027 | Endurance → Series → Set up ELMS 2027: six 4-hour races (Barcelona 14 March, Le Castellet 2 May, Imola 4 July, Spa-Francorchamps 22 August, Silverstone 5 September, Portimão in mid-October) after the Barcelona Prologue (8–9 March); LMP2, LMP2 Pro-Am and LMGT3, with teams from the Le Mans entry list and fictional crews to start with. |
+| IMSA 2027 | Endurance → Series → Set up IMSA 2027: the five Michelin Endurance Cup races (the Rolex 24 At Daytona, the Twelve Hours of Sebring, Six Hours of The Glen, Road America over 6 hours, Petit Le Mans over 10 hours) after the Roar Before the Rolex 24; GTP with Porsche Penske Motorsport, Cadillac Wayne Taylor Racing and BMW M Team RLL, and GTD Pro and GTD with fictional teams; fictional crews to start with. |
+| New circuits | Le Castellet, Portimão, Daytona, Sebring, Watkins Glen, Road America and Road Atlanta, endurance-only. |
+| Roadmap | Phase 5 is done; Phase 6 (championships, reports, Discord and the rest for endurance) is next. |
+
+---
+
 ## v1.4.0: Endurance Phase 4, the race weekend
 
 13 November 2026. Build `f1sim-1.4.0`. **DATABASE UPDATE** (migration `20261113000010_endurance_weekends.sql`: endurance weekends get their own collection, `f1_endw`, which only Race Control writes).
