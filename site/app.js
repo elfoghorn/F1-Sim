@@ -1,4 +1,4 @@
-/* F1 SIM v1.1.0 (build f1sim-1.1.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v1.2.0 (build f1sim-1.2.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -8040,7 +8040,7 @@ CHANGES['grid-auto'] = (v, d, el) => { const sid = curSeriesId(), on = !!(el && 
   run(async () => { await Data.put('f1_settings', `discord-grid-${sid}`, Object.assign({}, clone(gridDoc(sid)), { auto: on })); }, on ? 'The Discord grid will update itself as seats change.' : 'The Discord grid won’t update itself.'); };
 async function drawGridImage(sid) {
   const teams = list('f1_teams').filter(t => (t.seriesId || 'f1') === sid).sort((a, b) => (a.order || 0) - (b.order || 0)), cols = gridCols(teams);
-  const W = 1920, top = 220, rowH = Math.min(76, Math.floor((1080 - top - 60) / Math.max(1, teams.length))), H = top + rowH * teams.length + 70;
+  const W = 1920, top = 220, rowH = Math.max(46, Math.min(76, Math.floor((1080 - top - 60) / Math.max(1, teams.length)))), H = Math.max(1080, top + rowH * teams.length + 70);
   const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d'), T = EXP_THEMES.dark;
   try { await Promise.all(['700 40px "Titillium Web"', '600 20px "Titillium Web"'].map(f => document.fonts.load(f))); } catch (e) { /* fall back */ }
   const logo = await loadImg(leagueLogo());
@@ -8054,11 +8054,12 @@ async function drawGridImage(sid) {
   ['driver', 'principal', 'engineer'].forEach(r => { const idx = cols.map((c, i) => c[0] === r ? i : -1).filter(i => i >= 0); if (!idx.length) return; const x0 = 50 + teamW + idx[0] * cw + 4, w = idx.length * cw - 8;
     g.fillStyle = GC[r][0]; g.fillRect(x0, top - 64, w, 4); g.font = bodyF(700, 20); g.fillText(GC[r][1], x0, top - 72); if (idx[0] > 0) { g.fillStyle = '#565A63'; g.fillRect(x0 - 6, top - 60, 2, rowH * teams.length + 56); } });
   g.font = bodyF(600, 17); g.fillStyle = T.muted; cols.forEach((c, i) => g.fillText(c[0] === 'principal' ? '' : c[2], 50 + teamW + i * cw + 8, top - 14));
-  teams.forEach((t, r) => { const y = top + r * rowH; g.fillStyle = f1Colour(t.id); g.fillRect(50, y + 4, 8, rowH - 8); g.fillStyle = '#FFFFFF'; fitText(g, t.name, z => cond(700, z), 30, teamW - 30); g.fillText(t.name, 70, y + rowH / 2 + 10);
+  teams.forEach((t, r) => { const y = top + r * rowH; g.fillStyle = f1Colour(t.id); g.fillRect(50, y + 4, 8, rowH - 8); g.fillStyle = '#FFFFFF'; fitText(g, t.name, z => cond(700, z), rowH < 60 ? 22 : 30, teamW - 30); g.fillText(t.name, 70, y + rowH / 2 + (t.cls ? 2 : 10));
+    if (t.cls && typeof WEC_CLASSES !== 'undefined' && WEC_CLASSES[t.cls]) { g.font = bodyF(700, 14); g.fillStyle = WEC_CLASSES[t.cls][1]; g.fillText(WEC_CLASSES[t.cls][0].toUpperCase() + (t.numbers && t.numbers.some(Boolean) ? '  ' + t.numbers.filter(Boolean).map(n => '#' + n).join(' ') : ''), 70, y + rowH / 2 + 20); }
     cols.forEach(([role, car, , sl], i) => { const s = seatFor(t.id, role, car, sl); if (!s) return; const st = seatState(s), o = f1Occupant(s), x = 50 + teamW + i * cw + 4, w = cw - 8, h = rowH - 8;
       g.fillStyle = KEY[st][0]; g.fillRect(x, y + 4, w, h); g.strokeStyle = KEY[st][1]; g.lineWidth = st === 'P' || st === 'O' ? 3 : 1; g.strokeRect(x + 1, y + 5, w - 2, h - 2);
-      const nm = st === 'V' ? '–' : !o.person && !o.charId ? (role === 'driver' ? 'Open seat' : 'Open post') : o.name; g.fillStyle = st === 'V' ? '#8A8F98' : '#FFFFFF'; fitText(g, nm, z => bodyF(700, z), 22, w - 20); g.fillText(nm, x + 10, y + 4 + h / 2 + (st === 'V' ? 8 : 0));
-      if (st !== 'V') { g.font = bodyF(500, 15); g.fillStyle = st === 'P' ? '#FF8A80' : st === 'O' ? '#7CD69C' : '#A7ABB3'; g.fillText(st === 'O' ? 'Open for applications' : KEY[st][2], x + 10, y + 4 + h / 2 + 22); } }); });
+      const nm = st === 'V' ? '–' : !o.person && !o.charId ? (role === 'driver' ? 'Open seat' : 'Open post') : o.name, tight = rowH < 60; g.fillStyle = st === 'V' ? '#8A8F98' : '#FFFFFF'; fitText(g, nm, z => bodyF(700, z), tight ? 18 : 22, w - 20); g.fillText(nm, x + 10, y + 4 + h / 2 + (st === 'V' || tight ? 7 : 0));
+      if (st !== 'V' && !tight) { g.font = bodyF(500, 15); g.fillStyle = st === 'P' ? '#FF8A80' : st === 'O' ? '#7CD69C' : '#A7ABB3'; g.fillText(st === 'O' ? 'Open for applications' : KEY[st][2], x + 10, y + 4 + h / 2 + 22); } }); });
   g.font = bodyF(500, 18); g.fillStyle = T.muted; g.textAlign = 'right'; g.fillText(`Updated ${stampText()}`, W - 50, H - 26); g.textAlign = 'left';
   return new Promise(ok => cv.toBlob(ok, 'image/png'));
 }
@@ -8317,8 +8318,8 @@ const WEC_2027 = [['Prologue', 'Official Prologue (group test)', 'Lusail, Qatar'
   ['6', '6 Hours of São Paulo', 'Interlagos, Brazil', '9–11 July', '6 hours'], ['7', 'Lone Star Le Mans', 'Circuit of the Americas, USA', '10–12 September', '6 hours'], ['8', '6 Hours of Fuji', 'Fuji Speedway, Japan', '24–26 September', '6 hours'], ['9', '8 Hours of Bahrain', 'Bahrain', '4–6 November', '8 hours']];
 const ENDURANCE_PHASES = [
   ['1', 'The Endurance section', 'The menu entry, the roadmap, the 2027 WEC season and classes, and the endurance career records.', 'done'],
-  ['2', 'Endurance series and grid', 'In place: the Endurance section as its own copy of the site (its own series, characters, paddock, connections and records), the FIA WEC 2027 Hypercar entry with three-driver crews, and its calendar and Prologue. Still to come: LMGT3, real driver line-ups and driver categories (Platinum to Bronze).', 'next'],
-  ['3', 'The endurance race engine', 'Timed races (6, 8, 10 or 24 hours), several classes on track at once with traffic and passing, fuel and tyre stints, driver stints and maximum drive time, day and night, weather through the race, slow zones, full-course yellows and safety cars, and Balance of Performance.', 'later'],
+  ['2', 'Endurance series and grid', 'The Endurance section as its own copy of the site, and the FIA WEC 2027: Hypercar and LMGT3, 39 cars with three-driver crews from the real entry list, FIA driver categories (Platinum to Bronze) with the LMGT3 crew rule, the calendar and the Prologue.', 'done'],
+  ['3', 'The endurance race engine', 'Timed races (6, 8, 10 or 24 hours), several classes on track at once with traffic and passing, fuel and tyre stints, driver stints and maximum drive time, day and night, weather through the race, slow zones, full-course yellows and safety cars, and Balance of Performance.', 'next'],
   ['4', 'The endurance race weekend', 'Practice, Hyperpole qualifying, a race in hours shown live, and the pit wall: stint plans, driver changes, fuel and tyre calls, and night running, with the three involvement levels.', 'later'],
   ['5', 'Le Mans and the other events', 'The 24 Hours of Le Mans with Test Day and LMP2, the Qatar 1812km, and a lighter European Le Mans Series and IMSA.', 'later'],
   ['6', 'Everything else, for endurance', 'Championships by class and for manufacturers, development and money, exports and Discord, race reports, records and the history views.', 'later']];
@@ -8537,6 +8538,138 @@ const simSoon = what => `<div class="page-head"><div><p class="eyebrow">Enduranc
 const CLASS_NAME = { hypercar: 'Hypercar', lmgt3: 'LMGT3', lmp2: 'LMP2' };
 const _engineLabelDisc = engineLabel;
 engineLabel = function (teamId) { const t = get('f1_teams', teamId); return t && t.cls ? `${CLASS_NAME[t.cls] || t.cls} · ${t.manufacturer || ''}` : _engineLabelDisc(teamId); };
+
+/* =====================================================================
+   F1 SIM — Endurance Phase 2: the 2027 FIA WEC entry list.
+   Hypercar: the 17 full-season cars with their crews from the 2026 Le
+   Mans 24 Hours entry list, plus newcomers Ford (six drivers announced,
+   pairings not yet) and McLaren United AS (Jensen, Vanthoor and Saucy
+   announced). LMGT3: the 18 full-season cars, nine marques with two
+   each, with their 2026 Le Mans crews. Each driver carries their FIA
+   category: P Platinum, G Gold, S Silver, B Bronze (null where the
+   source didn't give one). Proton's two 2026 LMGT3 professionals move
+   to Ford's Hypercar for 2027, so those two seats start open.
+   ===================================================================== */
+'use strict';
+
+const WEC_CLASSES = { hypercar: ['Hypercar', '#E10600'], lmgt3: ['LMGT3', '#2FA84F'] };
+const CAT_NAME = { P: 'Platinum', G: 'Gold', S: 'Silver', B: 'Bronze' };
+const CAT_LEVEL = { P: [84, 7], G: [78, 6], S: [70, 7], B: [58, 9], '': [80, 6] };
+/* [slug, team name, make, colour, class, car model, team principal or null, cars: [number, [[driver, category, nationality], …]]] */
+const WEC_ENTRIES_2027 = [
+  ['toyota', 'Toyota Racing', 'Toyota', '#EB0A1E', 'hypercar', '', null, [['7', [['Mike Conway', 'P', 'GBR'], ['Kamui Kobayashi', 'P', 'JPN'], ['Nyck de Vries', 'P', 'NED']]], ['8', [['Sébastien Buemi', 'P', 'SUI'], ['Brendon Hartley', 'P', 'NZL'], ['Ryō Hirakawa', 'P', 'JPN']]]]],
+  ['ferrari', 'Ferrari AF Corse', 'Ferrari', '#DC0000', 'hypercar', 'Ferrari 499P', null, [['50', [['Antonio Fuoco', 'P', 'ITA'], ['Nicklas Nielsen', 'P', 'DEN'], ['Miguel Molina', 'P', 'ESP']]], ['51', [['Alessandro Pier Guidi', 'P', 'ITA'], ['James Calado', 'P', 'GBR'], ['Antonio Giovinazzi', 'P', 'ITA']]]]],
+  ['afcorse', 'AF Corse', 'Ferrari', '#F2C200', 'hypercar', 'Ferrari 499P', null, [['83', [['Yifei Ye', 'G', 'CHN'], ['Robert Kubica', 'P', 'POL'], ['Philip Hanson', 'G', 'GBR']]]]],
+  ['cadillac', 'Cadillac Hertz Team Jota', 'Cadillac', '#C9A227', 'hypercar', 'Cadillac V-Series.R', null, [['12', [['Alex Lynn', 'P', 'GBR'], ['Will Stevens', 'P', 'GBR'], ['Norman Nato', 'G', 'FRA']]], ['38', [['Sébastien Bourdais', 'P', 'FRA'], ['Earl Bamber', 'P', 'NZL'], ['Jack Aitken', 'P', 'GBR']]]]],
+  ['bmw', 'BMW M Team WRT', 'BMW', '#1C69D4', 'hypercar', 'BMW M Hybrid V8', null, [['15', [['Kevin Magnussen', 'P', 'DEN'], ['Raffaele Marciello', 'P', 'SUI'], ['Dries Vanthoor', 'P', 'BEL']]], ['20', [['Robin Frijns', 'P', 'NED'], ['René Rast', 'P', 'GER'], ['Sheldon van der Linde', 'P', 'RSA']]]]],
+  ['alpine', 'Alpine Endurance Team', 'Alpine', '#0093CC', 'hypercar', 'Alpine A424', null, [['35', [['António Félix da Costa', 'P', 'POR'], ['Charles Milesi', 'P', 'FRA'], ['Ferdinand Habsburg', 'G', 'AUT']]], ['36', [['Frédéric Makowiecki', 'P', 'FRA'], ['Jules Gounon', 'P', 'FRA'], ['Victor Martins', 'G', 'FRA']]]]],
+  ['peugeot', 'Peugeot TotalEnergies', 'Peugeot', '#7A8C3C', 'hypercar', 'Peugeot 9X8', null, [['93', [['Paul di Resta', 'P', 'GBR'], ['Stoffel Vandoorne', 'P', 'BEL'], ['Nick Cassidy', 'P', 'NZL']]], ['94', [['Loïc Duval', 'P', 'FRA'], ['Malthe Jakobsen', 'G', 'DEN'], ['Théo Pourchaire', 'P', 'FRA']]]]],
+  ['aston', 'Aston Martin THOR Team', 'Aston Martin', '#00665E', 'hypercar', 'Aston Martin Valkyrie', null, [['007', [['Harry Tincknell', 'P', 'GBR'], ['Tom Gamble', 'G', 'GBR'], ['Ross Gunn', 'P', 'GBR']]], ['009', [['Alex Riberas', 'G', 'ESP'], ['Marco Sørensen', 'P', 'DEN'], ['Roman De Angelis', 'G', 'CAN']]]]],
+  ['genesis', 'Genesis Magma Racing', 'Genesis', '#8A2BE2', 'hypercar', '', null, [['17', [['André Lotterer', 'P', 'GER'], ['Luis Felipe Derani', 'P', 'BRA'], ['Mathys Jaubert', 'S', 'FRA']]], ['19', [['Mathieu Jaminet', 'P', 'FRA'], ['Paul-Loup Chatin', 'G', 'FRA'], ['Daniel Juncadella', 'P', 'ESP']]]]],
+  ['ford', 'Ford Racing', 'Ford', '#0B3D91', 'hypercar', 'Ford LMDh (name to come)', null, [['', [['Mike Rockenfeller', null, 'GER'], ['Sebastian Priaulx', 'G', 'GBR'], ['Logan Sargeant', 'P', 'USA']]], ['', [['Matt Campbell', null, 'AUS'], ['Nick Yelloly', 'P', 'GBR'], ['Tom Blomqvist', null, 'GBR']]]], 'Six drivers announced; the pairings are still to come.'],
+  ['mclaren', 'McLaren United AS', 'McLaren', '#FF8000', 'hypercar', 'McLaren MCL-HY', 'James Barclay', [['', [['Mikkel Jensen', 'P', 'DEN'], ['Laurens Vanthoor', null, 'BEL'], null]], ['', [['Grégoire Saucy', 'G', 'SUI'], null, null]]], 'Line-up still being announced.'],
+  ['tfsport', 'TF Sport', 'Corvette', '#F5C400', 'lmgt3', 'Corvette Z06 LMGT3.R', null, [['2', [['Prince Jefri Ibrahim', 'B', 'MAS'], ['Afiq Ikhwan', 'S', 'MAS'], ['Ben Green', 'P', 'GBR']]], ['33', [['Ben Keating', 'B', 'USA'], ['Jonny Edgar', 'S', 'GBR'], ['Nicky Catsburg', 'P', 'NED']]]]],
+  ['garage59', 'Garage 59', 'McLaren', '#FF8000', 'lmgt3', 'McLaren 720S LMGT3', null, [['10', [['Antares Au', 'B', 'HKG'], ['Thomas Fleming', 'S', 'GBR'], ['Marvin Kirchhöfer', 'P', 'GER']]], ['58', [['Alexander West', 'B', 'SWE'], ['Finn Gehrsitz', 'S', 'GER'], ['Benjamin Goethe', 'G', 'DEN']]]]],
+  ['vista', 'Vista AF Corse', 'Ferrari', '#C8102E', 'lmgt3', 'Ferrari 296 LMGT3', null, [['21', [['François Hériau', 'B', 'FRA'], ['Simon Mann', 'S', 'USA'], ['Alessio Rovera', 'P', 'ITA']]], ['54', [['Thomas Flohr', 'B', 'SUI'], ['Francesco Castellacci', 'S', 'MON'], ['Davide Rigon', 'P', 'ITA']]]]],
+  ['heart', 'Heart of Racing Team', 'Aston Martin', '#00594F', 'lmgt3', 'Aston Martin Vantage LMGT3', null, [['23', [['Gray Newell', 'B', 'USA'], ['Eduardo Barrichello', 'S', 'BRA'], ['Jonny Adam', 'P', 'GBR']]], ['27', [['Ian James', 'B', 'USA'], ['Zacharie Robichon', 'S', 'CAN'], ['Mattia Drudi', 'P', 'ITA']]]]],
+  ['wrt', 'Team WRT', 'BMW', '#5B9BD5', 'lmgt3', 'BMW M4 LMGT3', null, [['32', [['Darren Leung', 'B', 'GBR'], ['Sean Gelael', 'S', 'INA'], ['Augusto Farfus', 'P', 'BRA']]], ['69', [['Anthony McIntosh', 'B', 'USA'], ['Parker Thompson', 'S', 'CAN'], ['Daniel Harper', 'P', 'GBR']]]]],
+  ['ironlynx', 'Iron Lynx', 'Mercedes-AMG', '#7A7F87', 'lmgt3', 'Mercedes-AMG LMGT3', null, [['61', [['Martin Berry', 'B', 'AUS'], ['Rui Andrade', 'S', 'ANG'], ['Maxime Martin', 'P', 'BEL']]], ['79', [['Johannes Zelger', 'B', 'ITA'], ['Matteo Cressoni', 'S', 'ITA'], ['Lin Hodenius', 'S', 'NED']]]]],
+  ['proton', 'Proton Competition', 'Ford', '#2D5BAA', 'lmgt3', 'Ford Mustang LMGT3', null, [['77', [['Eric Powell', 'B', 'USA'], ['Ben Tuck', 'S', 'GBR'], null]], ['88', [['Stefano Gattuso', 'B', 'ITA'], ['Giammarco Levorato', 'S', 'ITA'], null]]], 'Priaulx and Sargeant move up to Ford’s Hypercar in 2027.'],
+  ['asp', 'Akkodis ASP Team', 'Lexus', '#E8E8E8', 'lmgt3', 'Lexus RC F LMGT3', null, [['78', [['Tom van Rompuy', 'B', 'BEL'], ['Hadrien David', 'S', 'FRA'], ['Jack Hawksworth', 'G', 'GBR']]], ['87', [['Petru Umbrărescu', 'B', 'ROU'], ['Clemens Schmid', 'S', 'AUT'], ['José María López', 'P', 'ARG']]]]],
+  ['manthey', 'Manthey', 'Porsche', '#B12B28', 'lmgt3', 'Porsche 911 LMGT3 R', null, [['91', [['James Cottingham', 'B', 'GBR'], ['Timur Boguslavskiy', 'S', ''], ['Ayhancan Güven', 'P', 'TUR']]], ['92', [['Yasser Shahin', 'B', 'AUS'], ['Riccardo Pera', 'S', 'ITA'], ['Richard Lietz', 'P', 'AUT']]]]]
+];
+const slugName = n => String(n).normalize('NFD').replace(/[^A-Za-z ]/g, '').trim().toLowerCase().replace(/\s+/g, '-');
+function wecPerson(name, cat, nat, teamId, num, rng) {
+  const [base, spread] = CAT_LEVEL[cat || ''], r = () => Math.min(95, base + Math.floor(rng() * spread));
+  const p = genPerson(`wec-p-${slugName(name)}`, rng, 'elite', { seriesId: 'wec', teamId });
+  const last = name.split(' ').slice(-1)[0];
+  return Object.assign(p, { fictional: false, name, nat: nat || '', category: cat || null, num: num || null, abbr: last.normalize('NFD').replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase(),
+    pace: r(), consistency: r(), wet: r(), overtaking: r(), defense: r(), experience: cat === 'B' ? 30 + Math.floor(rng() * 30) : 55 + Math.floor(rng() * 40) });
+}
+/* Every row for the 2027 WEC; with keep, seats already in the league keep their holders and open/closed state. */
+function wecRowsFull(keep) {
+  const rows = [], key = 'wec', rng = RaceEngine.rng(h32('wec', '2027'));
+  const prev = keep ? (get('f1_series', key) ? clone(S.store.f1_series[key]) : {}) : {};
+  rows.push(['f1_series', key, Object.assign(prev, { template: key, discipline: 'endurance', activeSeason: prev.activeSeason || `${key}-1`, calendar: prev.calendar || SERIES_TEMPLATES.wec.calendar.slice(),
+    events: WEC_EVENTS, dates: prev.dates || WEC_DATES, classes: ['hypercar', 'lmgt3'], crew: 3, entryList: '2027',
+    tests: prev.tests || [{ id: 't1', name: 'Official Prologue', trackId: 'qatar', days: 2, date: '2027-03-21' }] })]);
+  END_TRACKS.forEach(([id, name, circuit, flag, km]) => { if (!get('f1_tracks', id)) rows.push(['f1_tracks', id, { id, name, circuit, flag, km, discipline: 'endurance', round: 90, laps: 1, type: 'endurance' }]); });
+  WEC_ENTRIES_2027.forEach(([slug, name, make, color, cls, model, tpName, cars, note], ti) => {
+    const id = `${key}-${slug}`, old = keep && get('f1_teams', id) ? clone(S.store.f1_teams[id]) : {};
+    rows.push(['f1_teams', id, Object.assign(old, { seriesId: key, name, color, order: ti + 1, cls, manufacturer: make, model, numbers: cars.map(c => c[0]), lineupNote: note || null, powerUnit: make,
+      carPace: old.carPace || (cls === 'hypercar' ? 85 : 72), topSpeed: old.topSpeed || 12, cornering: old.cornering || 12, reliability: old.reliability || 90, pitSpeed: old.pitSpeed || 85, tyreLife: old.tyreLife || 78 })]);
+    const seat = (k, role, car, slot, order, def) => { const sid = `${id}-${k}`, o = keep && get('f1_seats', sid) ? clone(S.store.f1_seats[sid]) : null;
+      rows.push(['f1_seats', sid, Object.assign(o || { holderCharId: null, holderName: null, holderSince: null, open: true }, { teamId: id, role, car, order: ti * 20 + order, defaultPersonId: def || null }, slot ? { slot } : {})]); };
+    let tpId = null; if (tpName) { tpId = `wec-p-${slugName(tpName)}`; rows.push(['f1_people', tpId, { id: tpId, kind: 'principal', name: tpName, fictional: false, seriesId: key, teamId: id }]); }
+    seat('tp', 'principal', null, 0, 0, tpId);
+    cars.forEach(([num, crew], ci) => { const c = ci + 1;
+      for (let n = 1; n <= 3; n++) { const d = crew[n - 1]; let pid = null;
+        if (d) { const p = wecPerson(d[0], d[1], d[2], id, num, rng); pid = p.id; rows.push(['f1_people', p.id, p]); }
+        seat(`c${c}d${n}`, 'driver', c, n, c * 5 + n, pid); }
+      seat(`e${c}`, 'engineer', c, 0, c * 5 + 4, null); });
+  });
+  return rows;
+}
+wecRows = () => wecRowsFull(false);
+ACTIONS['wec-update'] = () => { if (!S.isGm || !get('f1_series', 'wec')) return;
+  askConfirm('Bring the WEC up to Phase 2? This adds the LMGT3 class (9 teams, 18 cars), names each team’s cars and puts the real drivers in their crews with their FIA categories. Players keep their seats, and seats stay open or closed as they are.', 'Update WEC', () => run(async () => {
+    await f1PutAll(wecRowsFull(true)); await Data.audit('series.update', 'FIA WEC 2027 updated: LMGT3 class and real crews');
+  }, 'WEC updated: both classes and the real crews are in.')); };
+
+/* ---------------------------------------------------------------- driver categories */
+const catOf = o => { if (o.charId) { const c = get('characters', o.charId); return c && c.category || null; } return o.person && o.person.category || null; };
+const catTag = k => k ? `<span class="cat-tag cat-${k}" title="FIA driver category: ${CAT_NAME[k]}">${k}</span>` : '';
+/* LMGT3 crews need a Bronze, a Silver and one professional (Platinum or Gold), as every 2026 LMGT3 crew has. */
+function crewProblem(teamId, car) {
+  const t = get('f1_teams', teamId); if (!t || t.cls !== 'lmgt3') return null;
+  const crew = F1.seats(teamId).filter(s => s.role === 'driver' && (s.car || 1) === car).map(s => f1Occupant(s)).filter(o => o.charId || o.person);
+  if (crew.length < 3) return null;
+  const cats = crew.map(catOf), n = k => cats.filter(x => x === k).length;
+  if (cats.some(x => !x)) return 'A driver in this crew has no FIA category yet.';
+  if (n('B') < 1) return 'LMGT3 crews need a Bronze driver.';
+  if (n('B') + n('S') < 2) return 'LMGT3 crews need a Silver driver as well as the Bronze.';
+  if (n('P') + n('G') > 1) return 'LMGT3 crews have only one professional (Platinum or Gold).';
+  return null;
+}
+CHANGES['ch-category'] = v => { if (S.ui.form.ch) { S.ui.form.ch.category = v || null; } };
+const _charFormFieldsCat = charFormFields;
+charFormFields = function (f, skipRole) {
+  const h = _charFormFieldsCat(f, skipRole);
+  if (S.disc !== 'endurance' || (f.role || 'driver') !== 'driver') return h;
+  return h + `<div class="field cat-field"><span>FIA driver category</span><div class="role-tiles">${['P', 'G', 'S', 'B'].map(k => `<button type="button" class="role-tile${f.category === k ? ' on' : ''}" data-act="ch-cat" data-k="${k}" aria-pressed="${f.category === k}">${CAT_NAME[k]}</button>`).join('')}</div>
+    <p class="muted small">Platinum and Gold are professionals, Silver are young or semi-professional drivers, Bronze are amateurs. Hypercar crews are mostly Platinum; every LMGT3 crew needs a Bronze, a Silver and one professional. Race Control can change it.</p></div>`;
+};
+ACTIONS['ch-cat'] = d => { if (!S.ui.form.ch) return; S.ui.form.ch.category = S.ui.form.ch.category === d.k ? null : d.k; renderOverlay(); render(); };
+
+/* ---------------------------------------------------------------- classes on the Grid and Teams pages */
+const seriesClasses = () => (curSeries().classes || []);
+ACTIONS['cls-filter'] = d => { S.ui.clsFilter = d.c || null; render(); };
+const _f1TeamsCls = F1.teams;
+F1.teams = function () { const t = _f1TeamsCls(), c = S.ui.clsFilter; return c && (S.route === 'grid' || S.route === 'teams') && seriesClasses().indexOf(c) !== -1 ? t.filter(x => x.cls === c) : t; };
+const clsStripHtml = () => seriesClasses().length < 2 ? '' : `<nav class="cls-strip" aria-label="Class"><span>Class</span><button class="${!S.ui.clsFilter ? 'on' : ''}" aria-pressed="${!S.ui.clsFilter}" data-act="cls-filter" data-c="">Both classes</button>${seriesClasses().map(k => `<button class="${S.ui.clsFilter === k ? 'on' : ''}" aria-pressed="${S.ui.clsFilter === k}" data-act="cls-filter" data-c="${k}" style="--sc:${WEC_CLASSES[k][1]}">${esc(WEC_CLASSES[k][0])}</button>`).join('')}</nav>`;
+['grid', 'teams'].forEach(r => { const v = ROUTES[r].view; ROUTES[r].view = function () { const h = v.apply(this, arguments); const strip = clsStripHtml(); if (!strip) return h; const i = h.indexOf('<div class="page-head">'); return i < 0 ? strip + h : h.slice(0, i) + strip + h.slice(i); }; });
+const _engineLabelCls = engineLabel;
+engineLabel = function (teamId) { const t = get('f1_teams', teamId); return t && t.cls ? `${CLASS_NAME[t.cls] || t.cls} · ${t.model || t.manufacturer || ''}${t.numbers && t.numbers.some(Boolean) ? ` · ${t.numbers.filter(Boolean).map(n => '#' + n).join(' ')}` : ''}` : _engineLabelCls(teamId); };
+
+/* ---------------------------------------------------------------- the Series page offers the update */
+const _seriesViewWec = ROUTES.series.view;
+ROUTES.series.view = function () {
+  const h = _seriesViewWec(); if (S.disc !== 'endurance' || !get('f1_series', 'wec') || (seriesDoc('wec').classes || []).indexOf('lmgt3') !== -1) return h;
+  return h + `<section class="card"><h2>Phase 2 for the WEC</h2><p>Your WEC was set up before the LMGT3 class and the real crews were added.</p>${S.isGm ? '<button class="btn primary" data-act="wec-update">Update WEC</button>' : ''}</section>`;
+};
+
+/* ---------------------------------------------------------------- categories and crew rules where seats show */
+const _chipHtmlCat = chipHtml;
+chipHtml = function (s) { const h = _chipHtmlCat(s); if (s.role !== 'driver' || S.disc !== 'endurance') return h; const k = catOf(f1Occupant(s)); return k ? h.replace('</em>', `${catTag(k)}</em>`) : h; };
+const crewProblemsHtml = () => { if (S.disc !== 'endurance') return ''; const out = [];
+  F1.teams().filter(t => t.cls === 'lmgt3').forEach(t => [...new Set(F1.seats(t.id).filter(x => x.role === 'driver').map(x => x.car || 1))].forEach(c => { const p = crewProblem(t.id, c); if (p) out.push(`<li><b>${esc(t.name)}</b>, car ${c}${t.numbers && t.numbers[c - 1] ? ` (#${esc(t.numbers[c - 1])})` : ''}: ${esc(p)}</li>`); }));
+  return out.length ? `<div class="card notice warn crew-warn"><p><b>LMGT3 crew rules</b>: each crew needs a Bronze, a Silver and one professional.</p><ul>${out.join('')}</ul></div>` : ''; };
+const _gridViewCrew = ROUTES.grid.view;
+ROUTES.grid.view = function () { const h = _gridViewCrew.apply(this, arguments), w = S.isGm ? crewProblemsHtml() : ''; if (!w) return h; const i = h.indexOf('<div class="grid-tools">'); return i < 0 ? h + w : h.slice(0, i) + w + h.slice(i); };
+const _seatDrawerCrew = DRAWERS.seat;
+DRAWERS.seat = function () { const h = _seatDrawerCrew(), s = get('f1_seats', S.ui.seatEdit); if (!s || s.role !== 'driver') return h;
+  const p = crewProblem(s.teamId, s.car || 1), team = get('f1_teams', s.teamId) || {}, note = team.lineupNote ? `<p class="muted small">${esc(team.lineupNote)}</p>` : '';
+  return h.replace('<div class="body">', `<div class="body">${p ? `<div class="card notice warn"><p>${esc(p)}</p></div>` : ''}${note}`); };
 
 /* start-up: every part has registered its routes, drawers and actions */
 init();

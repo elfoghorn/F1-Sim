@@ -789,15 +789,27 @@ button.gc:hover, button.gc:focus-visible { outline: 2px solid var(--ink); outlin
 .role-tile.on .seat-status { color: #FF8A80; opacity: 1; }
 .step-num { border-radius: 0; } .newchar-step.now .step-num { background: var(--red); border-color: var(--red); color: #FFFFFF; }
 .newchar-sticky { border-radius: 0; border-top: 2px solid var(--red); }
+
+/* ---------- endurance: classes and categories ---------- */
+.cls-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 10px; } .cls-strip > span { font-size: 13px; font-weight: 700; color: var(--muted); margin-right: 4px; }
+.cls-strip button { min-height: 34px; padding: 0 12px; background: transparent; color: var(--ink); border: 1px solid var(--line-strong); border-left: 4px solid var(--sc, var(--line-strong)); font: 700 13.5px var(--body); cursor: pointer; }
+.cls-strip button.on { background: var(--panel); border-color: var(--red); box-shadow: inset 0 -3px 0 var(--red); }
+.cat-tag { display: inline-block; margin-left: 6px; padding: 0 5px; font-size: 11px; font-weight: 800; line-height: 16px; vertical-align: 1px; color: #1C1D22; }
+.cat-P { background: #D9DDE3; } .cat-G { background: #F5C400; } .cat-S { background: #A7ABB3; } .cat-B { background: #CD7F32; }
+.cat-field { margin-top: 12px; } .crew-warn ul { margin: 6px 0 0; padding-left: 20px; }
+
+.gc-role .cat-tag { margin-left: 6px; vertical-align: 0; line-height: 14px; font-size: 10px; } .gc-role { display: flex; align-items: center; }
+
+.gc-role { justify-content: flex-start; gap: 6px; white-space: nowrap; } .gc-role .cat-tag { margin-left: 0; }
 </style>
 </head>
 <body>
 <div id="auth-root"><div class="boot"><div class="boot-card"><span class="brand-mark big" aria-hidden="true"></span><h1>F1 SIM</h1><p>Loading…</p></div></div></div>
 <div id="app"></div>
-<script>window.F1SIM_BUILD = 'f1sim-1.1.0'; window.F1SIM_VERSION = '1.1.0';</script>
+<script>window.F1SIM_BUILD = 'f1sim-1.2.0'; window.F1SIM_VERSION = '1.2.0';</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
-<script src="config.js?v=f1sim-1.1.0"></script>
-<script src="bridge.js?v=f1sim-1.1.0"></script>
+<script src="config.js?v=f1sim-1.2.0"></script>
+<script src="bridge.js?v=f1sim-1.2.0"></script>
 <noscript>F1 SIM needs JavaScript switched on.</noscript>
 </body>
 </html>

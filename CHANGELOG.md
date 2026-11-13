@@ -25,6 +25,23 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v1.2.0: Endurance Phase 2, the full WEC grid
+
+13 November 2026. Build `f1sim-1.2.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Two classes | The WEC now has Hypercar and LMGT3: 20 teams and 39 cars, each with three driver seats, a race engineer per car and a team principal. Teams show their class, car and numbers (e.g. LMGT3 · Corvette Z06 LMGT3.R · #2 #33). |
+| Real crews | Hypercar: the 17 full-season cars with their crews from the 2026 Le Mans 24 Hours entry list (Toyota Racing, Ferrari AF Corse, AF Corse, Cadillac Hertz Team Jota, BMW M Team WRT, Alpine, Peugeot, Aston Martin THOR Team, Genesis Magma Racing), plus newcomers Ford (Rockenfeller, Priaulx, Sargeant, Campbell, Yelloly, Blomqvist; pairings not yet announced) and McLaren United AS (Jensen, Vanthoor and Saucy so far, with James Barclay as team principal). LMGT3: the 18 full-season cars (TF Sport, Garage 59, Vista AF Corse, Heart of Racing, Team WRT, Iron Lynx, Proton, Akkodis ASP, Manthey) with their 2026 Le Mans crews; Proton's two professionals moved to Ford's Hypercar, so those seats are open. Every seat stays open for players, as on the GP grid. |
+| FIA driver categories | Every real driver carries their FIA category from the entry list: Platinum, Gold, Silver or Bronze, shown as a badge on their seat. Endurance drivers' ratings follow their category. An endurance character who drives chooses their category on the character form (Race Control can change it); GP characters don't have one. |
+| LMGT3 crew rule | Each LMGT3 crew needs a Bronze, a Silver and one professional (Platinum or Gold). When a full crew breaks the rule, Race Control sees it listed on The Grid and in that seat's panel. |
+| Class filter | The Grid and Teams pages in Endurance have Both classes, Hypercar and LMGT3. |
+| Discord grid | The grid image grows to fit all 39 cars, with each team's class and car numbers; on tight rows each seat shows just the name. |
+| Updating an existing WEC | A WEC set up in v1.1.0 shows Update WEC on Endurance → Series: it adds LMGT3 and the real crews; players keep their seats, and open or closed seats stay as they were. |
+| Roadmap | Phase 2 is done; Phase 3 (the endurance race engine) is next. |
+
+---
+
 ## v1.1.0: GP and Endurance as separate sections
 
 13 November 2026. Build `f1sim-1.1.0`. **No database update.** Built on v1.0.9c: everything in v1.0.2 to v1.0.9c is included.
