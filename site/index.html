@@ -801,15 +801,24 @@ button.gc:hover, button.gc:focus-visible { outline: 2px solid var(--ink); outlin
 .gc-role .cat-tag { margin-left: 6px; vertical-align: 0; line-height: 14px; font-size: 10px; } .gc-role { display: flex; align-items: center; }
 
 .gc-role { justify-content: flex-start; gap: 6px; white-space: nowrap; } .gc-role .cat-tag { margin-left: 0; }
+
+/* ---------- endurance race simulator ---------- */
+.end-form { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.end-sum { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); margin-top: 10px; } .end-sum small { display: block; }
+.end-class-res { border-top: 6px solid var(--cc); }
+.end-log { list-style: none; margin: 8px 0 0; padding: 0; max-height: 420px; overflow-y: auto; } .end-log li { padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 14px; } .end-log b { display: inline-block; min-width: 72px; color: var(--muted); }
+.end-log .ev-sc b, .end-log .ev-fcy b { color: #F5C400; } .end-log .ev-retire b { color: var(--red); } .end-log .ev-weather b { color: #5AA9FF; } .end-log .ev-flag b { color: #FFFFFF; }
+.stint-bar { display: flex; height: 34px; margin: 10px 0 12px; gap: 2px; } .stint-bar .st { display: grid; place-items: center; min-width: 3px; font-size: 11.5px; font-weight: 700; color: #1C1D22; overflow: hidden; white-space: nowrap; }
+.stint-bar .cat-P { background: #D9DDE3; } .stint-bar .cat-G { background: #F5C400; } .stint-bar .cat-S { background: #A7ABB3; } .stint-bar .cat-B { background: #CD7F32; }
 </style>
 </head>
 <body>
 <div id="auth-root"><div class="boot"><div class="boot-card"><span class="brand-mark big" aria-hidden="true"></span><h1>F1 SIM</h1><p>Loading…</p></div></div></div>
 <div id="app"></div>
-<script>window.F1SIM_BUILD = 'f1sim-1.2.0'; window.F1SIM_VERSION = '1.2.0';</script>
+<script>window.F1SIM_BUILD = 'f1sim-1.3.0'; window.F1SIM_VERSION = '1.3.0';</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
-<script src="config.js?v=f1sim-1.2.0"></script>
-<script src="bridge.js?v=f1sim-1.2.0"></script>
+<script src="config.js?v=f1sim-1.3.0"></script>
+<script src="bridge.js?v=f1sim-1.3.0"></script>
 <noscript>F1 SIM needs JavaScript switched on.</noscript>
 </body>
 </html>

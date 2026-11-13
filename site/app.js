@@ -1,4 +1,4 @@
-/* F1 SIM v1.2.0 (build f1sim-1.2.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v1.3.0 (build f1sim-1.3.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -8319,8 +8319,8 @@ const WEC_2027 = [['Prologue', 'Official Prologue (group test)', 'Lusail, Qatar'
 const ENDURANCE_PHASES = [
   ['1', 'The Endurance section', 'The menu entry, the roadmap, the 2027 WEC season and classes, and the endurance career records.', 'done'],
   ['2', 'Endurance series and grid', 'The Endurance section as its own copy of the site, and the FIA WEC 2027: Hypercar and LMGT3, 39 cars with three-driver crews from the real entry list, FIA driver categories (Platinum to Bronze) with the LMGT3 crew rule, the calendar and the Prologue.', 'done'],
-  ['3', 'The endurance race engine', 'Timed races (6, 8, 10 or 24 hours), several classes on track at once with traffic and passing, fuel and tyre stints, driver stints and maximum drive time, day and night, weather through the race, slow zones, full-course yellows and safety cars, and Balance of Performance.', 'next'],
-  ['4', 'The endurance race weekend', 'Practice, Hyperpole qualifying, a race in hours shown live, and the pit wall: stint plans, driver changes, fuel and tyre calls, and night running, with the three involvement levels.', 'later'],
+  ['3', 'The endurance race engine', 'In place, with preview races on Race Weekend: timed races (6, 8, 10 or 24 hours), several classes on track at once with traffic and passing, fuel and tyre stints, driver stints and maximum drive time, day and night, weather through the race, slow zones, full-course yellows and safety cars, and Balance of Performance.', 'done'],
+  ['4', 'The endurance race weekend', 'Practice, Hyperpole qualifying, a race in hours shown live, and the pit wall: stint plans, driver changes, fuel and tyre calls, and night running, with the three involvement levels.', 'next'],
   ['5', 'Le Mans and the other events', 'The 24 Hours of Le Mans with Test Day and LMP2, the Qatar 1812km, and a lighter European Le Mans Series and IMSA.', 'later'],
   ['6', 'Everything else, for endurance', 'Championships by class and for manufacturers, development and money, exports and Discord, race reports, records and the history views.', 'later']];
 route('endurance', 'Endurance', function () {
@@ -8670,6 +8670,253 @@ const _seatDrawerCrew = DRAWERS.seat;
 DRAWERS.seat = function () { const h = _seatDrawerCrew(), s = get('f1_seats', S.ui.seatEdit); if (!s || s.role !== 'driver') return h;
   const p = crewProblem(s.teamId, s.car || 1), team = get('f1_teams', s.teamId) || {}, note = team.lineupNote ? `<p class="muted small">${esc(team.lineupNote)}</p>` : '';
   return h.replace('<div class="body">', `<div class="body">${p ? `<div class="card notice warn"><p>${esc(p)}</p></div>` : ''}${note}`); };
+
+/* =====================================================================
+   F1 SIM — the endurance race engine (Phase 3).
+   Pure and deterministic: a seed, the entry, the circuit and the
+   conditions give the same race every time. Cars run lap by lap in race
+   time, so the classes share the track: Hypercars lose time lapping
+   GT3s, and GT3s lose a little being lapped. Each car runs fuel stints,
+   changes tyres every few stints and rotates its crew. Day turns to
+   night and the weather can change; incidents bring slow zones,
+   full-course yellows or the safety car, and cars can be damaged, need
+   repairs or retire. Balance of Performance closes the gaps between
+   cars of the same class.
+   ===================================================================== */
+'use strict';
+
+const EnduranceEngine = (() => {
+  /* Reference laps in seconds for each class at each endurance circuit (a dry, clean lap by a top crew). */
+  const REF = { qatar: { hypercar: 100.5, lmgt3: 114.5, km: 5.418, pit: 26, start: 11 }, imola: { hypercar: 91.5, lmgt3: 102.5, km: 4.909, pit: 24, start: 13 },
+    britain: { hypercar: 100.5, lmgt3: 118, km: 5.891, pit: 25, start: 12 }, belgium: { hypercar: 123.5, lmgt3: 137.5, km: 7.004, pit: 28, start: 13, rain: 0.45 },
+    lemans: { hypercar: 207.5, lmgt3: 236, km: 13.626, pit: 36, start: 16, rain: 0.35 }, brazil: { hypercar: 84.5, lmgt3: 95.5, km: 4.309, pit: 24, start: 12, rain: 0.35 },
+    usa: { hypercar: 108.5, lmgt3: 124, km: 5.513, pit: 26, start: 12 }, fuji: { hypercar: 89.5, lmgt3: 98.5, km: 4.563, pit: 25, start: 11, rain: 0.4 }, bahrain: { hypercar: 107.5, lmgt3: 120.5, km: 5.412, pit: 26, start: 14 } };
+  const CLASS = { hypercar: { stintMin: 45, fuelStop: 32, deg: 0.035, traffic: [0.25, 1.3] }, lmgt3: { stintMin: 53, fuelStop: 37, deg: 0.05, traffic: [0.1, 0.55] } };
+  const TYRE_STOP = 26, SUNSET = 19.5, SUNRISE = 6.5;
+  const gauss = r => { let u = 0, v = 0; while (u === 0) u = r(); while (v === 0) v = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+  const between = (r, a, b) => a + r() * (b - a);
+  const fmt = s => { s = Math.max(0, s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), ss = Math.floor(s % 60); return h ? `${h}:${String(m).padStart(2, '0')}:${String(ss).padStart(2, '0')}` : `${m}:${String(ss).padStart(2, '0')}`; };
+  const lapFmt = s => `${Math.floor(s / 60)}:${(s % 60).toFixed(3).padStart(6, '0')}`;
+
+  /* Weather through the race: dry, or one or two rain spells. */
+  function forecast(r, mode, dur, chance) {
+    if (mode === 'dry') return [];
+    if (mode === 'wet') return [{ from: 0, to: dur * between(r, 0.45, 0.8), heavy: true }];
+    const p = mode === 'mixed' ? 1 : (chance == null ? 0.25 : chance), out = [];
+    if (r() < p) { const a = between(r, 0.1, 0.7) * dur; out.push({ from: a, to: Math.min(dur, a + between(r, 0.06, 0.2) * dur), heavy: r() < 0.4 }); }
+    if (mode === 'mixed' && r() < 0.5) { const a = between(r, 0.55, 0.9) * dur; out.push({ from: a, to: Math.min(dur, a + between(r, 0.04, 0.12) * dur), heavy: false }); }
+    return out;
+  }
+  /* Local time of day from race time: is it dark? */
+  const isNight = (startHour, t) => { const h = (startHour + t / 3600) % 24; return h >= SUNSET || h < SUNRISE; };
+
+  /* The crew's order: Hypercars start with a professional; LMGT3 crews start with their Bronze, as many do. Each takes a double stint. */
+  function crewOrder(car) {
+    const crew = car.crew.slice();
+    if (car.cls === 'lmgt3') crew.sort((a, b) => (a.category === 'B' ? -1 : 0) - (b.category === 'B' ? -1 : 0));
+    return crew;
+  }
+
+  function run(opts) {
+    const r = RaceEngine.rng(opts.seed >>> 0), ref = REF[opts.trackId] || REF.britain, startHour = opts.startHour == null ? ref.start : opts.startHour;
+    const distanceKm = opts.distanceKm || null, dur = (opts.hours || 6) * 3600, bop = opts.bop == null ? 0.75 : opts.bop;
+    const rain = forecast(r, opts.weather || 'forecast', dur, ref.rain), wetAt = t => rain.find(w => t >= w.from && t < w.to);
+    const classes = [...new Set(opts.cars.map(c => c.cls))], mean = {};
+    classes.forEach(k => { const cs = opts.cars.filter(c => c.cls === k); mean[k] = cs.reduce((s, c) => s + (c.pace || 85), 0) / Math.max(1, cs.length); });
+    const cnt = k => opts.cars.filter(c => c.cls === k).length;
+    const log = [], neutral = [], hours = [];
+    const say = (t, type, text, carId) => log.push({ t: Math.round(t), type, text, carId: carId || null });
+    rain.forEach(w => { say(w.from, 'weather', w.heavy ? 'Heavy rain arrives.' : 'Rain starts to fall.'); if (w.to < dur) say(w.to, 'weather', 'The rain stops and the track starts to dry.'); });
+    const cars = opts.cars.map(c => {
+      const R = ref[c.cls] || ref.hypercar, lapEst = R, stintLaps = Math.max(3, Math.floor(CLASS[c.cls].stintMin * 60 / lapEst));
+      return Object.assign({}, c, { t: 0, laps: 0, onTyre: 0, stintLap: 0, stintNo: 0, crewOrder: crewOrder(c), drvIdx: 0, driverStints: 0, stintLaps, tyreSet: 'dry', status: 'running',
+        repair: 0, best: null, bestBy: null, pits: 0, stints: [{ driver: crewOrder(c)[0].name, cat: crewOrder(c)[0].category, from: 0, laps: 0 }], drive: {}, finished: false, garage: 0, lastLap: R });
+    });
+    const driver = c => c.crewOrder[c.drvIdx % c.crewOrder.length];
+    let flag = null, hourNext = 3600, scUntil = 0;
+    const active = (t, kind) => neutral.find(n => n.kind === kind && t >= n.from && t < n.to);
+    function neutralise(t, kind, why) {
+      if (active(t, 'sc') || (kind === 'fcy' && active(t, 'fcy'))) return;
+      const len = kind === 'sc' ? between(r, opts.trackId === 'lemans' ? 900 : 600, opts.trackId === 'lemans' ? 2100 : 1200) : kind === 'fcy' ? between(r, 240, 540) : between(r, 180, 480);
+      neutral.push({ kind, from: t, to: t + len, why });
+      say(t, kind === 'sc' ? 'sc' : kind === 'fcy' ? 'fcy' : 'slowzone', `${kind === 'sc' ? 'Safety car' : kind === 'fcy' ? 'Full-course yellow' : 'Slow zone'}: ${why}`);
+      if (kind === 'sc') scUntil = Math.max(scUntil, t + len);
+    }
+    /* The safety car bunches each class's queue: when it pulls in, cars on the same lap as the car ahead close to a second and a half behind. */
+    function scRelease(t) {
+      const order = cars.filter(c => c.status === 'running').sort((a, b) => b.laps - a.laps || a.t - b.t);
+      for (let i = 1; i < order.length; i++) { const a = order[i - 1], b = order[i]; if (a.laps === b.laps && b.t - a.t > 1.5) b.t = a.t + 1.5 + r() * 0.5; }
+      say(t, 'sc', 'The safety car comes in. Green flag.');
+    }
+    const maxLaps = () => Math.max(...cars.map(c => c.laps));
+    let guard = 0;
+    while (guard++ < 200000) {
+      const live = cars.filter(c => c.status === 'running' && !c.finished); if (!live.length) break;
+      const c = live.reduce((a, b) => (b.t < a.t ? b : a));
+      const t0 = c.t, R = ref[c.cls] || ref.hypercar, K = CLASS[c.cls], d = driver(c);
+      if (t0 >= hourNext) { hours.push(snapshot(hourNext)); hourNext += 3600; }
+      if (scUntil && t0 >= scUntil) { scRelease(scUntil); scUntil = 0; }
+      /* lap time */
+      const night = isNight(startHour, t0), wet = wetAt(t0), traffic = c.cls === 'hypercar' ? between(r, ...K.traffic) * cnt('lmgt3') / 18 : between(r, ...K.traffic) * cnt('hypercar') / 20;
+      let lap = R + (c.manual || 0) - ((c.pace || 85) - mean[c.cls]) * (1 - bop) * 0.12 * (R / 100) + (85 - (d.pace || 80)) * 0.07 * (R / 100)
+        + gauss(r) * (0.25 + (90 - (d.consistency || 80)) * 0.012) * (R / 100) * (night ? 1.25 : 1) + c.onTyre * K.deg * (R / 100) + traffic * (1.15 - (d.overtaking || 80) / 200);
+      if (c.laps === 0) lap *= 1.04;
+      if (night) lap *= 1 + 0.006 * (1.3 - (d.experience || 70) / 100);
+      if (wet) lap *= c.tyreSet === 'wet' ? 1.09 * (1.1 - (d.wet || 80) / 250) + (wet.heavy ? 0.04 : 0) : 1.14 + (wet.heavy ? 0.08 : 0);
+      else if (c.tyreSet === 'wet') lap *= 1.06;
+      /* neutralisations during the lap */
+      const sc = active(t0, 'sc'), fcy = active(t0, 'fcy'), sz = neutral.find(n => n.kind === 'slowzone' && t0 < n.to && t0 + lap > n.from);
+      if (sc) lap = Math.max(lap, R * 1.55); else if (fcy) { const o = Math.min(t0 + lap, fcy.to) - Math.max(t0, fcy.from); lap += o * 0.8; } if (sz) lap += between(r, 3, 7);
+      /* incidents */
+      let p = 0.0011 + (night ? 0.0006 : 0) + (wet ? (c.tyreSet === 'wet' ? 0.002 : 0.006) : 0) + (d.category === 'B' ? 0.0009 : 0) + (c.cls === 'lmgt3' ? 0.0004 : 0);
+      p *= (1.35 - (d.consistency || 80) / 200) * (1.2 - (d.mental || 6) / 25);
+      if (!sc && r() < p) {
+        const k = r(), who = `#${c.num || '?'} ${c.team} (${d.name})`;
+        if (k < 0.6) { const loss = between(r, 6, 25); lap += loss; say(t0 + lap, 'incident', `${who} goes off and loses ${Math.round(loss)} seconds.`, c.id); if (r() < 0.35) neutralise(t0 + lap * 0.5, 'slowzone', `${c.team} car off the track`); }
+        else if (k < 0.86) { c.repair = between(r, 45, 240); lap += between(r, 4, 12); say(t0 + lap, 'incident', `${who} makes contact and damages the car: repairs at the next stop.`, c.id); neutralise(t0 + lap * 0.5, r() < 0.4 ? 'fcy' : 'slowzone', `debris from the ${c.team} car`); }
+        else { neutralise(t0 + lap * 0.5, r() < (opts.trackId === 'lemans' ? 0.75 : 0.55) ? 'sc' : 'fcy', `${c.team} crash`);
+          if (r() < 0.55) { c.status = 'retired'; c.why = 'Accident'; c.t = t0 + lap; say(c.t, 'retire', `${who} crashes out.`, c.id); continue; }
+          c.garage = between(r, 480, 1500); say(t0 + lap, 'incident', `${who} crashes and limps back for long repairs.`, c.id); }
+      }
+      /* reliability, checked once an hour of running */
+      const off = c.relOffset || (c.relOffset = 600 + (RaceEngine.rng(String(c.id).length * 7919 + (c.num | 0))() * 3000));   /* each car checked at its own moment in the hour */
+      if (Math.floor((t0 + lap - off) / 3600) > Math.floor((t0 - off) / 3600) && r() < (100 - (c.reliability || 90)) * 0.0015) {
+        if (r() < 0.3) { c.status = 'retired'; c.why = 'Mechanical'; c.t = t0 + lap; say(c.t, 'retire', `#${c.num || '?'} ${c.team} retires with a mechanical problem.`, c.id); continue; }
+        c.garage = between(r, 300, 1200); say(t0 + lap, 'incident', `#${c.num || '?'} ${c.team} goes to the garage with a technical problem.`, c.id);
+      }
+      c.t = t0 + lap; c.laps += 1; c.onTyre += 1; c.stintLap += 1; c.lastLap = lap; c.drive[d.name] = (c.drive[d.name] || 0) + lap;
+      c.stints[c.stints.length - 1].laps += 1;
+      if (!sc && !fcy && !wet && (c.best == null || lap < c.best)) { c.best = lap; c.bestBy = d.name; }
+      /* the chequered flag */
+      const finishLine = distanceKm ? c.laps * ref.km >= distanceKm || c.t >= dur : c.t >= dur;
+      if (!flag && finishLine && c.laps >= maxLaps()) { flag = c.t; say(c.t, 'flag', `The chequered flag: #${c.num || '?'} ${c.team} takes it.`, c.id); }
+      if (flag && c.t >= flag) { c.finished = true; continue; }
+      /* pit stops: fuel, maybe tyres, maybe a driver change; early under a neutralisation if the stint is nearly done; at once for wet tyres in rain or dries once it stops */
+      const nowWet = wetAt(c.t), tyreWrong = (nowWet && c.tyreSet === 'dry' && (nowWet.heavy || c.stintLap > 1)) || (!nowWet && c.tyreSet === 'wet' && c.stintLap > 1);
+      const cheap = (active(c.t, 'sc') || active(c.t, 'fcy')) && c.stintLap >= c.stintLaps - 3;
+      if (c.stintLap >= c.stintLaps || cheap || tyreWrong || c.repair || c.garage) {
+        const tyres = c.onTyre >= c.stintLaps * 2 - 1 || tyreWrong;
+        let stop = ref.pit * (cheap ? 0.65 : 1) + K.fuelStop + (tyres ? TYRE_STOP : 0) + gauss(r) * (3 - (c.pitSpeed || 85) / 50) + c.repair + c.garage;
+        if (c.garage) say(c.t, 'pit', `#${c.num || '?'} ${c.team} spends ${fmt(c.garage)} in the garage.`, c.id);
+        c.t += Math.max(20, stop); c.pits += 1; c.repair = 0; c.garage = 0; c.stintLap = 0; c.stintNo += 1;
+        if (tyres) { c.onTyre = 0; c.tyreSet = nowWet ? 'wet' : 'dry'; }
+        c.driverStints += 1;
+        if (c.driverStints >= 2) { c.drvIdx += 1; c.driverStints = 0; }   /* each driver double-stints */
+        const nd = driver(c); c.stints.push({ driver: nd.name, cat: nd.category, from: Math.round(c.t), laps: 0, tyres, cheap: !!cheap });
+      }
+    }
+    if (hours.length < Math.floor(dur / 3600)) hours.push(snapshot(Math.min(dur, flag || dur)));
+    function snapshot(at) {
+      const pos = cars.filter(c => c.status === 'running' || c.t > at).map(c => ({ c, d: c.laps + Math.max(0, Math.min(1, (at - c.t) / (c.lastLap || 100))) }));
+      const by = k => pos.filter(x => x.c.cls === k).sort((a, b) => b.d - a.d).slice(0, 3).map(x => ({ id: x.c.id, num: x.c.num, team: x.c.team, laps: Math.floor(x.d) }));
+      return { at, hour: Math.round(at / 3600), classes: Object.fromEntries(classes.map(k => [k, by(k)])) };
+    }
+    /* classification: by laps, then the time they crossed the line */
+    const order = cars.slice().sort((a, b) => (a.status === 'retired') - (b.status === 'retired') || b.laps - a.laps || a.t - b.t);
+    const winLaps = {}; classes.forEach(k => { const w = order.find(c => c.cls === k && c.status !== 'retired'); winLaps[k] = w ? w.laps : 0; });
+    const clsPos = {};
+    const results = order.map((c, i) => {
+      const nc = c.status !== 'retired' && c.laps < 0.7 * winLaps[c.cls]; const status = c.status === 'retired' ? 'retired' : nc ? 'nc' : 'finished';
+      const lead = order.find(x => x.cls === c.cls && x.status !== 'retired'), behind = lead ? lead.laps - c.laps : 0;
+      clsPos[c.cls] = (clsPos[c.cls] || 0) + (status === 'finished' ? 1 : 0);
+      return { id: c.id, teamId: c.teamId, team: c.team, cls: c.cls, num: c.num, crew: c.crew.map(x => ({ name: x.name, category: x.category, pid: x.pid || null, charId: x.charId || null })),
+        position: i + 1, classPosition: status === 'finished' ? clsPos[c.cls] : null, status, why: c.why || null, laps: c.laps, pits: c.pits,
+        gap: status === 'retired' ? `Retired (${c.why})` : status === 'nc' ? 'Not classified' : !lead || lead.id === c.id ? null : behind >= 1 ? `+${behind} lap${behind > 1 ? 's' : ''}` : `+${(c.t - lead.t).toFixed(3)}s`,
+        best: c.best ? lapFmt(c.best) : null, bestSec: c.best, bestBy: c.bestBy, stints: c.stints.filter(s => s.laps), drive: Object.fromEntries(Object.entries(c.drive).map(([k, v]) => [k, Math.round(v)])) };
+    });
+    log.sort((a, b) => a.t - b.t);
+    return { results, log: log.map(x => Object.assign(x, { clock: fmt(x.t) })), hours, rain: rain.map(w => ({ from: Math.round(w.from), to: Math.round(w.to), heavy: w.heavy })),
+      neutral: neutral.map(n => ({ kind: n.kind, from: Math.round(n.from), to: Math.round(n.to) })), startHour, duration: dur, distanceKm, flag: Math.round(flag || dur), trackId: opts.trackId, bop };
+  }
+  return { run, REF, fmt, lapFmt, isNight, SUNSET, SUNRISE };
+})();
+
+/* =====================================================================
+   F1 SIM — Endurance Phase 3: the race simulator.
+   In Endurance, Race Weekend lets Race Control run a full race with the
+   engine: pick an event, length, weather and BoP strength. Results show
+   the classification by class, the race hour by hour, the race log and
+   each car's stints and drivers. A result can be shared so players see
+   it. Preview races don't count for anything: Phase 4 brings real race
+   weekends.
+   ===================================================================== */
+'use strict';
+
+const END_LEN = { '6 hours': { hours: 6 }, '8 hours': { hours: 8 }, '24 hours': { hours: 24 }, '1812 km': { hours: 10, distanceKm: 1812 } };
+const RESERVE = { P: [86, 84], G: [81, 79], S: [73, 72], B: [62, 63] };
+/* The entry, as the engine sees it: every car of the series, its crew in seat order, and anyone missing replaced by a reserve. */
+function endEntry() {
+  const s = curSeries(), manual = s.bopManual || {}, out = [];
+  F1.teams().forEach(t => [...new Set(F1.seats(t.id).filter(x => x.role === 'driver').map(x => x.car || 1))].forEach(car => {
+    const seats = F1.seats(t.id).filter(x => x.role === 'driver' && (x.car || 1) === car).sort((a, b) => (a.slot || 0) - (b.slot || 0));
+    const crew = seats.map((x, i) => { const o = f1Occupant(x), p = o.person || (o.charId ? F1.person(f1PcId(o.charId)) : null), ch = o.charId ? get('characters', o.charId) : null;
+      const cat = (ch && ch.category) || (p && p.category) || (t.cls === 'lmgt3' ? ['B', 'S', 'P'][i] || 'S' : 'G');
+      if (!p) { const [pace, cons] = RESERVE[cat] || RESERVE.G; return { name: `Reserve driver (${CAT_NAME[cat] || 'Gold'})`, category: cat, reserve: true, pace, consistency: cons, wet: 75, overtaking: 75, experience: 55, mental: 6 }; }
+      return { name: o.name, category: cat, pid: p.id, charId: o.charId || null, pace: p.pace, consistency: p.consistency, wet: p.wet, overtaking: p.overtaking, experience: p.experience, mental: p.mental }; });
+    out.push({ id: `${t.id}-${car}`, teamId: t.id, team: t.name, cls: t.cls || 'hypercar', num: (t.numbers || [])[car - 1] || '', pace: t.carPace || 85, reliability: t.reliability || 90, pitSpeed: t.pitSpeed || 85, manual: Number(manual[t.id]) || 0, crew });
+  }));
+  return out;
+}
+const endEventLen = trackId => END_LEN[((curSeries().events || {})[trackId] || [])[1]] || { hours: 6 };
+CHANGES['endsim-f'] = (v, d) => { S.ui.endsim = Object.assign({}, S.ui.endsim || {}, { [d.k]: v }); render(); };
+ACTIONS['endsim-run'] = d => {
+  if (!S.isGm) return; const f = S.ui.endsim || {}, tracks = F1.tracks(), trackId = f.track || (tracks[0] || {}).id; if (!trackId) return;
+  const len = f.len && f.len !== 'event' ? { hours: Number(f.len) } : endEventLen(trackId), seed = d.same && S.ui.endres ? S.ui.endres.seed : Math.floor(Math.random() * 2 ** 31);
+  const cars = endEntry(); if (!cars.length) { toast('There are no cars in this series yet.', true); return; }
+  toast('Running the race…'); setTimeout(() => {
+    const t0 = performance.now(), res = EnduranceEngine.run({ seed, trackId, hours: len.hours, distanceKm: len.distanceKm || null, cars, weather: f.weather || 'forecast', bop: f.bop == null ? 0.75 : Number(f.bop) });
+    S.ui.endres = Object.assign(res, { seed, event: (F1.track(trackId) || {}).name || trackId, lenLabel: len.distanceKm ? `${len.distanceKm} km (${len.hours} h limit)` : `${len.hours} hours`, at: nowIso(), ms: Math.round(performance.now() - t0), series: curSeries().name });
+    S.ui.endCar = null; render(); }, 30);
+};
+ACTIONS['endsim-share'] = () => { const x = S.ui.endres; if (!S.isGm || !x) return;
+  run(async () => { await Data.put('f1_settings', `end-preview-${curSeriesId()}`, JSON.parse(JSON.stringify(x))); await Data.audit('endurance.preview', `Preview race shared: ${x.event}, ${x.lenLabel}`); }, 'Shared: players see this preview on Race Weekend.'); };
+ACTIONS['endsim-car'] = d => { S.ui.endCar = d.id || null; render(); setTimeout(() => { const el = document.getElementById('end-car'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, 60); };
+CHANGES['endsim-log'] = v => { S.ui.endLog = v; render(); };
+
+function endResultsHtml(x) {
+  const fmt = EnduranceEngine.fmt, classes = [...new Set(x.results.map(r => r.cls))], clsName = k => (WEC_CLASSES[k] || [k])[0], clsCol = k => (WEC_CLASSES[k] || [0, '#888'])[1];
+  const nights = (() => { let n = 0; for (let t = 0; t < x.duration; t += 600) if (EnduranceEngine.isNight(x.startHour, t)) n += 600; return n; })();
+  const counts = x.neutral.reduce((m, n) => (m[n.kind] = (m[n.kind] || 0) + 1, m), {});
+  const clock = h => { const v = (x.startHour + h) % 24; return `${String(Math.floor(v)).padStart(2, '0')}:${String(Math.round(v % 1 * 60)).padStart(2, '0')}`; };
+  const winner = k => x.results.find(r => r.cls === k && r.classPosition === 1);
+  const summary = `<div class="metrics end-sum">${classes.map(k => { const w = winner(k); return `<div class="metric" style="border-top:4px solid ${clsCol(k)}"><b>${w ? `#${esc(w.num)} ${esc(w.team)}` : '–'}</b><span>${esc(clsName(k))} winner${w ? `, ${w.laps} laps` : ''}</span><small class="muted">${w ? esc(w.crew.map(c => c.name).join(', ')) : ''}</small></div>`; }).join('')}
+      <div class="metric"><b>${clock(0)} to ${clock(x.flag / 3600)}</b><span>Local time</span><small class="muted">${nights ? `${fmt(nights)} in the dark` : 'All in daylight'}</small></div>
+      <div class="metric"><b>${x.rain.length ? `${x.rain.length} rain spell${x.rain.length > 1 ? 's' : ''}` : 'Dry'}</b><span>Weather</span><small class="muted">${x.rain.map(w => `${fmt(w.from)} to ${fmt(w.to)}${w.heavy ? ', heavy' : ''}`).join('; ') || 'No rain'}</small></div>
+      <div class="metric"><b>${(counts.sc || 0) + (counts.fcy || 0) + (counts.slowzone || 0)}</b><span>Neutralisations</span><small class="muted">${counts.sc || 0} safety car, ${counts.fcy || 0} full-course yellow, ${counts.slowzone || 0} slow zone</small></div></div>`;
+  const table = k => { const rows = x.results.filter(r => r.cls === k);
+    return `<section class="card end-class-res" style="--cc:${clsCol(k)}"><h2>${esc(clsName(k))}</h2><div class="scroll-x"><table class="data"><thead><tr><th>Pos</th><th>Car</th><th>Crew</th><th class="num">Laps</th><th>Gap</th><th class="num">Stops</th><th>Best lap</th><th></th></tr></thead><tbody>
+      ${rows.map(r => `<tr class="${r.status !== 'finished' ? 'muted' : ''}${r.crew.some(c => c.charId && c.charId === S.charId) ? ' me' : ''}"><td><b>${r.classPosition || (r.status === 'nc' ? 'NC' : 'DNF')}</b></td><td><b>#${esc(r.num)}</b> ${esc(r.team)}</td>
+        <td class="small">${r.crew.map(c => `${esc(c.name)}${catTag(c.category)}`).join(', ')}</td><td class="num">${r.laps}</td><td>${esc(r.gap || 'Winner')}</td><td class="num">${r.pits}</td><td class="small">${r.best ? `${esc(r.best)} <span class="muted">${esc(r.bestBy || '')}</span>` : '–'}</td>
+        <td><button class="btn small ghost" data-act="endsim-car" data-id="${esc(r.id)}">Stints</button></td></tr>`).join('')}</tbody></table></div></section>`; };
+  const hours = `<section class="card"><h2>Hour by hour</h2><div class="scroll-x"><table class="data compact"><thead><tr><th>Hour</th>${classes.map(k => `<th>${esc(clsName(k))}: top three</th>`).join('')}</tr></thead><tbody>
+      ${x.hours.map(h => `<tr><td><b>${h.hour}</b> <span class="muted small">${clock(h.hour)}${EnduranceEngine.isNight(x.startHour, h.at) ? ' · night' : ''}</span></td>${classes.map(k => `<td class="small">${(h.classes[k] || []).map((c, i) => `${i + 1}. #${esc(c.num)} ${esc(c.team)}`).join('<br>')}</td>`).join('')}</tr>`).join('')}</tbody></table></div></section>`;
+  const lf = S.ui.endLog || 'all', kinds = { all: () => true, incident: e => e.type === 'incident' || e.type === 'retire', neutral: e => ['sc', 'fcy', 'slowzone'].indexOf(e.type) !== -1, weather: e => e.type === 'weather' };
+  const log = `<section class="card"><h2>Race log</h2><label class="field" style="max-width:260px">Show<select data-change="endsim-log">${[['all', 'Everything'], ['incident', 'Incidents and retirements'], ['neutral', 'Safety car, yellows, slow zones'], ['weather', 'Weather']].map(([k, l]) => `<option value="${k}" ${lf === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <ol class="end-log">${x.log.filter(kinds[lf] || kinds.all).map(e => `<li class="ev-${esc(e.type)}"><b>${esc(e.clock)}</b> ${esc(e.text)}</li>`).join('') || '<li class="muted">Nothing of that kind.</li>'}</ol></section>`;
+  const car = S.ui.endCar && x.results.find(r => r.id === S.ui.endCar);
+  const carHtml = car ? `<section class="card" id="end-car"><h2>#${esc(car.num)} ${esc(car.team)}: stints</h2><p class="muted small">${car.laps} laps, ${car.pits} stops. ${car.status === 'finished' ? `${esc(clsName(car.cls))} P${car.classPosition}.` : esc(car.gap || '')}</p>
+      <div class="stint-bar">${car.stints.map(st => `<span class="st cat-${esc(st.cat || 'G')}" style="flex:${st.laps}" title="${esc(st.driver)}: ${st.laps} laps from ${fmt(st.from)}${st.tyres ? ', new tyres' : ''}">${st.laps > 6 ? esc(st.driver.split(' ').slice(-1)[0]) : ''}</span>`).join('')}</div>
+      <table class="data compact"><thead><tr><th>Driver</th><th>Category</th><th class="num">Time at the wheel</th><th class="num">Share</th></tr></thead><tbody>${car.crew.map(c => { const s = car.drive[c.name] || 0, tot = Object.values(car.drive).reduce((a, b) => a + b, 0) || 1;
+        return `<tr><td>${esc(c.name)}</td><td>${esc(CAT_NAME[c.category] || '–')}</td><td class="num">${fmt(s)}</td><td class="num">${Math.round(s / tot * 100)}%</td></tr>`; }).join('')}</tbody></table>
+      <button class="btn small ghost" data-act="endsim-car" data-id="">Close</button></section>` : '';
+  return `<section class="card end-head"><h2>${esc(x.event)} · ${esc(x.lenLabel)}</h2><p class="muted small">${esc(x.series)} preview race, run ${esc(fmtWhen(x.at))}. Seed ${x.seed}, BoP ${Math.round(x.bop * 100)}%. A preview doesn’t count for anything.</p>${summary}</section>
+    ${carHtml}${classes.map(table).join('')}${hours}${log}`;
+}
+function endSimHtml() {
+  const s = curSeries(), tracks = F1.tracks(), f = S.ui.endsim || {}, shared = get('f1_settings', `end-preview-${curSeriesId()}`), x = S.ui.endres || (shared && shared.results ? shared : null);
+  const head = `<div class="page-head"><div><p class="eyebrow">Endurance · ${esc(s.name)}</p><h1>Race Weekend</h1><p>The endurance race engine is in place. Race weekends (practice, Hyperpole and the race run live, with the pit wall) come with Phase 4; until then, Race Control can run preview races with today’s grid.</p></div></div>`;
+  if (!F1.teams().length) return head + '<div class="empty">There’s no endurance series yet. Race Control sets one up from Series.</div>';
+  const form = S.isGm ? `<section class="card"><h2>Run a preview race</h2><div class="form-grid end-form">
+      <label class="field">Event<select data-change="endsim-f" data-k="track">${tracks.map(t => `<option value="${esc(t.id)}" ${(f.track || tracks[0].id) === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>
+      <label class="field">Length<select data-change="endsim-f" data-k="len">${[['event', `The event’s length (${((s.events || {})[f.track || tracks[0].id] || [])[1] || '6 hours'})`], ['1', '1 hour'], ['3', '3 hours'], ['6', '6 hours'], ['24', '24 hours']].map(([v, l]) => `<option value="${v}" ${(f.len || 'event') === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+      <label class="field">Weather<select data-change="endsim-f" data-k="weather">${[['forecast', 'As the circuit tends to be'], ['dry', 'Dry'], ['mixed', 'Mixed: rain likely'], ['wet', 'Wet start']].map(([v, l]) => `<option value="${v}" ${(f.weather || 'forecast') === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+      <label class="field">Balance of Performance<select data-change="endsim-f" data-k="bop">${[['0', 'Off: the cars as they are'], ['0.5', 'Half'], ['0.75', 'Normal (75%)'], ['1', 'Full: every car equal']].map(([v, l]) => `<option value="${v}" ${String(f.bop == null ? '0.75' : f.bop) === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label></div>
+      <div class="btn-row"><button class="btn primary" data-act="endsim-run">Run the race</button>${S.ui.endres ? '<button class="btn" data-act="endsim-run" data-same="1">Run it again, same seed</button><button class="btn" data-act="endsim-share">Share with players</button>' : ''}</div>
+      <p class="muted small">Every car in ${esc(s.name)} takes part, with the crews on The Grid. Empty seats get a reserve driver of the right category. ${S.ui.endres ? `The last race took ${S.ui.endres.ms} ms to simulate.` : ''}</p></section>` : '';
+  return head + form + (x ? endResultsHtml(x) : `<section class="card"><p class="muted">${S.isGm ? 'Run a race to see the engine at work.' : 'Race Control hasn’t shared a preview race yet.'}</p><div class="btn-row"><button class="btn" data-act="nav" data-route="endurance">See the roadmap</button></div></section>`);
+}
+const _weekendViewEnd = ROUTES.weekend.view;
+ROUTES.weekend.view = function () { return S.disc === 'endurance' ? endSimHtml() : _weekendViewEnd.apply(this, arguments); };
 
 /* start-up: every part has registered its routes, drawers and actions */
 init();

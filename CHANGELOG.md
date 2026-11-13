@@ -25,6 +25,23 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v1.3.0: Endurance Phase 3, the race engine
+
+13 November 2026. Build `f1sim-1.3.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| The engine | A new endurance race engine, deterministic like the GP one (a seed gives the same race every time). Races run to time (6, 8 or 24 hours) or distance (the Qatar 1812 km, with its time limit), with every car of both classes on track together. Calibrated against real races: a 24 Hours of Le Mans comes out at around 390 Hypercar laps and 340 LMGT3 laps with about 30 stops, close to the 2025 race. A 24-hour race simulates in well under a second. |
+| Laps | Each lap comes from the class's reference lap at that circuit, the car (with Balance of Performance), the driver at the wheel (pace, consistency, wet, overtaking, experience; Bronze drivers are seconds slower), tyre wear, traffic (Hypercars lose time lapping GT3s; GT3s a little being lapped), night and rain. |
+| Stints and crews | Cars run fuel stints (about 45 minutes in a Hypercar, 53 in a GT3), change tyres every two stints and pit early under a yellow if a stop is nearly due. Each driver double-stints, then hands over; LMGT3 crews start with their Bronze. Time at the wheel is recorded for every driver. |
+| Day, night and weather | The race runs in local time from the event's usual start (Le Mans at 16:00); night is slower and riskier, eased by experience. Rain can come and go; cars switch to wet tyres and back, losing time on the wrong ones. |
+| Neutralisations | Offs, contact (damage repaired at the next stop) and crashes (retirement or long repairs) bring slow zones, full-course yellows or the safety car; the safety car bunches the queues. Mechanical problems send cars to the garage or out of the race. |
+| Classification | By class: laps, gaps, stops and best laps; cars on less than 70% of their class winner's laps are not classified. |
+| The race simulator | In Endurance, Race Weekend lets Race Control run preview races with today's grid: pick an event, length (the event's own, or 1, 3, 6 or 24 hours), weather and BoP strength. Results show both class winners, local time and darkness, rain and neutralisations; each class's classification with crews and categories; the race hour by hour; the race log (filter by incidents, neutralisations or weather); and each car's stints, coloured by driver category, with time at the wheel. Run it again with the same seed, or Share with players so they see it too (their own car is highlighted). Empty seats get a reserve driver of the right category. Preview races don't count for anything. |
+| Roadmap | Phase 3 is done; Phase 4 (the endurance race weekend) is next. |
+
+---
+
 ## v1.2.0: Endurance Phase 2, the full WEC grid
 
 13 November 2026. Build `f1sim-1.2.0`. **No database update.**
