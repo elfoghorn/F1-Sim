@@ -25,6 +25,20 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v1.12.0: improvement plan Phase 4, races that run themselves
+
+13 November 2026. Build `f1sim-1.12.0`. **No database update.** **New files:** `runner/autopilot.mjs`, `runner/package.json` and `.github/workflows/autopilot.yml`. **Set-up needed** for the runner: see SETUP.md, "Autopilot".
+
+| Area | What it does |
+| --- | --- |
+| Timetables | On the Race Weekend page, the Autopilot card (Race Control) gives an open weekend, GP or endurance, a timetable: when practice starts and how far apart the sessions are, when qualifying runs, when the race starts, and how fast it runs (GP: a lap every 30 seconds to an hour; endurance: real time up to 60 times faster, e.g. 24 hours in 4). Save and post the timetable posts it to the announcements channel, with times in each reader's own time zone. |
+| The autopilot | Runs each thing when it's due, exactly as Race Control's buttons would: each practice session in turn, every stage of qualifying, the start, and the race moved on to where the timetable says it should be, through to the flag. It catches up if it's late. The usual stage announcements go out as it goes, with the next session's time added. |
+| The runner | `runner/autopilot.mjs` opens the site in a hidden browser, signs in as a Race Control robot account and runs the autopilot: once (GitHub Actions, every 10 minutes while the repository variable `F1SIM_AUTOPILOT` is `on`, and skipped at no cost while it's off), for a set number of minutes, or in a loop on any computer left on. A Race Control tab that's open on the site also runs the autopilot every minute while any weekend is on autopilot. |
+| Check-ins | The Autopilot card shows when the autopilot last checked in and what it did, and warns when nothing has run it recently. |
+| Players | Players see the weekend's timetable on the Race Weekend page, with the next session marked, so they know when to have their plans in. |
+
+---
+
 ## v1.11.0: improvement plan Phase 3, endurance completion
 
 13 November 2026. Build `f1sim-1.11.0`. **No database update.**

@@ -1,4 +1,4 @@
-/* F1 SIM v1.11.0 (build f1sim-1.11.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v1.12.0 (build f1sim-1.12.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -10244,6 +10244,145 @@ ROUTES.seasons.view = function () {
       ${S.isGm ? `<div class="btn-row"><button class="btn" data-act="season-reopen">Reopen ${esc(sea.name)}</button></div><div class="metrics" style="align-items:end"><label class="field">Season name<input type="text" data-bind="ui/form/newSeason/name" value="${esc(f.name || String((Number(sea.name) || 2027) + 1))}"></label>
         <label class="small"><input type="checkbox" data-bind="ui/form/newSeason/keepSeats" ${f.keepSeats !== false ? 'checked' : ''}> Players keep their seats</label></div><div class="btn-row"><button class="btn primary" data-act="season-start">Start the new season</button></div>` : ''}</section>`;
   return h + (archived.length ? archived.map(endArchiveHtml).join('') : '<p class="muted">No seasons catalogued yet.</p>');
+};
+
+/* =====================================================================
+   F1 SIM — improvement plan Phase 4: races that run themselves.
+   Race Control opens a weekend and gives it a timetable: when practice
+   starts (and how far apart the sessions are), when qualifying runs, when
+   the race starts and how fast it runs. The autopilot then does what
+   Race Control's buttons would, when each thing is due: it runs practice
+   sessions, qualifying and the start, moves the race on, finishes it and
+   lets the usual announcements go out. It runs in a browser signed in
+   as Race Control: the runner (runner/autopilot.mjs) opens the site in a
+   hidden browser on GitHub Actions or any computer, and calls
+   F1SIM_AUTOPILOT.tick() every few minutes. Race Control's own tab does
+   the same while it's open.
+   ===================================================================== */
+'use strict';
+
+const AUTO_LAP = [['0.5', 'A lap every 30 seconds'], ['1', 'A lap a minute'], ['2', 'A lap every 2 minutes'], ['3', 'A lap every 3 minutes'], ['5', 'A lap every 5 minutes'], ['10', 'A lap every 10 minutes'], ['30', 'A lap every 30 minutes'], ['60', 'A lap an hour']];
+const AUTO_SPEED = [['1', 'Real time'], ['2', 'Twice as fast'], ['4', '4 times as fast'], ['6', '6 times (24 hours in 4)'], ['12', '12 times (24 hours in 2)'], ['24', '24 times (24 hours in 1)'], ['60', '60 times']];
+const tms = x => x ? Date.parse(x) : Infinity;
+const toLocalInput = iso => { if (!iso) return ''; const d = new Date(iso); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
+const fromLocalInput = v => v ? new Date(v).toISOString() : null;
+const whenTxt = ms => new Date(ms).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const isEndW = w => !!(w && w.entry && w.hours != null);
+function practiceCount(w) { return isEndW(w) ? ((w.practice || {}).sessions || 1) : (((w.settings || {}).practice === 'quick') ? 0 : sessionsOf(w)); }
+function practiceDone(w) { return isEndW(w) ? ((w.practice || {}).done || []).length : endedSessions(w).length; }
+/* The timetable as a list of [label, time]. */
+function autoTimetable(w) {
+  const a = w.auto || {}, out = [], gap = (Number(a.gapH) || 0) * 3600e3, n = practiceCount(w);
+  for (let i = 0; i < n; i++) if (a.practiceAt) out.push([isEndW(w) && typeof endSessionName === 'function' ? endSessionName(w, i + 1) : `Practice ${i + 1}`, tms(a.practiceAt) + i * gap, 'fp' + (i + 1)]);
+  if (a.qualiAt) out.push([isEndW(w) ? (w.trackId === 'lemans' ? 'Qualifying and Hyperpole' : 'Qualifying') : 'Qualifying', tms(a.qualiAt), 'quali']);
+  if (a.raceAt) out.push([w.session === 'sprint' ? 'The sprint' : 'The race', tms(a.raceAt), 'race']);
+  return out;
+}
+/* What the autopilot will do next, and when. */
+function autoNext(w) {
+  if (!w || !w.auto || !w.auto.on) return null;
+  const done = practiceDone(w), tt = autoTimetable(w);
+  if (w.status === 'practice' && done < practiceCount(w)) return tt.find(x => x[2] === 'fp' + (done + 1)) || null;
+  if (w.status === 'practice' || w.status === 'quali' && isEndW(w)) return tt.find(x => x[2] === 'quali') || null;
+  if (w.status === 'grid' || (w.status === 'race' && !(w.race || {}).clock)) return tt.find(x => x[2] === 'race') || null;
+  return null;
+}
+const autoWait = (fn, ms = 30000) => new Promise(ok => { const t0 = Date.now(), iv = setInterval(() => { let v = false; try { v = fn(); } catch (e) { v = false; } if (v || Date.now() - t0 > ms) { clearInterval(iv); ok(!!v); } }, 200); });
+
+/* ---------------------------------------------------------------- the tick */
+let autoBusy = false;
+async function autopilotTick(now) {
+  now = now || Date.now();
+  if (!S.isGm) return { ok: false, did: [], note: 'This account is not Race Control.' };
+  if (autoBusy) return { ok: true, did: [], note: 'Already running.' };
+  autoBusy = true; const did = [], keep = { series: S.series, disc: S.disc };
+  try {
+    const all = [...new Set(['f1'].concat(list('f1_series').map(s => s.id)))];
+    for (const sid of all) {
+      const s = seriesDoc(sid); S.series = sid; S.disc = seriesDisc(s);
+      if (S.disc === 'endurance') {
+        const w = endWOpen(); if (!w || !w.auto || !w.auto.on) continue; const a = w.auto, gap = (Number(a.gapH) || 0) * 3600e3, done = practiceDone(w);
+        if (w.status === 'practice' && done < practiceCount(w) && a.practiceAt && now >= tms(a.practiceAt) + done * gap) {
+          ACTIONS['endw-practice'](); await autoWait(() => { const x = endWOpen(); return !x || x.status !== 'practice' || practiceDone(x) > done; }); did.push(`${s.short || s.name}: ${typeof endSessionName === 'function' ? endSessionName(w, done + 1) : 'practice'}`); continue; }
+        if ((w.status === 'quali' || (w.status === 'practice' && done >= practiceCount(w))) && now >= tms(a.qualiAt)) {
+          ACTIONS['endw-quali'](); await autoWait(() => { const x = endWOpen(); return !x || x.status === 'race'; }); did.push(`${s.short || s.name}: qualifying`); continue; }
+        if (w.status === 'race' && now >= tms(a.raceAt)) {
+          const speed = Number(a.speed) || 1, limit = (w.hours || 6) * 3600, clock = (now - tms(a.raceAt)) / 1000 * speed, at = (w.race || {}).clock || 0;
+          const to = clock >= limit + 900 ? Infinity : Math.floor(clock);
+          if (to === Infinity || to - at >= 60) { await endAdvance(to); did.push(`${s.short || s.name}: race to ${to === Infinity ? 'the flag' : EnduranceEngine.fmt(to)}`); }
+        }
+      } else {
+        const w = F1.live(); if (!w || !w.auto || !w.auto.on) continue; const a = w.auto, gap = (Number(a.gapH) || 0) * 3600e3, done = practiceDone(w);
+        if (w.status === 'practice' && done < practiceCount(w) && a.practiceAt && now >= tms(a.practiceAt) + done * gap) {
+          ACTIONS['fp-end'](); await autoWait(() => { const x = F1.live(); return !x || practiceDone(x) > done; }); did.push(`${s.short || s.name}: practice ${done + 1}`); continue; }
+        if (w.status === 'practice' && done >= practiceCount(w) && now >= tms(a.qualiAt)) {
+          ACTIONS['f1-quali'](); await autoWait(() => { const x = F1.live(); return !x || x.status !== 'practice'; });
+          for (let i = 0; i < 4 && (F1.live() || {}).status === 'quali'; i++) { const stg = F1.live().qualiStage; ACTIONS['f1-quali-next'](); await autoWait(() => { const x = F1.live(); return !x || x.status !== 'quali' || x.qualiStage !== stg; }); }
+          did.push(`${s.short || s.name}: qualifying`); continue; }
+        if ((w.status === 'grid' || w.status === 'running') && w.state && now >= tms(a.raceAt)) {
+          const per = (Number(a.pace) || 2) * 60000, due = Math.floor((now - tms(a.raceAt)) / per) + 1, lap = w.state.lap || 0, n = Math.min(due - lap, 300);
+          if (n > 0) { S.ui.form.f1stopSc = false; await f1Advance(n); did.push(`${s.short || s.name}: laps ${lap + 1} to ${Math.min(w.state.laps || 999, lap + n)}`); }
+        }
+      }
+    }
+    if (typeof annCheck === 'function') await annCheck();
+    const hb = get('f1_settings', 'autopilot');   /* the check-in: whenever it did something, and at least every five minutes */
+    if (did.length || !hb || !hb.lastTick || Date.now() - Date.parse(hb.lastTick) > 5 * 60000 || (!!window.F1SIM_RUNNER && !hb.runner))
+      await Data.put('f1_settings', 'autopilot', { lastTick: nowIso(), did: did.length ? did.slice(0, 12) : (hb && hb.did) || [], by: S.uid || null, runner: !!window.F1SIM_RUNNER });
+    return { ok: true, did };
+  } catch (e) { return { ok: false, did, note: String(e && e.message || e) }; }
+  finally { S.series = keep.series; S.disc = keep.disc; autoBusy = false; if (did.length) render(); }
+}
+window.F1SIM_AUTOPILOT = { tick: t => autopilotTick(t), ready: () => S.phase === 'ready', isRaceControl: () => !!S.isGm };
+/* Race Control's own open tab helps too: a tick every minute while it's open. */
+const anyAuto = () => list('f1_weekends').some(w => w.auto && w.auto.on && w.status !== 'finished') || list('f1_endw').some(w => w.auto && w.auto.on && w.status !== 'finished');
+setInterval(() => { if (S.isGm && S.phase === 'ready' && !window.F1SIM_RUNNER && !document.hidden && anyAuto()) autopilotTick(); }, 60000);
+
+/* ---------------------------------------------------------------- the timetable card */
+CHANGES['auto-f'] = (v, d, el) => { const f = S.ui.form.auto = S.ui.form.auto || {}; f[d.k] = d.k === 'on' ? !!(el && el.checked) : v; };
+ACTIONS['auto-save'] = d => { const end = S.disc === 'endurance', w = end ? endWOpen() : F1.live(); if (!S.isGm || !w) return;
+  const f = S.ui.form.auto || {}, cur = w.auto || {}, pick = (k, conv) => f[k] !== undefined ? conv(f[k]) : cur[k];
+  const auto = { on: f.on !== undefined ? !!f.on : !!cur.on, practiceAt: pick('practiceAt', fromLocalInput), gapH: pick('gapH', Number), qualiAt: pick('qualiAt', fromLocalInput), raceAt: pick('raceAt', fromLocalInput) };
+  if (end) auto.speed = pick('speed', Number) || 1; else auto.pace = pick('pace', Number) || 2;
+  if (auto.on && !auto.raceAt) { toast('Give the race a start time first.', true); return; }
+  if (auto.on && !auto.qualiAt) { toast('Give qualifying a time first.', true); return; }
+  if (auto.on && practiceCount(w) && !auto.practiceAt) { toast('Give practice a start time first, or open the weekend with quick practice.', true); return; }
+  const col = end ? 'f1_endw' : 'f1_weekends';
+  run(async () => { await Data.put(col, w.id, Object.assign(clone(S.store[col][w.id]), { auto })); await Data.audit('autopilot.set', `${(w.event || (F1.track(w.trackId) || {}).name || 'Weekend')}: autopilot ${auto.on ? 'on' : 'off'}`);
+    if (d.post && auto.on) await annPost(curSeriesId(), `🗓️ ${w.event || (F1.track(w.trackId) || {}).name}: the timetable`, autoTimetable(Object.assign({}, w, { auto })).map(([l, t]) => `**${l}:** <t:${Math.round(t / 1000)}:F> (<t:${Math.round(t / 1000)}:R>)`).join('\n') + `\n\nIt all runs by itself: set your plans before each session.`);
+    S.ui.form.auto = {}; }, auto.on ? (d.post ? 'Autopilot on, timetable posted.' : 'Autopilot on.') : 'Autopilot off.');
+};
+function autoHeartbeat() { const hb = get('f1_settings', 'autopilot'); if (!hb || !hb.lastTick) return null; return { mins: Math.round((Date.now() - Date.parse(hb.lastTick)) / 60000), runner: hb.runner, did: hb.did || [] }; }
+function autoCardHtml(w) {
+  if (!w || w.session === 'test') return '';
+  const end = isEndW(w), a = w.auto || {}, f = S.ui.form.auto || {}, val = (k, conv) => f[k] !== undefined ? f[k] : conv ? conv(a[k]) : a[k], tt = autoTimetable(w), next = autoNext(w), hb = autoHeartbeat();
+  const timetable = a.on && tt.length ? `<ol class="auto-tt">${tt.map(([l, t, k]) => { const past = t <= Date.now(); return `<li class="${past ? 'past' : ''}"><b>${esc(l)}</b> ${esc(whenTxt(t))}${next && next[2] === k ? ' <span class="tag player">Next</span>' : ''}</li>`; }).join('')}</ol>
+      <p class="small">${end ? `The race runs ${esc((AUTO_SPEED.find(x => Number(x[0]) === Number(a.speed || 1)) || ['', 'in real time'])[1].toLowerCase())}.` : `The race runs at ${esc((AUTO_LAP.find(x => Number(x[0]) === Number(a.pace || 2)) || ['', 'a lap every 2 minutes'])[1].toLowerCase())}.`}</p>` : '';
+  if (!S.isGm) return a.on ? `<section class="card auto-card"><h3>Timetable</h3><p class="muted small">This weekend runs by itself. Set your plans before each session.</p>${timetable}</section>` : '';
+  const sel = (k, opts, v) => `<select data-change="auto-f" data-k="${k}">${opts.map(([x, l]) => `<option value="${x}" ${String(v) === String(x) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+  return `<section class="card auto-card"><h3>Autopilot</h3><p class="muted small">Give the weekend a timetable and it runs by itself: practice, qualifying and the race happen when they’re due, and the announcements go out, whether or not Race Control is online.</p>
+    <label class="small"><input type="checkbox" data-change="auto-f" data-k="on" ${val('on') ? 'checked' : ''}> Run this weekend on autopilot</label>
+    <div class="form-grid">${practiceCount(w) ? `<label class="field">Practice starts<input type="datetime-local" data-change="auto-f" data-k="practiceAt" value="${esc(val('practiceAt', toLocalInput) || '')}"></label>
+      <label class="field">Then a session every${sel('gapH', [['0.5', 'half an hour'], ['1', 'hour'], ['2', '2 hours'], ['4', '4 hours'], ['12', '12 hours'], ['24', 'day']], val('gapH') || 1)}</label>` : '<p class="muted small">Quick practice: nothing to schedule before qualifying.</p>'}
+      <label class="field">Qualifying<input type="datetime-local" data-change="auto-f" data-k="qualiAt" value="${esc(val('qualiAt', toLocalInput) || '')}"></label>
+      <label class="field">${w.session === 'sprint' ? 'Sprint start' : 'Race start'}<input type="datetime-local" data-change="auto-f" data-k="raceAt" value="${esc(val('raceAt', toLocalInput) || '')}"></label>
+      <label class="field">Race speed${end ? sel('speed', AUTO_SPEED, val('speed') || 1) : sel('pace', AUTO_LAP, val('pace') || 2)}</label></div>
+    <div class="btn-row"><button class="btn primary" data-act="auto-save" data-post="1">Save and post the timetable</button><button class="btn" data-act="auto-save">Save</button></div>
+    ${timetable}
+    <p class="small ${hb && hb.mins <= 15 ? '' : 'muted'}">${hb ? `The autopilot last checked in ${hb.mins < 1 ? 'just now' : `${plural(hb.mins, 'minute')} ago`}${hb.runner ? ' (the runner)' : ' (a Race Control tab)'}${hb.did.length ? `: ${esc(hb.did.join('; '))}` : ''}.` : 'The autopilot hasn’t checked in yet.'}${!hb || hb.mins > 15 ? ' While nothing runs it, the weekend only moves on when Race Control’s tab is open: see SETUP.md, “Autopilot”, to set up the runner.' : ''}</p></section>`;
+}
+const _weekendViewAuto = ROUTES.weekend.view;
+ROUTES.weekend.view = function () {
+  const h = _weekendViewAuto.apply(this, arguments), end = S.disc === 'endurance', w = end ? (S.ui.endwView ? null : endWOpen()) : F1.live();
+  if (!w || w.status === 'finished') return h; const card = autoCardHtml(w); if (!card) return h;
+  const i = h.indexOf('</div></div>'); return i >= 0 && h.indexOf('page-head') !== -1 ? h.slice(0, i + 12) + card + h.slice(i + 12) : card + h;
+};
+/* the timetable in the weekend-open announcement */
+const _annMessageAuto = annMessage;
+annMessage = function (w, kind, stage) {
+  const m = _annMessageAuto(w, kind, stage); if (!m || !w.auto || !w.auto.on) return m;
+  const tt = autoTimetable(w).filter(x => x[1] > Date.now()); if (!tt.length) return m;
+  const nx = tt[0]; return [m[0], `${m[1]}\n\n🗓️ **Next: ${nx[0]}** <t:${Math.round(nx[1] / 1000)}:R>${stage === 'open' && tt.length > 1 ? `\n${tt.slice(1).map(([l, t]) => `${l}: <t:${Math.round(t / 1000)}:F>`).join('\n')}` : ''}`];
 };
 
 /* start-up: every part has registered its routes, drawers and actions */

@@ -132,3 +132,56 @@ The free plan has no automatic backups. Every few race weekends, download one fr
 ## Privacy
 
 Accounts are a username and a password (stored as a hash by Supabase). Each username becomes an internal sign-in name on your own Supabase domain; nothing is ever sent to it. No real name, email or contact detail is asked for. Characters are fiction; real drivers and team principals appear in race results only.
+
+## Autopilot: races that run themselves
+
+Give a race weekend a timetable and it runs by itself: practice sessions, qualifying and the race happen when they're due, the race moves on at the speed you chose, and the Discord announcements go out, whether or not anyone from Race Control is online. The autopilot uses the site's own rules: it's a hidden browser signed in as a Race Control "robot" account, doing what Race Control's buttons do.
+
+### 1. Make the robot account (once)
+
+1. Sign out, then create a new account on the site with an invite code (Accounts and backups → Invite code). Call it something like `autopilot` and give it a long password that you don't use anywhere else.
+2. Sign back in as yourself, go to **Accounts and backups → Accounts**, and set the robot account's role to **Race Control**.
+
+### 2. Let GitHub run it (once)
+
+1. In the GitHub repository: **Settings → Secrets and variables → Actions → Secrets → New repository secret**. Add:
+   - `F1SIM_RUNNER_USER`: the robot account's username
+   - `F1SIM_RUNNER_PASSWORD`: its password
+2. Still under **Actions**, open the **Variables** tab and add `F1SIM_AUTOPILOT` with the value `on`.
+3. Check it works: **Actions → Race autopilot → Run workflow**. After a couple of minutes the run should be green, and on a weekend with the autopilot on, the Autopilot card says when it last checked in.
+
+The workflow checks every 10 minutes while `F1SIM_AUTOPILOT` is `on`. Set it to `off` between race weekends: the scheduled runs are then skipped straight away and use no Actions minutes. (Public repositories have unlimited Actions minutes; private ones have 2,000 a month on the free plan, and each check uses about 2.)
+
+Optional variables:
+- `F1SIM_SITE_URL`: the site's address, if it isn't https://f1-rp-sim.co.uk/
+- `F1SIM_AUTOPILOT_MINUTES`: keep checking every minute for that many minutes each run (for example `9`), so races move on minute by minute instead of every 10 minutes. This uses about 10 Actions minutes per run.
+
+GitHub may delay scheduled runs by a few minutes when it's busy; the autopilot always catches up to where the timetable says things should be.
+
+### 3. Give a weekend a timetable
+
+Open the weekend as usual. On the Race Weekend page, the **Autopilot** card (Race Control only) asks for:
+- when practice starts, and how far apart the sessions are (with quick practice there's nothing to schedule)
+- when qualifying runs
+- when the race starts, and how fast it runs: for GP, a lap every so many minutes; for endurance, real time or faster (24 hours in 4, 2 or 1)
+
+**Save and post the timetable** switches the autopilot on for that weekend and posts the timetable to the announcements channel, with times shown in each reader's own time zone. Players see the timetable on the Race Weekend page and set their plans before each session.
+
+### Instead of GitHub: any computer left on
+
+On a computer that stays on during the race weekend (with [Node.js](https://nodejs.org) 20 or later):
+
+```
+cd runner
+npm install
+npx playwright install chromium
+```
+
+Then, each time (Windows PowerShell: use `$env:F1SIM_RUNNER_USER="autopilot"` and so on):
+
+```
+F1SIM_RUNNER_USER=autopilot F1SIM_RUNNER_PASSWORD='the password' node autopilot.mjs --loop
+```
+
+It checks every minute until you stop it with Ctrl+C. While a Race Control tab is open on the site, that tab helps too: it runs the autopilot every minute.
+

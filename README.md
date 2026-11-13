@@ -42,3 +42,5 @@ supabase/migrations/      database set-up, applied automatically by GitHub Actio
 ## Updating
 
 Replace the changed files, commit and push. Keep your `site/config.js`.
+
+`runner/` holds the autopilot runner (see SETUP.md, "Autopilot"): it signs in to the site as a Race Control robot account and runs weekends on their timetable. `.github/workflows/autopilot.yml` runs it on GitHub Actions.

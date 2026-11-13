@@ -1,0 +1,13 @@
+{
+  "name": "f1-sim-autopilot",
+  "private": true,
+  "type": "module",
+  "description": "Runs F1 SIM's autopilot: opens the site in a hidden browser, signed in as the Race Control robot account, and runs whatever is due.",
+  "scripts": {
+    "once": "node autopilot.mjs",
+    "loop": "node autopilot.mjs --loop"
+  },
+  "dependencies": {
+    "playwright": "1.48.2"
+  }
+}

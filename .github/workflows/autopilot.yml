@@ -1,0 +1,43 @@
+# Race autopilot: runs practice, qualifying and races on their timetable, and posts the announcements,
+# even when nobody from Race Control is online. It signs in to the site as the Race Control robot account.
+#
+# Set up once (see SETUP.md, "Autopilot"):
+#   Settings → Secrets and variables → Actions → Secrets: F1SIM_RUNNER_USER and F1SIM_RUNNER_PASSWORD
+# Switch it on for race weekends and off afterwards:
+#   Settings → Secrets and variables → Actions → Variables: F1SIM_AUTOPILOT = on (anything else, or no variable, is off)
+# While it's off the scheduled runs are skipped straight away and use no Actions minutes.
+# Optional variables: F1SIM_SITE_URL (default https://f1-rp-sim.co.uk/); F1SIM_AUTOPILOT_MINUTES (keep checking every
+# minute for that many minutes each run, e.g. 9, for smoother races; default 0, one check every 10 minutes).
+name: Race autopilot
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: race-autopilot
+  cancel-in-progress: false
+
+jobs:
+  autopilot:
+    if: ${{ vars.F1SIM_AUTOPILOT == 'on' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install the hidden browser
+        working-directory: runner
+        run: npm install --no-audit --no-fund && npx playwright install --with-deps chromium
+      - name: Run the autopilot
+        working-directory: runner
+        run: node autopilot.mjs --for=${{ vars.F1SIM_AUTOPILOT_MINUTES || '0' }}
+        env:
+          F1SIM_SITE_URL: ${{ vars.F1SIM_SITE_URL || 'https://f1-rp-sim.co.uk/' }}
+          F1SIM_RUNNER_USER: ${{ secrets.F1SIM_RUNNER_USER }}
+          F1SIM_RUNNER_PASSWORD: ${{ secrets.F1SIM_RUNNER_PASSWORD }}
