@@ -1,4 +1,4 @@
-/* F1 SIM v1.8.0 (build f1sim-1.8.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v1.9.0 (build f1sim-1.9.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -9861,6 +9861,113 @@ function annCardHtml() {
 }
 const _leaguePanelAnn = leaguePanelHtml;
 leaguePanelHtml = function () { return _leaguePanelAnn.apply(this, arguments) + annCardHtml(); };
+
+/* =====================================================================
+   F1 SIM — Phase 1 of the improvement plan: quick wins.
+   The 2027 calendars for Formula 1, 2 and 3 (published by F1 on 16
+   September and by F2/F3 on 5 October 2026), with Madrid, Istanbul Park
+   and Portimão added for Grand Prix racing; a lap chart export for GP
+   races; spreadsheet exports for endurance races; and season awards,
+   worked out when a season is catalogued and posted to Discord.
+   ===================================================================== */
+'use strict';
+
+/* ---------------------------------------------------------------- the 2027 calendars */
+const GP_NEW_TRACKS = [
+  { id: 'madrid', name: 'Spanish GP', circuit: 'Madring, Madrid', flag: '🇪🇸', laps: 57, od: 45, td: 60, wr: 15, type: 'street', hasSprint: false, drs: 2, alt: 650, temp: 28, abrasive: 3, street: true },
+  { id: 'turkey', name: 'Turkish GP', circuit: 'Istanbul Park', flag: '🇹🇷', laps: 58, od: 45, td: 62, wr: 25, type: 'technical', hasSprint: false, drs: 2, alt: 130, temp: 22, abrasive: 4, street: false },
+  { id: 'portugal', name: 'Portuguese GP', circuit: 'Algarve Int’l, Portimão', flag: '🇵🇹', laps: 66, od: 40, td: 60, wr: 15, type: 'technical', hasSprint: false, drs: 1, alt: 100, temp: 26, abrasive: 4, street: false }];
+/* [track, race day] in round order; F1 sprints are listed separately. */
+const CAL_2027 = {
+  f1: { rounds: [['bahrain', '2027-03-14'], ['saudi', '2027-03-21'], ['australia', '2027-04-04'], ['japan', '2027-04-11'], ['china', '2027-04-18'], ['miami', '2027-05-02'], ['canada', '2027-05-23'], ['monaco', '2027-06-06'],
+      ['portugal', '2027-06-20'], ['britain', '2027-07-04'], ['austria', '2027-07-11'], ['belgium', '2027-07-25'], ['hungary', '2027-08-01'], ['italy', '2027-09-05'], ['madrid', '2027-09-12'], ['azerbaijan', '2027-09-26'],
+      ['turkey', '2027-10-03'], ['singapore', '2027-10-10'], ['usa', '2027-10-24'], ['mexico', '2027-10-31'], ['brazil', '2027-11-07'], ['lasvegas', '2027-11-20'], ['qatar', '2027-12-05'], ['abudhabi', '2027-12-12']],
+    sprints: ['bahrain', 'australia', 'japan', 'canada', 'monaco', 'britain', 'italy', 'brazil', 'qatar', 'abudhabi'], test: { name: 'Pre-season test', trackId: 'bahrain', days: 4, date: '2027-02-24' } },
+  f2: { rounds: [['bahrain', '2027-03-14'], ['saudi', '2027-03-21'], ['australia', '2027-04-04'], ['canada', '2027-05-23'], ['monaco', '2027-06-06'], ['britain', '2027-07-04'], ['austria', '2027-07-11'], ['italy', '2027-09-05'],
+      ['madrid', '2027-09-12'], ['azerbaijan', '2027-09-26'], ['turkey', '2027-10-03'], ['mexico', '2027-10-31'], ['qatar', '2027-12-05'], ['abudhabi', '2027-12-12']] },
+  f3: { rounds: [['bahrain', '2027-03-14'], ['saudi', '2027-03-21'], ['australia', '2027-04-04'], ['canada', '2027-05-23'], ['monaco', '2027-06-06'], ['britain', '2027-07-04'], ['austria', '2027-07-11'], ['italy', '2027-09-05'],
+      ['madrid', '2027-09-12'], ['turkey', '2027-10-03']] } };
+ACTIONS['cal-2027'] = () => {
+  const s = curSeries(), key = s.template || s.id, c = CAL_2027[key]; if (!S.isGm || !c) return;
+  askConfirm(`Use the official 2027 calendar for ${s.name}: ${c.rounds.length} rounds from Bahrain (14 March) to ${(get('f1_tracks', c.rounds[c.rounds.length - 1][0]) || GP_NEW_TRACKS.find(t => t.id === c.rounds[c.rounds.length - 1][0]) || {}).name || 'the finale'}${c.sprints ? `, with ${c.sprints.length} sprint weekends` : ''}? The round order, race dates${c.test ? ' and the pre-season test' : ''} change; races already run stay in the record.`, 'Use it', () => run(async () => {
+    for (const t of GP_NEW_TRACKS) if (!get('f1_tracks', t.id)) await Data.put('f1_tracks', t.id, Object.assign({ round: 50 }, t));
+    if (get('f1_tracks', 'spain') && get('f1_tracks', 'spain').name === 'Spanish GP') await Data.put('f1_tracks', 'spain', Object.assign(clone(S.store.f1_tracks.spain), { name: 'Barcelona-Catalunya GP' }));
+    const doc = Object.assign(get('f1_series', s.id) ? clone(S.store.f1_series[s.id]) : { template: s.id, activeSeason: curSeasonId() }, { calendar: c.rounds.map(r => r[0]), dates: Object.fromEntries(c.rounds), calendarYear: 2027 });
+    if (c.sprints) doc.sprints = c.sprints.slice();
+    if (c.test) doc.tests = [Object.assign({ id: 't1' }, c.test)];
+    await Data.put('f1_series', s.id, doc); await Data.audit('calendar.2027', `${s.name}: the official 2027 calendar is in use`);
+  }, `${s.name} now uses the 2027 calendar.`));
+};
+/* sprint weekends follow the series' own list when it has one */
+const _adjustTrackQW = adjustTrack;
+adjustTrack = function (t, s, round) { const o = _adjustTrackQW(t, s, round); if (Array.isArray(s.sprints) && !s.sprintEvery) o.hasSprint = s.sprints.indexOf(t.id) !== -1; return o; };
+const _calendarViewQW = ROUTES.calendar.view;
+ROUTES.calendar.view = function () {
+  const h = _calendarViewQW.apply(this, arguments), s = curSeries(), key = s.template || s.id;
+  if (!S.isGm || S.disc === 'endurance' || !CAL_2027[key] || s.calendarYear === 2027) return h;
+  const card = `<section class="card notice"><p><b>The 2027 ${esc(s.name)} calendar is out.</b> ${CAL_2027[key].rounds.length} rounds${CAL_2027[key].sprints ? `, ${CAL_2027[key].sprints.length} of them sprint weekends` : ''}${key === 'f1' ? ', with Portugal, Turkey and Madrid' : ''}.</p><div class="btn-row"><button class="btn primary" data-act="cal-2027">Use the 2027 calendar</button></div></section>`;
+  const i = h.indexOf('</div></div>'); return i >= 0 ? h.slice(0, i + 12) + card + h.slice(i + 12) : card + h;
+};
+
+/* ---------------------------------------------------------------- exports */
+const csvOf = rows => rows.map(r => r.map(v => { const x = v == null ? '' : String(v); return /[",\n]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x; }).join(',')).join('\n') + '\n';
+function saveFile(name, body, type) { const blob = new Blob([body], { type }), url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000); toast(`Saved as ${name}.`); }
+/* GP: the lap chart (each car's position at the end of every lap) and the lap times, side by side */
+ACTIONS['rep-lapchart'] = d => { const w = get('f1_weekends', d.id); if (!w || !w.state || !w.state.cars) return;
+  const cars = w.state.cars.slice().sort((a, b) => (a.positions || []).length - (b.positions || []).length || 0), n = Math.max(...cars.map(c => (c.positions || []).length));
+  const name = c => (w.results || []).find(r => r.id === c.id) ? (w.results || []).find(r => r.id === c.id).name : c.driver || c.id, order = (w.results || []).map(r => r.id), sorted = order.map(id => cars.find(c => c.id === id)).filter(Boolean);
+  const rows = [['Lap'].concat(sorted.map(c => `${name(c)} position`), sorted.map(c => `${name(c)} lap time`))];
+  for (let l = 0; l < n; l++) rows.push([l + 1].concat(sorted.map(c => (c.positions || [])[l] || ''), sorted.map(c => (c.lapTimes || [])[l] != null ? c.lapTimes[l].toFixed(3) : '')));
+  saveFile(`${w.trackId}-${w.session}-${seasonDoc(wSeason(w)).name}-lap-chart.csv`, csvOf(rows), 'text/csv'); };
+const _repDrawerQW = DRAWERS.rep;
+DRAWERS.rep = function () { const h = _repDrawerQW(), w = get('f1_weekends', (S.ui.rep || {}).wid); if (!w || !w.state || !w.state.cars) return h;
+  return h.replace('</div></div>', `<button class="btn" data-act="rep-lapchart" data-id="${esc(w.id)}"><b>Lap chart (.csv)</b><span>Every car’s position and lap time, lap by lap: ready for a chart.</span></button></div></div>`); };
+/* Endurance: the results and every stint */
+ACTIONS['endw-csv'] = d => { const w = get('f1_endw', d.id); if (!w || w.status !== 'finished') return;
+  const res = w.results.results, pts = endRacePoints(w), base = `${w.trackId}-${seasonDoc(w.seasonId).name}`;
+  if (d.k === 'stints') { const rows = [['Class', 'Car', 'Team', 'Stint', 'Driver', 'Category', 'From (race time)', 'Laps', 'New tyres', 'Compound', 'Under yellow']];
+    res.forEach(r => (r.stints || []).forEach((st, i) => rows.push([(WEC_CLASSES[r.cls] || [r.cls])[0], r.num, r.team, i + 1, st.driver, CAT_NAME[st.cat] || '', EnduranceEngine.fmt(st.from || 0), st.laps, st.tyres ? 'yes' : '', st.compound || '', st.cheap ? 'yes' : ''])));
+    return saveFile(`${base}-stints.csv`, csvOf(rows), 'text/csv'); }
+  const rows = [['Overall', 'Class', 'Class position', 'Car', 'Team', 'Crew', 'Laps', 'Gap', 'Stops', 'Best lap', 'Best by', 'Status', 'Points']];
+  res.forEach(r => rows.push([r.position, (WEC_CLASSES[r.cls] || [r.cls])[0], r.classPosition || '', r.num, r.team, r.crew.map(c => `${c.name} (${c.category || '–'}) ${EnduranceEngine.fmt((r.drive || {})[c.name] || 0)}`).join('; '), r.laps, r.gap || 'Winner', r.pits, r.best || '', r.bestBy || '', r.status, pts[r.id] || 0]));
+  saveFile(`${base}-results.csv`, csvOf(rows), 'text/csv'); };
+const _weekendViewQW = ROUTES.weekend.view;
+ROUTES.weekend.view = function () { const h = _weekendViewQW.apply(this, arguments), v = S.disc === 'endurance' && S.ui.endwView && get('f1_endw', S.ui.endwView);
+  if (!v || v.status !== 'finished') return h;
+  return h.replace('<button class="btn" data-act="endw-report"', `<button class="btn" data-act="endw-csv" data-id="${esc(v.id)}" data-k="results">Results (.csv)</button><button class="btn" data-act="endw-csv" data-id="${esc(v.id)}" data-k="stints">Stints (.csv)</button><button class="btn" data-act="endw-report"`); };
+
+/* ---------------------------------------------------------------- season awards */
+function seasonAwards(sid, seasonId) {
+  const ws = list('f1_weekends').filter(w => wSeries(w) === sid && wSeason(w) === seasonId && w.status === 'finished' && w.session === 'gp'); if (!ws.length) return [];
+  const by = {}, add = (r, k, v) => { const key = r.personId || r.charId || r.name, x = by[key] = by[key] || { name: r.name, personId: r.personId || null, charId: r.charId || null, races: 0, pts: 0, gained: 0, poles: 0, scores: 0, wins: 0 }; x[k] += v; };
+  ws.forEach(w => (w.results || []).forEach(r => { add(r, 'races', 1); add(r, 'pts', r.points || 0); if (r.status === 'finished' && r.grid) add(r, 'gained', Math.max(0, r.grid - r.position)); if (r.grid === 1) add(r, 'poles', 1); if (r.points > 0) add(r, 'scores', 1); if (r.position === 1) add(r, 'wins', 1); }));
+  const all = Object.values(by), half = Math.ceil(ws.length / 2), regular = all.filter(x => x.races >= half);
+  const firstSeason = x => !list('f1_weekends').some(w => wSeries(w) === sid && wSeason(w) !== seasonId && String(w.createdAt) < String(ws[0].createdAt) && (w.results || []).some(r => (r.personId || r.charId || r.name) === (x.personId || x.charId || x.name)));
+  const top = (arr, f) => arr.slice().sort((a, b) => f(b) - f(a))[0];
+  const out = [], push = (award, x, why) => { if (x) out.push({ award, name: x.name, personId: x.personId, charId: x.charId, why }); };
+  const champ = top(all, x => x.pts * 1000 + x.wins);
+  const dots = top(regular.filter(x => x !== champ), x => x.pts / x.races); push('Driver of the season', dots, dots ? `${(dots.pts / dots.races).toFixed(1)} points a race` : '');
+  const ov = top(regular, x => x.gained); push('Best overtaker', ov && ov.gained ? ov : null, ov ? `${ov.gained} places gained from the grid` : '');
+  /* a rookie is new to the championship: a character with no seasons in it on their career record, or a real driver with little experience */
+  const sname = seriesDoc(sid).name, isNew = x => { if (x.charId) { const c = get('characters', x.charId); return !c || !careerRows(c).some(r => r.status === 'canon' && seriesLabel(r) === sname && (r.role || 'driver') === 'driver'); } return ((F1.person(x.personId) || {}).experience || 50) < 45; };
+  const rook = top(all.filter(x => x.races >= half && firstSeason(x) && isNew(x)), x => x.pts); push('Rookie of the year', rook, rook ? `${rook.pts} points in a first season` : '');
+  const pole = top(all, x => x.poles); push('Pole king', pole && pole.poles ? pole : null, pole ? `${plural(pole.poles, 'pole position')}` : '');
+  const mc = top(regular, x => x.scores / x.races); push('Mr Consistent', mc && mc.scores ? mc : null, mc ? `points in ${mc.scores} of ${mc.races} races` : '');
+  return out;
+}
+const _seasonEndQW = ACTIONS['season-end'];
+ACTIONS['season-end'] = () => { const s = curSeries(), sea = curSeason(), awards = seasonAwards(s.id, sea.id);
+  _seasonEndQW();
+  /* once the season is catalogued, add the awards to its archive and post them */
+  const wait = setInterval(async () => { const doc = get('f1_seasons', sea.id); if (!doc || doc.status !== 'archived' || !doc.archive) return; clearInterval(wait);
+    if (!awards.length || doc.awards) return;
+    await Data.put('f1_seasons', sea.id, Object.assign(clone(S.store.f1_seasons[sea.id]), { awards }));
+    try { await annPost(s.id, `🏅 ${s.name} ${sea.name}: the season awards`, `${doc.archive.drivers[0] ? `**Champion:** ${doc.archive.drivers[0].name}\n\n` : ''}${awards.map(a => `**${a.award}:** ${a.name} (${a.why})`).join('\n')}`); } catch (e) { /* Discord isn't set up */ } }, 800);
+  setTimeout(() => clearInterval(wait), 120000); };
+const _archiveHtmlQW = archiveHtml;
+archiveHtml = function (season) { const h = _archiveHtmlQW(season); if (!season.awards || !season.awards.length) return h;
+  const block = `<div class="awards">${season.awards.map(a => `<span class="award"><b>${esc(a.award)}</b>${a.personId ? careerLink(a.personId, a.name) : esc(a.name)}<small>${esc(a.why)}</small></span>`).join('')}</div>`;
+  const i = h.indexOf('</h2>'); return i < 0 ? h + block : h.slice(0, i + 5) + block + h.slice(i + 5); };
 
 /* start-up: every part has registered its routes, drawers and actions */
 init();

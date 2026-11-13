@@ -25,6 +25,21 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v1.9.0: improvement plan Phase 1, quick wins
+
+13 November 2026. Build `f1sim-1.9.0`. **No database update.** The first of seven phases of improvements for both modes.
+
+| Area | What it does |
+| --- | --- |
+| 2027 calendars | Calendar → Use the 2027 calendar (Race Control; GP series): the official 2027 schedules. Formula 1: 24 rounds from Bahrain (14 March) to Abu Dhabi (12 December) with 10 sprint weekends (Bahrain, Australia, Japan, Canada, Monaco, Britain, Italy, Brazil, Qatar, Abu Dhabi), Las Vegas on Saturday 20 November, and the four-day pre-season test in Bahrain from 24 February. Formula 2: 14 rounds, adding Istanbul and Mexico City. Formula 3: 10 rounds, Bahrain to Istanbul. Round order, race dates and sprint weekends change; races already run stay in the record. |
+| New circuits | Madrid (the Madring, now the Spanish GP), Istanbul Park (Turkish GP) and Portimão (Portuguese GP) for Grand Prix racing. Barcelona's round is renamed the Barcelona-Catalunya GP. |
+| Sprints by series | A series can now list its own sprint weekends (used by the 2027 F1 calendar); F2 and F3 keep a sprint at every round. |
+| Lap chart export | The GP race report has a fourth download: Lap chart (.csv), every car's position and lap time lap by lap, ready to chart. |
+| Endurance exports | Finished endurance races have Results (.csv) (class positions, crews with time at the wheel, laps, gaps, stops, best laps, points) and Stints (.csv) (every stint: driver, category, start, laps, tyres and compound, under yellow). |
+| Season awards | Cataloguing a GP season works out its awards (Driver of the season, Best overtaker, Rookie of the year, Pole king, Mr Consistent), keeps them in the archive under the season's title, and posts them to the announcements channel. |
+
+---
+
 ## v1.8.0: race weekends announced on Discord
 
 13 November 2026. Build `f1sim-1.8.0`. **No database update.**
