@@ -25,6 +25,20 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v1.10.0: improvement plan Phase 2, GP depth (and no more money)
+
+13 November 2026. Build `f1sim-1.10.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Money removed | The last of the money system is gone. Team HQ has no Sponsor section (no deals to sign); contract offers have no salary, only their length and terms, and contracts show as "Until …" in Team HQ, on driver pages and in career timelines; the power unit penalty no longer mentions a cost; practice crashes no longer cost repairs. The season-start notes no longer mention budgets or sponsors. |
+| Fairer luck in GP races | Each car now has its own run of luck every lap (its pace, its own incidents, its overtaking and its pit stop); race-wide events (safety cars, start incidents, track incidents) keep a shared one. One car's decisions now change only its own race and the cars genuinely racing around it: in testing, a pit call changed the lap times of 3 other cars instead of 18. Races run from now on differ from before for the same seed. |
+| GP weather forecast | Each GP weekend shows the race-day forecast on the Race Weekend page from the moment it opens: dry, rain mid-race (and roughly when), a wet start that dries, or a chance of a shower, without giving away whether or when it will actually come. The forecast is also in the Discord announcements when the weekend opens and when the grid is set. |
+| GP rain radar | During the race the weather card becomes a radar: the conditions now and the next change within about eight laps, to within a lap or two ("Rain expected in 7 to 9 laps", "The track should be drying in 2 to 4 laps"). |
+| F2 and F3 reversed grids | One qualifying a round, as in the real series: the sprint starts with the top 10 (F2) or top 12 (F3) from qualifying reversed, and the feature race at the same round starts in qualifying order, without qualifying again. Pole position in records stays with whoever topped qualifying. Run the sprint weekend first, then the feature race. |
+
+---
+
 ## v1.9.0: improvement plan Phase 1, quick wins
 
 13 November 2026. Build `f1sim-1.9.0`. **No database update.** The first of seven phases of improvements for both modes.

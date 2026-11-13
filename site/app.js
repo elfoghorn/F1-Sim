@@ -1,4 +1,4 @@
-/* F1 SIM v1.9.0 (build f1sim-1.9.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v1.10.0 (build f1sim-1.10.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -386,6 +386,8 @@
     applyCalls(s, calls, log);
     s.lap += 1;
     var R = s.rules, circuit = s.circuit, r = rng(mix(s.seed, s.lap, 2)), track = s.track[s.lap - 1];
+    /* Each car's own luck this lap (pace, its incidents, overtaking, its pit stop), so one car's decisions don't change another's. Race-wide events use r. */
+    var rcs = {}, rcOf = function (car) { return rcs[car.id] || (rcs[car.id] = rng(mix(s.seed, s.lap, 5000 + (hashId(car.id) % 100000)))); };
     if (s.lap > 1 && track !== s.track[s.lap - 2]) log.push({ kind: 'weather', text: 'Track now ' + TRACK[track] });
     var field = order(s), leader0 = field[0] ? field[0].cum : 0;
     var newSc = null, ctx = {};
@@ -405,10 +407,10 @@
       var m = MODES[car.mode], t = basePace(car, circuit, R, track) + m.pace + tyreTime(car.tyre, car, circuit, track)
         + R.fuelEffect * (1 - (s.lap - 1) / s.laps);
       if (R.emptyBattery && !R.noHybrid && car.energy <= 0) t += R.emptyBattery;
-      t += gauss(r) * (0.12 + (100 - car.driver.consistency) * 0.008);
-      if (s.lap === 1) t += 4 + gauss(r) * (0.5 + (100 - car.driver.racecraft) * 0.02);
+      t += gauss(rcOf(car)) * (0.12 + (100 - car.driver.consistency) * 0.008);
+      if (s.lap === 1) t += 4 + gauss(rcOf(car)) * (0.5 + (100 - car.driver.racecraft) * 0.02);
       var risk = m.risk * (1 + track * 1.5) * (1 + ((car.driver.aggression || 50) - 50) / 100) * composure(car.driver) * (s.lap === 1 ? 4 : 1);
-      var lost = carIncidents(car, s, R, r, track, risk, log, ctx);
+      var lost = carIncidents(car, s, R, rcOf(car), track, risk, log, ctx);
       if (lost === null) return;
       t += lost;
       if (i > 0 && !s.sc.type) {
@@ -445,8 +447,8 @@
             /* Racing close: sometimes they touch. */
             if (!hold && ahead.status === 'running') {
               var cc = 0.003 * (R.incidents ? R.incidents.crashes : 1) * (1 + track) * (1 + ((car.driver.aggression || 50) - 50) / 80) * (s.lap === 1 || s.restartLap === s.lap ? 2.5 : 1);
-              if (r() < cc) {
-                var before = car.cum; contactIncident(car, ahead, s, R, r, log, ctx); end += car.cum - before; car.cum = before;
+              if (rcOf(car)() < cc) {
+                var before = car.cum; contactIncident(car, ahead, s, R, rcOf(car), log, ctx); end += car.cum - before; car.cum = before;
                 if (car.status !== 'running' || ahead.status !== 'running') { car.lastLap = round3(end - car.cum); car.cum = round3(end); return; }
               }
             }
@@ -458,14 +460,14 @@
               if (track > 0) chance += (car.driver.wet - ahead.driver.wet) * 0.005;
               chance = clamp(chance, 0.005, 0.85);
             }
-            if (!hold && r() < chance) {
-              end = Math.min(end, aheadEnd - 0.1 - r() * 0.3);
+            if (!hold && rcOf(car)() < chance) {
+              end = Math.min(end, aheadEnd - 0.1 - rcOf(car)() * 0.3);
               var pushed = Math.max(ahead.cum, end + R.minGap * 0.5);
               ahead.lastLap = round3(ahead.lastLap + pushed - ahead.cum); ahead.cum = round3(pushed);
               log.push({ kind: 'overtake', ids: [car.id, ahead.id], text: car.driver.code + ' passes ' + ahead.driver.code + ' for P' + i });
               field[i - 1] = car; field[i] = ahead;
             } else {
-              end = aheadEnd + R.minGap + r() * 0.3;
+              end = aheadEnd + R.minGap + rcOf(car)() * 0.3;
             }
           }
         }
@@ -505,16 +507,16 @@
         var offWets = COMPOUNDS[car.tyre.compound].wet && !COMPOUNDS[comp].wet;
         if (offWets && car.planned && car.plan.length && nextTrack === 0 && (box === 'auto' || !COMPOUNDS[box])) comp = car.plan[0].compound || comp;
         var crew = car.car.pitSpeed == null ? 85 : car.car.pitSpeed;
-        var stop = Math.max(1.9, R.pitStop.mean - (crew - 85) * 0.03 + gauss(r) * R.pitStop.sd);
-        var slow = r() < R.pitStop.slowChance * (1 + (85 - crew) / 30); if (slow) stop += 2 + r() * 6;
+        var stop = Math.max(1.9, R.pitStop.mean - (crew - 85) * 0.03 + gauss(rcOf(car)) * R.pitStop.sd);
+        var slow = rcOf(car)() < R.pitStop.slowChance * (1 + (85 - crew) / 30); if (slow) stop += 2 + rcOf(car)() * 6;
         var pm = (R.incidents || { failures: 1 }).failures, note = '';
         if (car.repair) { stop += car.repair; note += ', a new nose'; }
         if (car.limp && car.limp.fix) car.limp = null;
         car.repair = 0; car.flatSpot = false;
         if (car.pen) { stop += car.pen; note += ', serving a ' + car.pen + '-second penalty'; car.penServed = (car.penServed || 0) + car.pen; car.pen = 0; }
-        if (r() < INC.wheelnut.perStop * pm) { var wn = rr(r, 5, 12); stop += wn; log.push({ kind: 'incident', inc: 'wheelnut', ids: [car.id], text: car.driver.code + ' loses ' + wn.toFixed(0) + 's with a wheel nut problem' }); }
-        else if (r() < INC.stall.perStop * pm) { var stl = rr(r, 6, 10); stop += stl; log.push({ kind: 'incident', inc: 'stall', ids: [car.id], text: car.driver.code + ' stalls in the pit box, ' + stl.toFixed(0) + 's lost' }); }
-        var unsafe = r() < INC.unsafe.perStop * pm, speeding = r() < INC.speeding.perStop * pm;
+        if (rcOf(car)() < INC.wheelnut.perStop * pm) { var wn = rr(rcOf(car), 5, 12); stop += wn; log.push({ kind: 'incident', inc: 'wheelnut', ids: [car.id], text: car.driver.code + ' loses ' + wn.toFixed(0) + 's with a wheel nut problem' }); }
+        else if (rcOf(car)() < INC.stall.perStop * pm) { var stl = rr(rcOf(car), 6, 10); stop += stl; log.push({ kind: 'incident', inc: 'stall', ids: [car.id], text: car.driver.code + ' stalls in the pit box, ' + stl.toFixed(0) + 's lost' }); }
+        var unsafe = rcOf(car)() < INC.unsafe.perStop * pm, speeding = rcOf(car)() < INC.speeding.perStop * pm;
         var loss = (circuit.pitLoss || 21) * (s.sc.type === 'sc' ? 0.55 : s.sc.type === 'vsc' ? 0.65 : 1) + stop;
         car.cum = round3(car.cum + loss); car.lastLap = round3(car.lastLap + loss);
         car.stints[car.stints.length - 1].to = s.lap;
@@ -526,7 +528,7 @@
         if (!weatherStop && car.plan.length) car.plan.shift();
         car.plan = car.plan.filter(function (p) { return p.lap > s.lap + 3; });
         log.push({ kind: 'pit', ids: [car.id], text: car.driver.code + ' pits for ' + COMPOUNDS[comp].label + 's (' + stop.toFixed(1) + 's' + (slow ? ', slow stop' : '') + note + ')' });
-        if (unsafe) { penalise(car, 5, { inc: 'unsafe', text: 'unsafe release' }, log); if (r() < 0.2) { retire(car, 'Lost a wheel after an unsafe release', log, s, 'unsafe'); flagUp(ctx, 'vsc'); } }
+        if (unsafe) { penalise(car, 5, { inc: 'unsafe', text: 'unsafe release' }, log); if (rcOf(car)() < 0.2) { retire(car, 'Lost a wheel after an unsafe release', log, s, 'unsafe'); flagUp(ctx, 'vsc'); } }
         if (speeding && car.status === 'running') penalise(car, 5, { inc: 'speeding', text: 'speeding in the pit lane' }, log);
       }
     });
@@ -1651,10 +1653,18 @@ ACTIONS['f1-quali'] = () => {
   engineEfficiency(entrants, entries, w);
   const penalties = f1PuEffects(w, entrants, entries);
   const quali = RaceEngine.qualify({ circuit, entries, weather, seed: w.seed, rules: rs.rules });
-  const puLog = [], startGrid = f1PuGrid(quali.grid, penalties, puLog); quali.log = quali.log.concat(puLog);
+  const puLog = []; let startGrid = f1PuGrid(quali.grid, penalties, puLog); quali.log = quali.log.concat(puLog);
+  /* F2 and F3: one qualifying a round. The sprint starts with the top 10 (F2) or 12 (F3) reversed; the feature race starts as qualifying finished. */
+  const rev = curSeries().reverseGrid;
+  if (rev && w.session === 'gp') { const sp = list('f1_weekends').find(x => x.id !== w.id && wSeries(x) === wSeries(w) && wSeason(x) === wSeason(w) && x.trackId === w.trackId && x.session === 'sprint' && x.qualiOrder && x.quali);
+    if (sp) { const ids = entrants.map(e => e.id), order = sp.qualiOrder.filter(id => ids.indexOf(id) !== -1).concat(quali.grid.filter(id => sp.qualiOrder.indexOf(id) === -1));
+      quali.grid = order; quali.results = clone(sp.quali.results || quali.results); quali.log = [{ kind: 'quali', text: `The feature race grid comes from qualifying at the start of the weekend: ${(entrants.find(e => e.id === order[0]) || {}).name || order[0]} on pole.` }];
+      startGrid = f1PuGrid(order, penalties, puLog); } }
+  if (rev && w.session === 'sprint') { const n = Math.min(rev, startGrid.length); startGrid = startGrid.slice(0, n).reverse().concat(startGrid.slice(n));
+    quali.log = quali.log.concat([{ kind: 'quali', text: `Sprint grid: the top ${n} from qualifying reversed, so ${(entrants.find(e => e.id === startGrid[0]) || {}).name || startGrid[0]} starts on pole.` }]); }
   const state = RaceEngine.createRace({ circuit, entries, grid: startGrid, weather, seed: w.seed, sprint: w.session === 'sprint', rules: rs.rules });
   const ents = entrants.map(e => { const o = Object.assign({}, e); delete o.v3; return o; });
-  const doc = Object.assign(clone(S.store.f1_weekends[w.id]), { status: curSeries().quali === 'single' ? 'grid' : 'quali', qualiStage: curSeries().quali === 'single' ? 3 : 1, entrants: ents, setup, setupBy, setupDials, setupSource, penalties, confidence, weather, quali: { grid: quali.grid, results: quali.results, log: quali.log }, state });
+  const doc = Object.assign(clone(S.store.f1_weekends[w.id]), { qualiOrder: quali.grid, status: curSeries().quali === 'single' ? 'grid' : 'quali', qualiStage: curSeries().quali === 'single' ? 3 : 1, entrants: ents, setup, setupBy, setupDials, setupSource, penalties, confidence, weather, quali: { grid: quali.grid, results: quali.results, log: quali.log }, state });
   run(async () => {
     await Data.put('f1_weekends', w.id, doc);
     for (const c of f1Calls(w)) await Data.remove('f1_calls', c.id);
@@ -1909,7 +1919,7 @@ route('standings', 'Championship', function () {
 
 /* =====================================================================
    F1 SIM — roles: the race engineer's practice programme, the team
-   principal's budget and upgrades, and driver careers.
+   principal's role, and driver careers.
    Everything here is worked out from the records each time it's needed,
    and checked against the seats, so a player can't make a car faster by
    writing a number: upgrades count only once Race Control has locked
@@ -3037,7 +3047,7 @@ function timeline(p) {
   if (c && c.decidedAt && c.status === 'approved') out.push({ at: c.decidedAt, text: 'Approved by Race Control' });
   const seat = p.charId ? F1.seats().find(s => s.holderCharId === p.charId) : null;
   if (seat && seat.holderSince) out.push({ at: seat.holderSince, text: `${seatTitle(seat)} at ${F1.team(seat.teamId).name}` });
-  if (typeof f1ContractsFor === 'function' && p.charId) f1ContractsFor(p.charId).forEach(k => out.push({ at: k.signedAt, text: `Signed with ${F1.team(k.teamId).name}${k.salary ? `, £${k.salary}m a season` : ''}` }));
+  if (typeof f1ContractsFor === 'function' && p.charId) f1ContractsFor(p.charId).forEach(k => out.push({ at: k.signedAt, text: `Signed with ${F1.team(k.teamId).name}` }));
   const rec = f1Record(p.id), firsts = {};
   rec.forEach(x => { const t = F1.track(x.w.trackId) || {}, where = t.name + (x.w.session === 'sprint' ? ' sprint' : ''), pos = x.r.position;
     if (!firsts.start) { firsts.start = 1; out.push({ at: x.w.finishedAt, text: `First race: ${where}, ${pos ? 'P' + pos : 'retired'}` }); }
@@ -3152,13 +3162,12 @@ function yearsNow(p) {
 }
 
 /* =====================================================================
-   F1 SIM — team depth: power units, contracts, sponsors and rapport.
+   F1 SIM — team depth: power units, contracts and rapport.
    Power units belong to the car (not the driver). Each car has an
    allowance for the season; a fresh unit beyond it means a grid penalty.
    Older units fail more often and lose a little power. A power unit
    failure means a new one at the next weekend. Crashes cost money to
-   repair. Team principals offer contracts (paid from the budget) and
-   choose one sponsor deal for the season. Race engineers who work with
+   repair. Team principals offer contracts (length and terms, no money). Race engineers who work with
    the same driver weekend after weekend build rapport: clearer feedback
    and a better set-up.
    ===================================================================== */
@@ -3166,8 +3175,6 @@ function yearsNow(p) {
 
 const PU_ALLOWANCE_DEFAULT = 4;
 const puAllow = () => curSeries().development ? engineFormula().pu : null;
-const PU_EXTRA_COST = 1;      // £m for each unit beyond the allowance
-const REPAIR_COST = 0.8;      // £m after an accident
 const carKey = (teamId, car) => `${teamId}-${car}`;
 const seasonWeekends = () => F1.weekends().filter(w => w.session !== 'test' && (w.status !== 'practice' || w.state)).sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
 
@@ -3216,31 +3223,10 @@ ACTIONS['pu-fit'] = d => {
   if (!seasonWeekends().some(x => x.id !== w.id)) { toast('Every car starts the season on a fresh unit.', true); return; }
   const st = puState(d.key, w);
   const go2 = () => run(async () => { await Data.put('f1_parts', `${w.id}-${d.key}`, { userId: asOwner(), charId: c.id, weekendId: w.id, carKey: d.key, part: 'pu', at: nowIso() }); }, 'New power unit ordered for this weekend.');
-  if (st.count + 1 > puAllow()) askConfirm(`That would be power unit ${st.count + 1} of ${puAllow()}: a ${st.count + 1 === puAllow() + 1 ? 10 : 5}-place grid penalty and £${PU_EXTRA_COST}m. Fit it anyway?`, 'Fit it and take the penalty', go2, true);
+  if (st.count + 1 > puAllow()) askConfirm(`That would be power unit ${st.count + 1} of ${puAllow()}: a ${st.count + 1 === puAllow() + 1 ? 10 : 5}-place grid penalty. Fit it anyway?`, 'Fit it and take the penalty', go2, true);
   else go2();
 };
 ACTIONS['pu-cancel'] = d => run(async () => { await Data.remove('f1_parts', d.id); }, 'Power unit order cancelled.');
-
-/* ---------------------------------------------------------------- sponsors */
-const SPONSORS = {
-  title: { label: 'Title partner', upfront: 6, blurb: '£6m now, then £0.3m for every car that scores points.', per: (rs) => rs.filter(r => r.points).length * 0.3 },
-  podium: { label: 'Performance partner', upfront: 2, blurb: '£2m now, then £1.2m for every podium.', per: (rs, w) => w.session === 'gp' ? rs.filter(r => r.position && r.position <= 3).length * 1.2 : 0 },
-  steady: { label: 'Reliability backer', upfront: 3, blurb: '£3m now, then £0.6m every Grand Prix both cars finish.', per: (rs, w) => w.session === 'gp' && rs.length >= 2 && rs.every(r => r.position) ? 0.6 : 0 },
-  youth: { label: 'Young talent fund', upfront: 2, blurb: '£2m now, then £0.8m whenever a player’s driver scores points.', per: rs => rs.some(r => r.charId && r.points) ? 0.8 : 0 }
-};
-/* The team's sponsor: the first deal signed by whoever was team principal. It can't be changed mid-season. */
-function f1Sponsor(teamId) {
-  const tp = F1.seats(teamId).find(s => s.role === 'principal');
-  return list('f1_contracts').filter(k => k.kind === 'sponsor' && k.teamId === teamId && recSeason(k) === curSeasonId() && SPONSORS[k.deal] && (k.locked || (tp && tp.holderCharId === k.charId)))
-    .sort((a, b) => String(a.at).localeCompare(String(b.at)))[0] || null;
-}
-ACTIONS['sponsor-sign'] = d => {
-  const c = currentChar(), tp = F1.seats(d.team).find(s => s.role === 'principal'); if (!c || !tp || tp.holderCharId !== c.id) { toast('Only the team principal signs sponsors.', true); return; }
-  if (f1Sponsor(d.team)) { toast('A sponsor is already signed for this season.', true); return; }
-  askConfirm(`Sign with the ${SPONSORS[d.deal].label.toLowerCase()} for the season? It can’t be changed afterwards.`, 'Sign the deal', () => run(async () => {
-    await Data.put('f1_contracts', newId('spon'), { kind: 'sponsor', userId: asOwner(), charId: c.id, teamId: d.team, deal: d.deal, seasonId: curSeasonId(), at: nowIso() });
-    await Data.audit('sponsor.sign', `${F1.team(d.team).name} signs a ${SPONSORS[d.deal].label.toLowerCase()}`); }, 'Sponsor signed.'));
-};
 
 /* ---------------------------------------------------------------- contracts */
 const offersOf = teamId => list('f1_contracts').filter(k => k.kind === 'offer' && k.teamId === teamId && recSeason(k) === curSeasonId());
@@ -3255,19 +3241,18 @@ function activeContract(charId, teamId) {
   return f1ContractsFor(charId).filter(k => k.teamId === teamId && recSeason(k) === curSeasonId()).sort((a, b) => String(b.signedAt).localeCompare(String(a.signedAt)))[0] || null;
 }
 function contractLeft(k) { if (!k.races) return 'the end of the season'; const done = finishedAll().filter(w => String(w.finishedAt) > String(k.signedAt) && w.session === 'gp').length; return k.races - done > 0 ? plural(k.races - done, 'more Grand Prix', 'more Grands Prix') : 'its end'; }
-ACTIONS['offer-new'] = d => { S.ui.form.offer = { teamId: d.team, toCharId: d.char, salary: 2, races: 0, terms: '' }; openDrawer('offer'); };
+ACTIONS['offer-new'] = d => { S.ui.form.offer = { teamId: d.team, toCharId: d.char, races: 0, terms: '' }; openDrawer('offer'); };
 DRAWERS.offer = function () {
   const f = S.ui.form.offer || {}, who = get('characters', f.toCharId), t = F1.team(f.teamId);
-  return `<header><div><h2>Offer ${esc(who ? who.name : '')} a contract</h2><p>${esc(t.name)}. The salary comes out of the team’s budget, a share at each Grand Prix.</p></div><button class="btn ghost" data-act="close-drawer">Close</button></header>
-    <div class="body"><div class="form-grid"><label class="field">Salary (£m a season)<input id="of-sal" type="number" min="0" max="20" step="0.5" data-bind="ui/form/offer/salary" data-type="number" value="${esc(f.salary)}"></label>
-      <label class="field">Length${sel('of-len', 'ui/form/offer/races', String(f.races || 0), [['0', 'To the end of the season'], ['5', 'Five Grands Prix'], ['10', 'Ten Grands Prix']])}</label></div>
+  return `<header><div><h2>Offer ${esc(who ? who.name : '')} a contract</h2><p>${esc(t.name)}. A contract sets how long they’re with the team, and any terms you agree.</p></div><button class="btn ghost" data-act="close-drawer">Close</button></header>
+    <div class="body"><div class="form-grid"><label class="field">Length${sel('of-len', 'ui/form/offer/races', String(f.races || 0), [['0', 'To the end of the season'], ['5', 'Five Grands Prix'], ['10', 'Ten Grands Prix']])}</label></div>
     <label class="field">Terms (optional)<textarea id="of-terms" rows="4" data-bind="ui/form/offer/terms" placeholder="e.g. Number one status for the first five races. Release clause if not in the top 10.">${esc(f.terms || '')}</textarea></label>
     <div class="btn-row"><button class="btn primary" data-act="offer-send">Send the offer</button></div></div>`;
 };
 ACTIONS['offer-send'] = () => {
   const f = S.ui.form.offer || {}, c = currentChar(), tp = F1.seats(f.teamId).find(s => s.role === 'principal');
   if (!c || !tp || tp.holderCharId !== c.id) { toast('Only the team principal makes offers.', true); return; }
-  run(async () => { await Data.put('f1_contracts', newId('off'), { kind: 'offer', userId: asOwner(), charId: c.id, teamId: f.teamId, seasonId: curSeasonId(), toCharId: f.toCharId, salary: Math.max(0, Number(f.salary) || 0), races: Number(f.races) || 0, terms: String(f.terms || '').trim(), at: nowIso() }); closeDrawer(); }, 'Offer sent.');
+  run(async () => { await Data.put('f1_contracts', newId('off'), { kind: 'offer', userId: asOwner(), charId: c.id, teamId: f.teamId, seasonId: curSeasonId(), toCharId: f.toCharId, races: Number(f.races) || 0, terms: String(f.terms || '').trim(), at: nowIso() }); closeDrawer(); }, 'Offer sent.');
 };
 ACTIONS['offer-reply'] = d => {
   const o = get('f1_contracts', d.id), c = get('characters', o && o.toCharId); if (!o || !c || (c.userId !== S.uid && !S.isGm)) return;
@@ -3277,7 +3262,7 @@ ACTIONS['offer-reply'] = d => {
 function offersHtml(charId) {
   const offers = f1ContractOffersFor(charId); if (!offers.length) return '';
   return `<section class="card"><h2>Contract offers</h2>${offers.map(o => `<article class="offer" style="--team:${esc(F1.team(o.teamId).color)}"><h3>${esc(F1.team(o.teamId).name)}</h3>
-    <p>£${o.salary}m a season, ${o.races ? `for ${o.races} Grands Prix` : 'to the end of the season'}.</p>${o.terms ? paras(o.terms) : ''}
+    <p>${o.races ? `For ${o.races} Grands Prix` : 'To the end of the season'}.</p>${o.terms ? paras(o.terms) : ''}
     <div class="btn-row"><button class="btn primary" data-act="offer-reply" data-id="${esc(o.id)}" data-yes="1">Sign it</button><button class="btn" data-act="offer-reply" data-id="${esc(o.id)}" data-yes="0">Turn it down</button></div></article>`).join('')}</section>`;
 }
 
@@ -3296,7 +3281,7 @@ const rapportSetup = n => Math.min(4, n);
 function teamDepthHtml(tid) {
   const team = F1.team(tid), c = currentChar(), tp = F1.seats(tid).find(s => s.role === 'principal'), isTp = !!(c && tp && tp.holderCharId === c.id);
   const inTeam = S.isGm || F1.seats(tid).some(s => c && s.holderCharId === c.id); if (!inTeam) return '';
-  const w = F1.live(), sp = f1Sponsor(tid);
+  const w = F1.live();
   const cars = F1.seats(tid).filter(x => x.role === 'driver').map(x => x.car);
   const pu = cars.map(car => { const key = carKey(tid, car), st = puState(key, w && w.status === 'practice' ? w : null), drv = F1.seats(tid).find(s => s.role === 'driver' && s.car === car);
     const ordered = w && list('f1_parts').find(p => p.weekendId === w.id && p.carKey === key);
@@ -3307,15 +3292,12 @@ function teamDepthHtml(tid) {
       <td>${ordered ? `<span class="tag player">New unit this weekend</span> ${canFit ? `<button class="btn small" data-act="pu-cancel" data-id="${esc(ordered.id)}">Cancel</button>` : ''}` : canFit ? `<button class="btn small" data-act="pu-fit" data-key="${esc(key)}">Fit a new power unit</button>` : ''}</td>` : ''}
       <td>${n ? `Rapport: ${plural(n, 'weekend')} together<br><span class="muted small">Feedback ${Math.round((1 - rapportNoise(n)) * 100)}% clearer, +${rapportSetup(n)} set-up</span>` : '<span class="muted small">No rapport yet</span>'}</td></tr>`; }).join('');
   const people = F1.seats(tid).filter(s => s.holderCharId && s.role !== 'principal');
-  return `${puAllow() ? '' : '<!--spec-->'}<section class="card"><h2>${puAllow() ? 'Power units and rapport' : 'Rapport'}</h2>${puAllow() ? `<p class="muted small">Each car has ${puAllow()} power units for the season. A new one beyond that costs a grid penalty (10 places, then 5) and £${PU_EXTRA_COST}m. Fit units during practice. Rapport grows each weekend the same engineer and driver lock in a set-up together.</p>` : '<p class="muted small">Identical cars in this series: no power units to manage. Rapport grows each weekend the same engineer and driver lock in a set-up together.</p>'}
+  return `${puAllow() ? '' : '<!--spec-->'}<section class="card"><h2>${puAllow() ? 'Power units and rapport' : 'Rapport'}</h2>${puAllow() ? `<p class="muted small">Each car has ${puAllow()} power units for the season. A new one beyond that costs a grid penalty (10 places, then 5). Fit units during practice. Rapport grows each weekend the same engineer and driver lock in a set-up together.</p>` : '<p class="muted small">Identical cars in this series: no power units to manage. Rapport grows each weekend the same engineer and driver lock in a set-up together.</p>'}
       <div class="scroll-x"><table class="data"><tbody>${pu}</tbody></table></div></section>
-    <section class="card"><h2>Sponsor</h2>${sp ? `<p><b>${esc(SPONSORS[sp.deal].label)}</b>: ${esc(SPONSORS[sp.deal].blurb)}</p>` : isTp ? `<p>Choose one deal for the season. It can’t be changed afterwards.</p>
-      <div class="cards">${Object.keys(SPONSORS).map(k => `<article class="card"><h3>${esc(SPONSORS[k].label)}</h3><p>${esc(SPONSORS[k].blurb)}</p><button class="btn small primary" data-act="sponsor-sign" data-team="${esc(tid)}" data-deal="${k}">Sign this deal</button></article>`).join('')}</div>`
-      : '<p class="muted">No sponsor deal signed: the team earns the standard sponsor bonus for meeting its target.</p>'}</section>
     <section class="card"><h2>Contracts</h2>${people.length ? `<table class="data"><tbody>${people.map(s => { const k = activeContract(s.holderCharId, tid), pend = offersOf(tid).find(o => o.toCharId === s.holderCharId && !replyTo(o.id));
-      return `<tr><td><b>${esc(s.holderName)}</b><br><span class="muted small">${esc(seatTitle(s))}</span></td><td>${k ? `£${k.salary}m a season, until ${esc(contractLeft(k))}${k.terms ? `<br><span class="muted small">${esc(k.terms)}</span>` : ''}` : pend ? '<span class="tag open">Offer waiting for an answer</span>' : '<span class="muted">No contract</span>'}</td>
+      return `<tr><td><b>${esc(s.holderName)}</b><br><span class="muted small">${esc(seatTitle(s))}</span></td><td>${k ? `Until ${esc(contractLeft(k))}${k.terms ? `<br><span class="muted small">${esc(k.terms)}</span>` : ''}` : pend ? '<span class="tag open">Offer waiting for an answer</span>' : '<span class="muted">No contract</span>'}</td>
         <td>${isTp && !pend ? `<button class="btn small" data-act="offer-new" data-team="${esc(tid)}" data-char="${esc(s.holderCharId)}">${k ? 'Offer a new contract' : 'Offer a contract'}</button>` : ''}</td></tr>`; }).join('')}</tbody></table>` : '<p class="muted">No players in the team’s seats yet.</p>'}
-      <p class="muted small">Salaries are paid from the budget, a share at each Grand Prix.</p></section>`;
+      <p class="muted small">A contract sets how long a player is with the team, and any terms they agree.</p></section>`;
 }
 
 const _teamViewTD = ROUTES.team.view;
@@ -3618,13 +3600,13 @@ const F1_POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];
 const SERIES_TEMPLATES = {
   f1: { name: 'Formula 1', short: 'F1', color: '#E10600', lapFactor: 1, sprintFactor: 0.33, points: F1_POINTS, sprintPoints: [8, 7, 6, 5, 4, 3, 2, 1], quali: 'knockout',
     development: true, puAllowance: 4, budget: 30, mandatoryStop: true, carsPerTeam: 2, firstSeason: '2026', blurb: 'Today’s grid, real teams, development and power units.' },
-  f2: { name: 'Formula 2', short: 'F2', color: '#1B6FD1', lapFactor: 0.56, sprintFactor: 0.4, points: F1_POINTS, sprintPoints: [10, 8, 6, 5, 4, 3, 2, 1], quali: 'single', sprintEvery: true,
+  f2: { name: 'Formula 2', short: 'F2', color: '#1B6FD1', lapFactor: 0.56, sprintFactor: 0.4, points: F1_POINTS, sprintPoints: [10, 8, 6, 5, 4, 3, 2, 1], quali: 'single', sprintEvery: true, reverseGrid: 10,
     development: false, puAllowance: null, budget: 6, mandatoryStop: true, carsPerTeam: 2, engine: 'Mecachrome V6 (spec)', level: 'feeder', firstSeason: '2026',
     blurb: 'Identical cars, a sprint and a feature race every round. The last step before F1.',
     teams: [['invicta', 'Invicta Racing', '#C9A227'], ['campos', 'Campos Racing', '#E4572E'], ['dams', 'DAMS', '#2D6FB7'], ['hitech', 'Hitech', '#9AA3AD'], ['art', 'ART Grand Prix', '#3D3D3D'],
       ['mp', 'MP Motorsport', '#F28C28'], ['prema', 'Prema Racing', '#D7263D'], ['rodin', 'Rodin Motorsport', '#4C9A2A'], ['aix', 'AIX Racing', '#7A4FBF'], ['trident', 'Trident', '#1F3A93'], ['var', 'Van Amersfoort Racing', '#E6194B']],
     calendar: ['australia', 'bahrain', 'saudi', 'monaco', 'spain', 'austria', 'britain', 'belgium', 'hungary', 'italy', 'azerbaijan', 'qatar', 'abudhabi'] },
-  f3: { name: 'Formula 3', short: 'F3', color: '#2FA84F', lapFactor: 0.45, sprintFactor: 0.37, points: F1_POINTS, sprintPoints: [10, 9, 8, 7, 6, 5, 4, 3, 2, 1], quali: 'single', sprintEvery: true,
+  f3: { name: 'Formula 3', short: 'F3', color: '#2FA84F', lapFactor: 0.45, sprintFactor: 0.37, points: F1_POINTS, sprintPoints: [10, 9, 8, 7, 6, 5, 4, 3, 2, 1], quali: 'single', sprintEvery: true, reverseGrid: 12,
     development: false, puAllowance: null, budget: 3, mandatoryStop: false, carsPerTeam: 3, engine: 'Mecachrome (spec)', level: 'junior', firstSeason: '2026',
     blurb: 'Thirty cars, three per team, no pit stops. Where careers start.',
     teams: [['prema', 'Prema Racing', '#D7263D'], ['trident', 'Trident', '#1F3A93'], ['art', 'ART Grand Prix', '#3D3D3D'], ['mp', 'MP Motorsport', '#F28C28'], ['hitech', 'Hitech', '#9AA3AD'],
@@ -3794,7 +3776,7 @@ ACTIONS['season-start'] = () => {
     await Data.put('f1_series', s.id, Object.assign(get('f1_series', s.id) ? clone(S.store.f1_series[s.id]) : { template: s.id }, { activeSeason: id }));
     await Data.audit('season.start', `${s.name} ${name} season started`);
     S.ui.form.newSeason = {};
-  }, `${s.name} ${name} has started. Budgets, upgrades, power units, sponsors and contracts start fresh; drivers keep their ratings and careers.`);
+  }, `${s.name} ${name} has started. Power units and contracts start fresh; drivers keep their ratings and careers.`);
 };
 
 /* ---------------------------------------------------------------- Seasons page (everyone; Race Control acts here) */
@@ -3821,7 +3803,7 @@ route('seasons', 'Seasons', function () {
       ${s.development ? `<label class="field">Car development carried over${sel('ns-carry', 'ui/form/newSeason/carry', String(f.carry == null ? '0.5' : f.carry), [['0', 'None: back to base'], ['0.5', 'Half of it'], ['1', 'All of it']])}</label>` : ''}</div>
       <label class="field" style="max-width:420px">Engines${sel('ns-engine', 'ui/form/newSeason/engine', f.engine || engineConfig().formula, ENGINE_ORDER.map(k => [k, ENGINE_FORMULAS[k].label]))}</label>
       <label class="small"><input type="checkbox" data-bind="ui/form/newSeason/keepSeats" ${f.keepSeats !== false ? 'checked' : ''}> Players keep their seats</label>
-      <p class="muted small">Budgets, upgrades in progress, power units, sponsors and contracts start fresh. Drivers keep their ratings, development and careers.</p>
+      <p class="muted small">Power units and contracts start fresh. Drivers keep their ratings, development and careers.</p>
       <div class="btn-row"><button class="btn primary" data-act="season-start">Start the new season</button></div>` : ''}</section>`;
   if (season.status !== 'archived') h += engineCardHtml();
   h += archived.length ? archived.map(archiveHtml).join('') : '<p class="muted">No seasons catalogued yet.</p>';
@@ -3993,7 +3975,7 @@ function sessionDebriefHtml(w, ent, s) {
   const notes = [];
   if (s.weather && (s.weather.start !== 'dry' || s.weather.change)) notes.push(weatherText(s.weather) + ' Wet running tells you less about the dry set-up.');
   if (lost.length) notes.push(`${plural(lost.length, 'run')} lost: ${lost.map(r => runContext(w, r).lost.toLowerCase().replace(/\.$/, '')).join('; ')}.`);
-  if (crashed) notes.push('The crash knocked the driver’s confidence and costs £0.4m in repairs.');
+  if (crashed) notes.push('The crash knocked the driver’s confidence.');
   if (b) {
     const r = RaceEngine.rng(h32(w.seed, ent.id, 'debrief', n)), noise = (2 + (100 - ((ent.v3 && ent.v3.experience) || 50)) / 12) * rapportNoise(f1Rapport(ent.teamId, ent.car));
     const errs = DIALS.map(([k, label], i) => ({ k, label, d: (Number(b.r.dials[k]) || 50) - ideal[k] + f1Gauss(r) * noise, wgt: [0.5, 0.4, 0.3][i] })).sort((x, y) => Math.abs(y.d) * y.wgt - Math.abs(x.d) * x.wgt);
@@ -4047,7 +4029,6 @@ function qualiDebriefHtml(w, ent) {
 'use strict';
 
 const WET_PEN = { dry: 0, damp: 4.5, wet: 9 };
-const PRACTICE_REPAIR = 0.4;   // £m for a practice crash
 const fullPractice = w => !!w && !w.test && raceSettings(w).practice === 'full';
 const condName = c => c === 'wet' ? 'wet' : c === 'damp' ? 'damp' : 'dry';
 
@@ -4620,7 +4601,7 @@ route('career', 'Character', function () {
   const left = `<aside class="char-left">
     <section class="card"><h2>Particulars</h2><dl class="rail-defaults">
       ${c && c.helmet ? `<div><dt>Helmet</dt><dd>${esc(c.helmet)}</dd></div>` : ''}${c && c.junior ? `<div><dt>Before Formula 1</dt><dd>${esc(c.junior)}</dd></div>` : ''}
-      ${k ? `<div><dt>Contract</dt><dd>£${k.salary}m a season, until ${esc(contractLeft(k))}</dd></div>` : ''}
+      ${k ? `<div><dt>Contract</dt><dd>Until ${esc(contractLeft(k))}</dd></div>` : ''}
       ${eng ? `<div><dt>Race engineer</dt><dd>${careerLink(f1PcId(eng.holderCharId), eng.holderName)}${f1Rapport(seat.teamId, seat.car) ? `, ${plural(f1Rapport(seat.teamId, seat.car), 'weekend')} together` : ''}</dd></div>` : ''}
       ${seatsOfChar(cid || '').length > 1 ? `<div><dt>Also races in</dt><dd>${seatsOfChar(cid).filter(s => s.id !== seat.id).map(s => `${esc(seriesOfTeam(s.teamId).name)}, ${esc(F1.team(s.teamId).name)}`).join('<br>')}</dd></div>` : ''}
       ${c && c.faceclaim ? `<div><dt>Face claim</dt><dd>${esc(c.faceclaim)}</dd></div>` : ''}${c && c.discord ? `<div><dt>Discord</dt><dd>${esc(c.discord)}</dd></div>` : ''}
@@ -9968,6 +9949,55 @@ const _archiveHtmlQW = archiveHtml;
 archiveHtml = function (season) { const h = _archiveHtmlQW(season); if (!season.awards || !season.awards.length) return h;
   const block = `<div class="awards">${season.awards.map(a => `<span class="award"><b>${esc(a.award)}</b>${a.personId ? careerLink(a.personId, a.name) : esc(a.name)}<small>${esc(a.why)}</small></span>`).join('')}</div>`;
   const i = h.indexOf('</h2>'); return i < 0 ? h + block : h.slice(0, i + 5) + block + h.slice(i + 5); };
+
+/* =====================================================================
+   F1 SIM — weather forecasts and a radar for Grand Prix weekends.
+   Before the race: the forecast for race day, honestly uncertain (a
+   chance of rain, not whether or when it will come). During the race:
+   a radar that sees a few laps ahead, roughly (to within a couple of
+   laps), so a crew can call intermediates or slicks in time.
+   ===================================================================== */
+'use strict';
+
+const WX_WORD = ['dry', 'damp', 'wet'];
+function gpForecast(w) {
+  const track = F1.track(w.trackId) || get('f1_tracks', w.trackId); if (!track) return null;
+  const wx = w.weather || f1Weather(w, track);
+  if (!wx.mode && !(wx.changes || []).length) return wx.start === 'wet' ? { icon: '🌧️', text: 'Wet all race.' } : { icon: '☀️', text: 'Dry all race.' };
+  if (!wx.mode) { const first = (wx.changes || [])[0] || {};
+    return wx.start === 'wet' ? { icon: '🌦️', text: 'A wet start, drying as the race goes on.' } : { icon: '🌦️', text: `Dry to start, with rain expected around ${Math.round(first.lap / track.laps * 20) * 5 || 40}% distance before it dries again.` }; }
+  const p = Math.round((wx.rainChance == null ? 0.5 : wx.rainChance) * 100);
+  return { icon: p >= 60 ? '🌧️' : p >= 25 ? '🌦️' : p > 0 ? '⛅' : '☀️', text: p ? `${p}% chance of a shower during the race${p >= 40 ? '; it could turn heavy' : ''}.` : 'Dry all race.', pct: p };
+}
+/* The radar: the next change in conditions within eight laps, to within a couple of laps. */
+function gpRadar(w) {
+  const st = w.state; if (!st || !st.track || st.finished) return null;
+  const now = st.track[Math.max(0, st.lap - 1)] || 0, look = 8;
+  for (let i = st.lap; i < Math.min(st.laps, st.lap + look); i++) {
+    const v = st.track[i]; if (v === now) continue;
+    const n = i - st.lap + 1, lo = Math.max(1, n - 1), hi = n + 1, when = lo === hi ? `about ${lo} lap${lo > 1 ? 's' : ''}` : `${lo} to ${hi} laps`;
+    return v > now ? { icon: v === 2 ? '🌧️' : '🌦️', text: `${v === 2 ? 'Heavy rain' : 'Rain'} expected in ${when}.`, now: WX_WORD[now] } : { icon: '🌤️', text: `The track should be ${v === 0 ? 'drying' : 'easing'} in ${when}.`, now: WX_WORD[now] };
+  }
+  return { icon: now ? '🌧️' : '☀️', text: now ? `It stays ${WX_WORD[now]} for the next ${look} laps at least.` : `No rain on the radar for the next ${look} laps.`, now: WX_WORD[now] };
+}
+function gpWeatherCard(w) {
+  const f = gpForecast(w), r = w.status === 'running' ? gpRadar(w) : null; if (!f && !r) return '';
+  return `<section class="card gp-wx"><h3>Weather</h3>${r ? `<p class="gp-wx-now"><span class="gp-wx-ico">${r.icon}</span> <b>Now: ${esc(r.now)}.</b> ${esc(r.text)}</p><p class="muted small">Radar: it sees about eight laps ahead, to within a lap or two.</p>`
+    : `<p class="gp-wx-now"><span class="gp-wx-ico">${f.icon}</span> <b>Race-day forecast:</b> ${esc(f.text)}</p><p class="muted small">A forecast, not a promise. Once the race starts, the radar shows rain coming a few laps ahead.</p>`}</section>`;
+}
+const _weekendViewWx = ROUTES.weekend.view;
+ROUTES.weekend.view = function () {
+  const h = _weekendViewWx.apply(this, arguments); if (S.disc === 'endurance') return h;
+  const w = F1.live(); if (!w || w.session === 'test' || ['practice', 'quali', 'grid', 'running'].indexOf(w.status) === -1) return h;
+  const card = gpWeatherCard(w); if (!card) return h;
+  const i = h.indexOf('</div></div>'); return i >= 0 && h.indexOf('page-head') !== -1 ? h.slice(0, i + 12) + card + h.slice(i + 12) : card + h;
+};
+/* the forecast in Discord when the weekend opens and the grid is set */
+const _annMessageWx = annMessage;
+annMessage = function (w, kind, stage) {
+  const m = _annMessageWx(w, kind, stage); if (!m || kind === 'end' || (stage !== 'open' && stage !== 'grid')) return m;
+  const f = gpForecast(w); return f ? [m[0], `${m[1]}\n\n${f.icon} **Race-day forecast:** ${f.text}`] : m;
+};
 
 /* start-up: every part has registered its routes, drawers and actions */
 init();
