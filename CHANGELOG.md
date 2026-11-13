@@ -25,6 +25,26 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v1.11.0: improvement plan Phase 3, endurance completion
+
+13 November 2026. Build `f1sim-1.11.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Real ELMS crews | The ELMS is set up from the real 2026 field (the official entry list for the 4 Hours of Spa-Francorchamps, August 2026): 37 cars, 11 in LMP2, 12 in LMP2 Pro-Am and 14 in LMGT3, with their real numbers, crews and FIA categories. LMP3 isn't simulated. |
+| Real IMSA crews | IMSA's GTP class as announced for 2027: Cadillac Wayne Taylor Racing (#10 Ricky Taylor, Filipe Albuquerque, Will Stevens; #40 Jordan Taylor, Louis Delétraz, Norman Nato) and Cadillac Whelen (#31 Jack Aitken, Frederik Vesti, Earl Bamber) in full; Porsche Penske Motorsport in part (Laurin Heinrich full-time, Laurens Vanthoor for the endurance races, Felipe Nasr and Julien Andlauer from 2026); BMW M Team WRT (which took over from RLL in 2026) on its 2026 crews until 2027 is announced (Philipp Eng has left BMW). Acura's GTP programme ended with 2026. GTD Pro and GTD stay fictional. |
+| WEC 2027 changes | Cadillac Hertz Team JOTA: António Félix da Costa and Ricky Taylor replace Alex Lynn and Sébastien Bourdais (how the six drivers split between the two cars isn't announced yet). McLaren: Alex Lynn joins Mikkel Jensen and Laurens Vanthoor. Toyota: Mike Conway has retired; his seat is not yet announced. Alpine: António Félix da Costa's seat is not yet announced. Mike Rockenfeller is Platinum. |
+| Updating a series | Endurance → Series → Real line-ups: Update the line-ups brings a WEC, ELMS or IMSA set up earlier onto the latest crews. Players keep their seats; teams no longer on the entry list go unless a player holds a seat there; Le Mans-only entries stay. |
+| Seats not yet announced | Run with a reserve driver of the right category until a player or Race Control fills them; Team HQ says so. |
+| The Rolex 24's fourth driver | Every IMSA car has a fourth seat, used only at Daytona: a player can take it for the Rolex 24. Elsewhere crews are three; an empty fourth seat isn't used. |
+| Balance of Performance | Endurance → Series → Balance of Performance (Race Control): the strength of the standard BoP (off, light, standard, full) and any team's own adjustment in seconds a lap. Save and post the bulletin publishes a BoP bulletin to the announcements channel, class by class. New weekends use the series' BoP. |
+| Pre-season testing | On the endurance Race Weekend page between weekends: Run the test for the Prologue, the Roar or any planned test. Each day's times are kept, the fastest in each class are shown, and they're posted to Discord. |
+| Live timing for Discord | During an endurance race, Timing → Post live timing to Discord: an image of the top six in each class with the race clock, flag, night and rain, to the timing channel. |
+| Team HQ for endurance | Each team's class, car and BoP; every car's crew with categories, players, the Rolex 24 seat and seats not yet announced; its place in the teams' championship and its result at every round. |
+| Seasons for endurance | The current season's progress and class leaders; Catalogue the season keeps each class's champions (drivers, teams and manufacturers) in the archive and posts them; start, reopen or delete seasons as in GP. |
+
+---
+
 ## v1.10.0: improvement plan Phase 2, GP depth (and no more money)
 
 13 November 2026. Build `f1sim-1.10.0`. **No database update.**

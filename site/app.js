@@ -1,4 +1,4 @@
-/* F1 SIM v1.10.0 (build f1sim-1.10.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v1.11.0 (build f1sim-1.11.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -8528,7 +8528,7 @@ engineLabel = function (teamId) { const t = get('f1_teams', teamId); return t &&
    F1 SIM — Endurance Phase 2: the 2027 FIA WEC entry list.
    Hypercar: the 17 full-season cars with their crews from the 2026 Le
    Mans 24 Hours entry list, plus newcomers Ford (six drivers announced,
-   pairings not yet) and McLaren United AS (Jensen, Vanthoor and Saucy
+   pairings not yet) and McLaren United AS (Jensen, Vanthoor, Lynn and Saucy
    announced). LMGT3: the 18 full-season cars, nine marques with two
    each, with their 2026 Le Mans crews. Each driver carries their FIA
    category: P Platinum, G Gold, S Silver, B Bronze (null where the
@@ -8542,17 +8542,17 @@ const CAT_NAME = { P: 'Platinum', G: 'Gold', S: 'Silver', B: 'Bronze' };
 const CAT_LEVEL = { P: [84, 7], G: [78, 6], S: [70, 7], B: [58, 9], '': [80, 6] };
 /* [slug, team name, make, colour, class, car model, team principal or null, cars: [number, [[driver, category, nationality], …]]] */
 const WEC_ENTRIES_2027 = [
-  ['toyota', 'Toyota Racing', 'Toyota', '#EB0A1E', 'hypercar', '', null, [['7', [['Mike Conway', 'P', 'GBR'], ['Kamui Kobayashi', 'P', 'JPN'], ['Nyck de Vries', 'P', 'NED']]], ['8', [['Sébastien Buemi', 'P', 'SUI'], ['Brendon Hartley', 'P', 'NZL'], ['Ryō Hirakawa', 'P', 'JPN']]]]],
+  ['toyota', 'Toyota Racing', 'Toyota', '#EB0A1E', 'hypercar', '', null, [['7', [null, ['Kamui Kobayashi', 'P', 'JPN'], ['Nyck de Vries', 'P', 'NED']]], ['8', [['Sébastien Buemi', 'P', 'SUI'], ['Brendon Hartley', 'P', 'NZL'], ['Ryō Hirakawa', 'P', 'JPN']]]]],
   ['ferrari', 'Ferrari AF Corse', 'Ferrari', '#DC0000', 'hypercar', 'Ferrari 499P', null, [['50', [['Antonio Fuoco', 'P', 'ITA'], ['Nicklas Nielsen', 'P', 'DEN'], ['Miguel Molina', 'P', 'ESP']]], ['51', [['Alessandro Pier Guidi', 'P', 'ITA'], ['James Calado', 'P', 'GBR'], ['Antonio Giovinazzi', 'P', 'ITA']]]]],
   ['afcorse', 'AF Corse', 'Ferrari', '#F2C200', 'hypercar', 'Ferrari 499P', null, [['83', [['Yifei Ye', 'G', 'CHN'], ['Robert Kubica', 'P', 'POL'], ['Philip Hanson', 'G', 'GBR']]]]],
-  ['cadillac', 'Cadillac Hertz Team Jota', 'Cadillac', '#C9A227', 'hypercar', 'Cadillac V-Series.R', null, [['12', [['Alex Lynn', 'P', 'GBR'], ['Will Stevens', 'P', 'GBR'], ['Norman Nato', 'G', 'FRA']]], ['38', [['Sébastien Bourdais', 'P', 'FRA'], ['Earl Bamber', 'P', 'NZL'], ['Jack Aitken', 'P', 'GBR']]]]],
+  ['cadillac', 'Cadillac Hertz Team Jota', 'Cadillac', '#C9A227', 'hypercar', 'Cadillac V-Series.R', null, [['12', [['Ricky Taylor', 'P', 'USA'], ['Will Stevens', 'P', 'GBR'], ['Norman Nato', 'G', 'FRA']]], ['38', [['António Félix da Costa', 'P', 'POR'], ['Earl Bamber', 'P', 'NZL'], ['Jack Aitken', 'P', 'GBR']]]], 'Six drivers confirmed (da Costa and Ricky Taylor join); how they split between the two cars is still to come.'],
   ['bmw', 'BMW M Team WRT', 'BMW', '#1C69D4', 'hypercar', 'BMW M Hybrid V8', null, [['15', [['Kevin Magnussen', 'P', 'DEN'], ['Raffaele Marciello', 'P', 'SUI'], ['Dries Vanthoor', 'P', 'BEL']]], ['20', [['Robin Frijns', 'P', 'NED'], ['René Rast', 'P', 'GER'], ['Sheldon van der Linde', 'P', 'RSA']]]]],
-  ['alpine', 'Alpine Endurance Team', 'Alpine', '#0093CC', 'hypercar', 'Alpine A424', null, [['35', [['António Félix da Costa', 'P', 'POR'], ['Charles Milesi', 'P', 'FRA'], ['Ferdinand Habsburg', 'G', 'AUT']]], ['36', [['Frédéric Makowiecki', 'P', 'FRA'], ['Jules Gounon', 'P', 'FRA'], ['Victor Martins', 'G', 'FRA']]]]],
+  ['alpine', 'Alpine Endurance Team', 'Alpine', '#0093CC', 'hypercar', 'Alpine A424', null, [['35', [null, ['Charles Milesi', 'P', 'FRA'], ['Ferdinand Habsburg', 'G', 'AUT']]], ['36', [['Frédéric Makowiecki', 'P', 'FRA'], ['Jules Gounon', 'P', 'FRA'], ['Victor Martins', 'G', 'FRA']]]]],
   ['peugeot', 'Peugeot TotalEnergies', 'Peugeot', '#7A8C3C', 'hypercar', 'Peugeot 9X8', null, [['93', [['Paul di Resta', 'P', 'GBR'], ['Stoffel Vandoorne', 'P', 'BEL'], ['Nick Cassidy', 'P', 'NZL']]], ['94', [['Loïc Duval', 'P', 'FRA'], ['Malthe Jakobsen', 'G', 'DEN'], ['Théo Pourchaire', 'P', 'FRA']]]]],
   ['aston', 'Aston Martin THOR Team', 'Aston Martin', '#00665E', 'hypercar', 'Aston Martin Valkyrie', null, [['007', [['Harry Tincknell', 'P', 'GBR'], ['Tom Gamble', 'G', 'GBR'], ['Ross Gunn', 'P', 'GBR']]], ['009', [['Alex Riberas', 'G', 'ESP'], ['Marco Sørensen', 'P', 'DEN'], ['Roman De Angelis', 'G', 'CAN']]]]],
   ['genesis', 'Genesis Magma Racing', 'Genesis', '#8A2BE2', 'hypercar', '', null, [['17', [['André Lotterer', 'P', 'GER'], ['Luis Felipe Derani', 'P', 'BRA'], ['Mathys Jaubert', 'S', 'FRA']]], ['19', [['Mathieu Jaminet', 'P', 'FRA'], ['Paul-Loup Chatin', 'G', 'FRA'], ['Daniel Juncadella', 'P', 'ESP']]]]],
-  ['ford', 'Ford Racing', 'Ford', '#0B3D91', 'hypercar', 'Ford LMDh (name to come)', null, [['', [['Mike Rockenfeller', null, 'GER'], ['Sebastian Priaulx', 'G', 'GBR'], ['Logan Sargeant', 'P', 'USA']]], ['', [['Matt Campbell', null, 'AUS'], ['Nick Yelloly', 'P', 'GBR'], ['Tom Blomqvist', null, 'GBR']]]], 'Six drivers announced; the pairings are still to come.'],
-  ['mclaren', 'McLaren United AS', 'McLaren', '#FF8000', 'hypercar', 'McLaren MCL-HY', 'James Barclay', [['', [['Mikkel Jensen', 'P', 'DEN'], ['Laurens Vanthoor', null, 'BEL'], null]], ['', [['Grégoire Saucy', 'G', 'SUI'], null, null]]], 'Line-up still being announced.'],
+  ['ford', 'Ford Racing', 'Ford', '#0B3D91', 'hypercar', 'Ford LMDh (name to come)', null, [['', [['Mike Rockenfeller', 'P', 'GER'], ['Sebastian Priaulx', 'G', 'GBR'], ['Logan Sargeant', 'P', 'USA']]], ['', [['Matt Campbell', null, 'AUS'], ['Nick Yelloly', 'P', 'GBR'], ['Tom Blomqvist', null, 'GBR']]]], 'Six drivers announced; the pairings are still to come.'],
+  ['mclaren', 'McLaren United AS', 'McLaren', '#FF8000', 'hypercar', 'McLaren MCL-HY', 'James Barclay', [['', [['Mikkel Jensen', 'P', 'DEN'], ['Laurens Vanthoor', null, 'BEL'], ['Alex Lynn', 'P', 'GBR']]], ['', [['Grégoire Saucy', 'G', 'SUI'], null, null]]], 'Jensen, Laurens Vanthoor and Alex Lynn confirmed; the rest of the line-up is still to come.'],
   ['tfsport', 'TF Sport', 'Corvette', '#F5C400', 'lmgt3', 'Corvette Z06 LMGT3.R', null, [['2', [['Prince Jefri Ibrahim', 'B', 'MAS'], ['Afiq Ikhwan', 'S', 'MAS'], ['Ben Green', 'P', 'GBR']]], ['33', [['Ben Keating', 'B', 'USA'], ['Jonny Edgar', 'S', 'GBR'], ['Nicky Catsburg', 'P', 'NED']]]]],
   ['garage59', 'Garage 59', 'McLaren', '#FF8000', 'lmgt3', 'McLaren 720S LMGT3', null, [['10', [['Antares Au', 'B', 'HKG'], ['Thomas Fleming', 'S', 'GBR'], ['Marvin Kirchhöfer', 'P', 'GER']]], ['58', [['Alexander West', 'B', 'SWE'], ['Finn Gehrsitz', 'S', 'GER'], ['Benjamin Goethe', 'G', 'DEN']]]]],
   ['vista', 'Vista AF Corse', 'Ferrari', '#C8102E', 'lmgt3', 'Ferrari 296 LMGT3', null, [['21', [['François Hériau', 'B', 'FRA'], ['Simon Mann', 'S', 'USA'], ['Alessio Rovera', 'P', 'ITA']]], ['54', [['Thomas Flohr', 'B', 'SUI'], ['Francesco Castellacci', 'S', 'MON'], ['Davide Rigon', 'P', 'ITA']]]]],
@@ -8576,7 +8576,7 @@ function wecRowsFull(keep) {
   const rows = [], key = 'wec', rng = RaceEngine.rng(h32('wec', '2027'));
   const prev = keep ? (get('f1_series', key) ? clone(S.store.f1_series[key]) : {}) : {};
   rows.push(['f1_series', key, Object.assign(prev, { template: key, discipline: 'endurance', activeSeason: prev.activeSeason || `${key}-1`, calendar: prev.calendar || SERIES_TEMPLATES.wec.calendar.slice(),
-    events: WEC_EVENTS, dates: prev.dates || WEC_DATES, classes: ['hypercar', 'lmgt3'], crew: 3, entryList: '2027',
+    events: WEC_EVENTS, dates: prev.dates || WEC_DATES, classes: ['hypercar', 'lmgt3'], crew: 3, entryList: '2027', lineups: '2026-11',
     tests: prev.tests || [{ id: 't1', name: 'Official Prologue', trackId: 'qatar', days: 2, date: '2027-03-21' }] })]);
   END_TRACKS.forEach(([id, name, circuit, flag, km]) => { if (!get('f1_tracks', id)) rows.push(['f1_tracks', id, { id, name, circuit, flag, km, discipline: 'endurance', round: 90, laps: 1, type: 'endurance' }]); });
   WEC_ENTRIES_2027.forEach(([slug, name, make, color, cls, model, tpName, cars, note], ti) => {
@@ -9069,7 +9069,7 @@ ACTIONS['endw-open'] = () => {
   const id = newId('endw');
   run(async () => {
     await Data.put('f1_endw', id, { seriesId: curSeriesId(), seasonId: curSeasonId(), trackId: track.id, round: track.round, event: track.name, seed: Math.floor(Math.random() * 2 ** 31), status: 'practice',
-      weather: f.weather || 'forecast', practice: { sessions: f.practice === 'quick' ? 1 : track.id === 'lemans' ? 5 : 3, done: [] }, hours: len.hours, distanceKm: len.distanceKm || null, bop: Number(f.bop == null ? 0.75 : f.bop), entry, setup: {}, createdAt: nowIso() });
+      weather: f.weather || 'forecast', practice: { sessions: f.practice === 'quick' ? 1 : track.id === 'lemans' ? 5 : 3, done: [] }, hours: len.hours, distanceKm: len.distanceKm || null, bop: Number(f.bop == null ? (curSeries().bopStrength != null ? curSeries().bopStrength : 0.75) : f.bop), entry, setup: {}, createdAt: nowIso() });
     await Data.audit('endurance.open', `${track.name} weekend opened`);
   }, `${track.name} is open. Crews can set their practice focus.`);
 };
@@ -9997,6 +9997,253 @@ const _annMessageWx = annMessage;
 annMessage = function (w, kind, stage) {
   const m = _annMessageWx(w, kind, stage); if (!m || kind === 'end' || (stage !== 'open' && stage !== 'grid')) return m;
   const f = gpForecast(w); return f ? [m[0], `${m[1]}\n\n${f.icon} **Race-day forecast:** ${f.text}`] : m;
+};
+
+/* =====================================================================
+   F1 SIM — improvement plan Phase 3: endurance completion.
+   Real crews: the 2026 ELMS field from the official entry list (Spa,
+   August 2026: LMP2, LMP2 Pro-Am and LMGT3, with FIA categories), and
+   IMSA's GTP crews as announced for 2027 (Cadillac in full, Porsche in
+   part, BMW M Team WRT on its 2026 crews until 2027 is announced; the
+   Acura programme ended with 2026). Seats not yet announced run with a
+   reserve driver. IMSA cars have a fourth seat, used only at the Rolex
+   24. Race Control sets Balance of Performance and publishes a bulletin;
+   runs the pre-season tests; and endurance gets its own Team HQ,
+   Seasons page and a live timing image for Discord.
+   ===================================================================== */
+'use strict';
+
+/* ---------------------------------------------------------------- the real crews: [team, make, model, class, [[number, [[name, category, nationality] | null x3]]]] */
+/* When the line-ups were last brought up to date; a series set up or updated since shows as up to date. */
+const LINEUPS_AT = '2026-11';
+const ELMS_REAL = [
+  ['Proton Competition', 'Oreca', 'Oreca 07-Gibson', 'lmp2', [['9', [['Jonas Ried', 'S', 'GER'], ['Sebastian Priaulx', 'G', 'GBR'], ['Mike Rockenfeller', 'P', 'SUI']]]]],
+  ['Vector Sport', 'Oreca', 'Oreca 07-Gibson', 'lmp2', [['10', [['Ryan Cullen', 'S', 'GBR'], ['Vladislav Lomko', 'G', 'FRA'], ['Pietro Fittipaldi', 'P', 'BRA']]]]],
+  ['IDEC Sport', 'Oreca', 'Oreca 07-Gibson', 'lmp2', [['18', [['Jamie Chadwick', 'S', 'GBR'], ['Valerio Rinicella', 'S', 'ITA'], ['Laurents Hörr', 'G', 'GER']]], ['28', [['Paul Lafargue', 'S', 'FRA'], ['Job van Uitert', 'G', 'NED'], ['Paul-Loup Chatin', 'G', 'FRA']]]]],
+  ['United Autosports', 'Oreca', 'Oreca 07-Gibson', 'lmp2', [['22', [['Griffin Peebles', 'S', 'AUS'], ['Grégoire Saucy', 'G', 'SUI'], ['Ben Hanley', 'G', 'GBR']]]]],
+  ['Nielsen Racing', 'Oreca', 'Oreca 07-Gibson', 'lmp2', [['24', [['Edward Pearson', 'S', 'GBR'], ['Roy Nissany', 'G', 'ISR'], ['Jack Doohan', 'P', 'AUS']]]]],
+  ['Algarve Pro Racing', 'Oreca', 'Oreca 07-Gibson', 'lmp2', [['25', [['Matthias Kaiser', 'S', 'SUI'], ['Tristan Vautier', 'G', 'FRA'], ['Jake Hughes', 'G', 'GBR']]]]],
+  ['Forestier Racing by Panis', 'Oreca', 'Oreca 07-Gibson', 'lmp2', [['29', [['Louis Rousset', 'S', 'FRA'], ['Oliver Gray', 'G', 'GBR'], ['Esteban Masson', 'G', 'FRA']]]]],
+  ['Inter Europol Competition', 'Oreca', 'Oreca 07-Gibson', 'lmp2', [['34', [['Bijoy Garg', 'S', 'USA'], ['Reshad de Gerus', 'G', 'FRA'], null]], ['43', [['Jakub Śmiechowski', 'S', 'POL'], ['Tom Dillmann', 'G', 'FRA'], ['Nick Yelloly', 'P', 'GBR']]]]],
+  ['CLX Motorsport', 'Oreca', 'Oreca 07-Gibson', 'lmp2', [['37', [['Adrien Closmenil', 'S', 'FRA'], ['Theodor Jensen', 'S', 'DEN'], ['Ian Aguilera', 'S', 'GBR']]]]],
+  ['DKR Engineering', 'Oreca', 'Oreca 07-Gibson', 'lmp2pa', [['3', [['Jean Glorieux', 'B', 'BEL'], ['Marlon Hernandez', 'S', 'FRA'], ['Julien Andlauer', 'G', 'FRA']]]]],
+  ['Vector Sport', 'Oreca', 'Oreca 07-Gibson', 'lmp2pa', [['7', [['Jens Reno Møller', 'B', 'DEN'], ['Cem Bölükbaşı', 'S', 'TUR'], ['Lorenzo Fluxá', 'G', 'ESP']]]]],
+  ['TDS Racing', 'Oreca', 'Oreca 07-Gibson', 'lmp2pa', [['14', [['Steven Thomas', 'B', 'USA'], ['Sami Meguetounif', 'S', 'FRA'], ['Scott Huffaker II', 'G', 'USA']]]]],
+  ['Rossa Racing by Virage', 'Oreca', 'Oreca 07-Gibson', 'lmp2pa', [['19', [['John Falb', 'B', 'USA'], ['Manuel Espírito Santo', 'S', 'POR'], ['Rik Koen', 'S', 'NED']]]]],
+  ['Algarve Pro Racing', 'Oreca', 'Oreca 07-Gibson', 'lmp2pa', [['20', [['Michael Jensen', 'B', 'DEN'], ['Enzo Trulli', 'S', 'ITA'], ['Malthe Jakobsen', 'G', 'DEN']]]]],
+  ['United Autosports', 'Oreca', 'Oreca 07-Gibson', 'lmp2pa', [['21', [['Daniel Schneider', 'B', 'BRA'], ['Marino Sato', 'G', 'JPN'], ['Oliver Jarvis', 'P', 'GBR']]]]],
+  ['Nielsen Racing', 'Oreca', 'Oreca 07-Gibson', 'lmp2pa', [['27', [['Kriton Lentoudis', 'B', 'GRE'], ['Alex Quinn', 'G', 'GBR'], ['James Allen', 'G', 'AUS']]]]],
+  ['Duqueine Team', 'Oreca', 'Oreca 07-Gibson', 'lmp2pa', [['30', [['Giorgio Roda', 'B', 'ITA'], ['Richard Verschoor', 'G', 'NED'], ['Doriane Pin', 'S', 'FRA']]]]],
+  ['CLX Motorsport', 'Oreca', 'Oreca 07-Gibson', 'lmp2pa', [['47', [['Georgios Kolovos', 'B', 'GRE'], ['Ferdinand Habsburg', 'G', 'AUT'], ['Charles Milesi', 'P', 'FRA']]]]],
+  ['AF Corse', 'Oreca', 'Oreca 07-Gibson', 'lmp2pa', [['83', [['François Perrodo', 'B', 'FRA'], ['Matthieu Vaxivière', 'G', 'FRA'], ['Antonio Fuoco', 'P', 'ITA']]]]],
+  ['Proton Competition', 'Oreca', 'Oreca 07-Gibson', 'lmp2pa', [['88', [['Horst Felbermayr', 'B', 'AUT'], ['Horst Felix Felbermayr', 'S', 'AUT'], ['René Binder', 'G', 'AUT']]]]],
+  ['AO by TF', 'Oreca', 'Oreca 07-Gibson', 'lmp2pa', [['99', [['PJ Hyett', 'B', 'USA'], ['Louis Delétraz', 'G', 'SUI'], ['Dane Cameron', 'P', 'USA']]]]],
+  ['United Autosports', 'McLaren', 'McLaren 720S LMGT3 Evo', 'lmgt3', [['23', [['Michael Birch', 'B', 'GBR'], ['Garnet Patterson', 'S', 'AUS'], ['Wayne Boyd', 'G', 'GBR']]]]],
+  ['TF Sport', 'Corvette', 'Corvette Z06 LMGT3.R', 'lmgt3', [['33', [['Blake McDonald', 'B', 'USA'], ['Alec Udell', 'S', 'USA'], ['Charlie Eastwood', 'G', 'IRL']]]]],
+  ['Richard Mille AF Corse', 'Ferrari', 'Ferrari 296 LMGT3 Evo', 'lmgt3', [['50', [['Custodio Toledo', 'B', 'USA'], ['Lilou Wadoux', 'S', 'FRA'], ['Riccardo Agostini', 'G', 'ITA']]]]],
+  ['AF Corse', 'Ferrari', 'Ferrari 296 LMGT3 Evo', 'lmgt3', [['51', [['Charles-Henri Samani', 'B', 'FRA'], ['Conrad Laursen', 'S', 'DEN'], ['Davide Rigon', 'P', 'ITA']]]]],
+  ['High Class Racing', 'Porsche', 'Porsche 911 GT3 R LMGT3', 'lmgt3', [['54', [['Max Moritz', 'B', 'GER'], ['Anders Fjordbach', 'S', 'DEN'], ['Klaus Bachler', 'P', 'AUT']]]]],
+  ['Spirit of Race', 'Ferrari', 'Ferrari 296 LMGT3 Evo', 'lmgt3', [['55', [['Duncan Cameron', 'B', 'GBR'], ['David Perel', 'S', 'RSA'], ['Matthew Griffin', 'G', 'IRL']]]]],
+  ['Kessel Racing', 'Ferrari', 'Ferrari 296 LMGT3 Evo', 'lmgt3', [['57', [['Takeshi Kimura', 'B', 'JPN'], ['Mathys Jaubert', 'S', 'FRA'], ['Daniel Serra', 'P', 'BRA']]], ['74', [['Andrew Gilbert', 'B', 'UAE'], ['Fran Rueda', 'S', 'ESP'], ['Romain Leroux', 'S', 'FRA']]]]],
+  ['Racing Spirit of Léman', 'Aston Martin', 'Aston Martin Vantage AMR LMGT3', 'lmgt3', [['59', [['Anthony McIntosh', 'B', 'USA'], ['Marius Fossard', 'S', 'FRA'], ['Parker Thompson', 'S', 'CAN']]]]],
+  ['Team Qatar by Iron Lynx', 'Mercedes-AMG', 'Mercedes-AMG LMGT3', 'lmgt3', [['62', [['Abdulla Ali Al-Khelaifi', 'B', 'QAT'], ['Julian Hanses', 'S', 'GER'], ['Maxime Martin', 'P', 'BEL']]]]],
+  ['Iron Lynx', 'Mercedes-AMG', 'Mercedes-AMG LMGT3', 'lmgt3', [['63', [['Ameerh Naran', 'B', 'GBR'], ['Rui Andrade', 'S', 'ANG'], ['Sérgio Sette Câmara', 'G', 'BRA']]]]],
+  ['Proton Competition', 'Porsche', 'Porsche 911 GT3 R LMGT3', 'lmgt3', [['75', [['Matt Kurzejewski', 'B', 'USA'], ['Thomas Sargent', 'S', 'USA'], ['Richard Lietz', 'P', 'AUT']]], ['77', [['Martin Berry', 'B', 'SGP'], ['Huub van Eijndhoven', 'S', 'NED'], ['Alessio Picariello', 'G', 'BEL']]]]],
+  ['GR Racing', 'Ferrari', 'Ferrari 296 LMGT3 Evo', 'lmgt3', [['86', [['Michael Wainwright', 'B', 'FRA'], ['Lorcan Hanafin', 'S', 'GBR'], ['Mex Jansen', 'S', 'NED']]]]]];
+const IMSA_GTP_REAL = [
+  ['Porsche Penske Motorsport', 'Porsche', 'Porsche 963', 'gtp', [['6', [['Laurin Heinrich', 'P', 'GER'], null, ['Laurens Vanthoor', 'P', 'BEL']]], ['7', [['Felipe Nasr', 'P', 'BRA'], ['Julien Andlauer', 'G', 'FRA'], null]]],
+    'Heinrich (full season) and Laurens Vanthoor (endurance races) confirmed for 2027; the rest is still to come.'],
+  ['Cadillac Wayne Taylor Racing', 'Cadillac', 'Cadillac V-Series.R', 'gtp', [['10', [['Ricky Taylor', 'P', 'USA'], ['Filipe Albuquerque', 'P', 'POR'], ['Will Stevens', 'P', 'GBR']]], ['40', [['Jordan Taylor', 'P', 'USA'], ['Louis Delétraz', 'G', 'SUI'], ['Norman Nato', 'G', 'FRA']]]], 'Confirmed for 2027.'],
+  ['Cadillac Whelen', 'Cadillac', 'Cadillac V-Series.R', 'gtp', [['31', [['Jack Aitken', 'P', 'GBR'], ['Frederik Vesti', null, 'DEN'], ['Earl Bamber', 'P', 'NZL']]]], 'Confirmed for 2027; a fourth driver for the Rolex 24 is still to come.'],
+  ['BMW M Team WRT', 'BMW', 'BMW M Hybrid V8', 'gtp', [['24', [['Dries Vanthoor', 'P', 'BEL'], ['Sheldon van der Linde', 'P', 'RSA'], null]], ['25', [null, ['Marco Wittmann', 'P', 'GER'], null]]],
+    'The 2026 crews; BMW hasn’t announced 2027 yet (Philipp Eng has left BMW).']];
+
+/* ---------------------------------------------------------------- the rows for ELMS and IMSA */
+function endRealPerson(key, d, teamId, num, rng) { const p = wecPerson(d[0], d[1], d[2], teamId, num, rng); return Object.assign(p, { id: `${key}-p-${slugName(d[0])}`, seriesId: key }); }
+lightRows = function (key, keep) {
+  const tpl = SERIES_TEMPLATES[key], rows = [], rng = RaceEngine.rng(h32(key, '2027-real')), prev = keep && get('f1_series', key) ? clone(S.store.f1_series[key]) : {};
+  const specs = key === 'elms' ? ELMS_REAL.map(([name, make, model, cls, cars]) => ({ slug: `${slugName(name)}-${cls}`, name, make, model, cls, cars }))
+    : IMSA_GTP_REAL.map(([name, make, model, cls, cars, note]) => ({ slug: `${slugName(name)}-${cls}`, name, make, model, cls, cars, note }))
+      .concat(imsaTeams().filter(t => t[4] !== 'gtp').map(([slug, name, make, model, cls], i) => ({ slug, name, make, model, cls, cars: [[String(30 + i * 3 + (cls === 'gtd' ? 50 : 0)), null]], fictional: true })));
+  rows.push(['f1_series', key, Object.assign(prev, { template: key, discipline: 'endurance', activeSeason: prev.activeSeason || `${key}-1`, calendar: prev.calendar || tpl.calendar.slice(), events: key === 'elms' ? ELMS_EVENTS : IMSA_EVENTS,
+    dates: prev.dates || (key === 'elms' ? ELMS_DATES : IMSA_DATES), classes: [...new Set(specs.map(t => t.cls))], crew: 3, entryList: '2027-real', lineups: LINEUPS_AT,
+    tests: prev.tests || (key === 'elms' ? [{ id: 't1', name: 'Prologue', trackId: 'spain', days: 2, date: '2027-03-08' }] : [{ id: 't1', name: 'Roar Before the Rolex 24', trackId: 'daytona', days: 3, date: '2027-01-22' }]) })]);
+  NEW_TRACKS.forEach(([id, name, circuit, flag, km]) => { if (!get('f1_tracks', id)) rows.push(['f1_tracks', id, { id, name, circuit, flag, km, discipline: 'endurance', round: 90, laps: 1, type: 'endurance' }]); });
+  specs.forEach((t, ti) => {
+    const id = `${key}-${t.slug}`, old = keep && get('f1_teams', id) ? clone(S.store.f1_teams[id]) : {};
+    rows.push(['f1_teams', id, Object.assign(old, { seriesId: key, name: t.name, color: old.color || TEAM_COLOURS[ti % TEAM_COLOURS.length], order: ti + 1, cls: t.cls, manufacturer: t.make, model: t.model, numbers: t.cars.map(c => c[0]), fictional: !!t.fictional, lineupNote: t.note || null, powerUnit: t.make,
+      carPace: old.carPace || 78 + Math.round(rng() * 8), topSpeed: 12, cornering: 12, reliability: old.reliability || 86 + Math.round(rng() * 8), pitSpeed: old.pitSpeed || 80 + Math.round(rng() * 10), tyreLife: 76 })]);
+    const seat = (k, role, car, slot, order, def) => { const sid = `${id}-${k}`, o = keep && get('f1_seats', sid) ? clone(S.store.f1_seats[sid]) : null;
+      rows.push(['f1_seats', sid, Object.assign(o || { holderCharId: null, holderName: null, holderSince: null, open: true }, { teamId: id, role, car, order: ti * 25 + order, defaultPersonId: def || null }, slot ? { slot } : {})]); };
+    seat('tp', 'principal', null, 0, 0, null);
+    t.cars.forEach(([num, crew], ci) => { const c = ci + 1;
+      (CREW_CATS[t.cls] || ['G', 'G', 'G']).forEach((cat, n) => { let pid = null, d = crew ? crew[n] : undefined;
+        if (d) { const p = endRealPerson(key, d, id, num, rng); pid = p.id; rows.push(['f1_people', p.id, p]); }
+        else if (!crew) { const p = genPerson(`${key}-drv-${t.slug}-${c}-${n + 1}`, rng, 'elite', { seriesId: key, teamId: id }), [base, spread] = CAT_LEVEL[cat], r = () => base + Math.floor(rng() * spread);
+          Object.assign(p, { category: cat, num, pace: r(), consistency: r(), wet: r(), overtaking: r(), defense: r(), experience: cat === 'B' ? 30 + Math.floor(rng() * 30) : 55 + Math.floor(rng() * 40) }); pid = p.id; rows.push(['f1_people', p.id, p]); }
+        seat(`c${c}d${n + 1}`, 'driver', c, n + 1, c * 6 + n + 1, pid); });
+      if (key === 'imsa') seat(`c${c}d4`, 'driver', c, 4, c * 6 + 4, null);   /* the Rolex 24's fourth driver: open for a player */
+      seat(`e${c}`, 'engineer', c, 0, c * 6 + 5, null); });
+  });
+  return rows;
+};
+/* Bring a series already set up onto the latest crews: players keep their seats; teams no longer on the entry list go unless a player holds a seat in them. */
+ACTIONS['end-lineups'] = d => { const key = d.k; if (!S.isGm || !get('f1_series', key)) return;
+  askConfirm(`Update the ${seriesDoc(key).name} to the latest real line-ups? ${key === 'wec' ? 'The 2027 changes announced so far (Cadillac, McLaren, Toyota, Alpine) go in.' : key === 'elms' ? 'The real 2026 ELMS field comes in: 37 cars in LMP2, LMP2 Pro-Am and LMGT3 with their crews and FIA categories.' : 'IMSA’s real GTP crews come in (Porsche Penske, Cadillac Wayne Taylor Racing, Cadillac Whelen, BMW M Team WRT), with a fourth seat for the Rolex 24 in every car.'} Players keep their seats; seats not yet announced run with a reserve driver.`, 'Update the line-ups', () => run(async () => {
+    const rows = key === 'wec' ? wecRowsFull(true) : lightRows(key, true), keepIds = new Set(rows.filter(r => r[0] === 'f1_teams').map(r => r[1]));
+    for (const t of list('f1_teams').filter(x => x.seriesId === key && !keepIds.has(x.id) && !x.leMansOnly)) {   /* Le Mans-only entries are added separately and stay */ const seats = list('f1_seats').filter(s => s.teamId === t.id); if (seats.some(s => s.holderCharId)) continue;
+      for (const s of seats) await Data.remove('f1_seats', s.id); await Data.remove('f1_teams', t.id); }
+    rows.forEach(r => { if (r[0] === 'f1_series') r[2].lineups = LINEUPS_AT; });
+    await f1PutAll(rows); await Data.audit('series.update', `${seriesDoc(key).name}: line-ups updated`); }, 'Line-ups updated.')); };
+
+/* ---------------------------------------------------------------- the Rolex 24's fourth driver */
+const _endEntryP3 = endEntry;
+endEntry = function (trackId) {
+  return _endEntryP3(trackId).map(e => { const t = get('f1_teams', e.teamId); if (!t || t.seriesId !== 'imsa' || e.crew.length < 4) return e;
+    const fourth = e.crew[3], keep = trackId === 'daytona' && !fourth.reserve; return Object.assign(e, { crew: keep ? e.crew : e.crew.slice(0, 3) }); });
+};
+
+/* ---------------------------------------------------------------- Balance of Performance */
+const BOP_STRENGTH = [['0', 'Off: cars race as built'], ['0.5', 'Light'], ['0.75', 'Standard'], ['1', 'Full: classes as level as possible']];
+CHANGES['bop-f'] = (v, d) => { const f = S.ui.form.bop = S.ui.form.bop || {}; if (d.k === 'strength') f.strength = v; else (f.adj = f.adj || {})[d.t] = v; };
+function bopTxt(x) { const n = Number(x) || 0; return n ? `${n > 0 ? '+' : ''}${n.toFixed(1)} s a lap` : 'no change'; }
+ACTIONS['bop-save'] = d => { const s = curSeries(); if (!S.isGm) return; const f = S.ui.form.bop || {}, before = s.bopManual || {}, after = Object.assign({}, before);
+  Object.entries(f.adj || {}).forEach(([tid, v]) => { const n = Math.max(-3, Math.min(3, Math.round((Number(v) || 0) * 10) / 10)); if (n) after[tid] = n; else delete after[tid]; });
+  const changed = F1.teams().filter(t => (Number(before[t.id]) || 0) !== (Number(after[t.id]) || 0)), strength = f.strength != null ? Number(f.strength) : (s.bopStrength != null ? s.bopStrength : 0.75);
+  run(async () => {
+    const entry = { at: nowIso(), strength, changes: changed.map(t => ({ teamId: t.id, team: t.name, cls: t.cls, from: Number(before[t.id]) || 0, to: Number(after[t.id]) || 0 })) };
+    await Data.put('f1_series', s.id, Object.assign(clone(S.store.f1_series[s.id]), { bopManual: after, bopStrength: strength, bopLog: (s.bopLog || []).concat([entry]).slice(-20) }));
+    await Data.audit('bop.update', `${s.name} BoP: ${changed.length ? changed.map(t => `${t.name} ${bopTxt(after[t.id])}`).join(', ') : 'strength only'}`);
+    if (d.post) { const byCls = {}; F1.teams().filter(t => after[t.id]).forEach(t => (byCls[t.cls] = byCls[t.cls] || []).push(`${t.name}: ${bopTxt(after[t.id])}${changed.indexOf(t) !== -1 ? ' (new)' : ''}`));
+      const body = `Balance of Performance strength: **${(BOP_STRENGTH.find(b => Number(b[0]) === strength) || ['', 'Standard'])[1]}**.\n\n${Object.keys(byCls).length ? Object.entries(byCls).map(([k, l]) => `**${(WEC_CLASSES[k] || [k])[0]}**\n${l.join('\n')}`).join('\n\n') : 'No team adjustments: every car runs to the standard BoP.'}${changed.filter(t => !after[t.id]).length ? `\n\nBack to standard: ${changed.filter(t => !after[t.id]).map(t => t.name).join(', ')}.` : ''}`;
+      await annPost(s.id, `⚖️ ${s.name}: Balance of Performance bulletin`, body); }
+    S.ui.form.bop = {};
+  }, d.post ? 'BoP saved and the bulletin posted.' : 'BoP saved.');
+};
+function bopCardHtml() {
+  const s = curSeries(), f = S.ui.form.bop || {}, cur = s.bopManual || {}, strength = f.strength != null ? f.strength : String(s.bopStrength != null ? s.bopStrength : 0.75), teams = F1.teams();
+  if (!teams.length) return '';
+  const byCls = {}; teams.forEach(t => (byCls[t.cls] = byCls[t.cls] || []).push(t));
+  return `<section class="card"><h2>Balance of Performance</h2><p class="muted small">The standard BoP evens out the cars in each class automatically; its strength sets how far. On top of that, give any team an adjustment in seconds a lap (plus is slower). New weekends use these; an open weekend keeps the BoP it opened with.</p>
+    <label class="field" style="max-width:360px">Strength<select data-change="bop-f" data-k="strength">${BOP_STRENGTH.map(([v, l]) => `<option value="${v}" ${String(Number(strength)) === String(Number(v)) ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+    ${Object.entries(byCls).map(([k, ts]) => `<h3>${esc((WEC_CLASSES[k] || [k])[0])}</h3><div class="bop-grid">${ts.map(t => `<label class="field"><span>${esc(t.name)} <span class="muted small">${esc((t.numbers || []).filter(Boolean).map(n => '#' + n).join(' '))}</span></span><input type="number" step="0.1" min="-3" max="3" data-change="bop-f" data-t="${esc(t.id)}" value="${esc(f.adj && f.adj[t.id] != null ? f.adj[t.id] : (cur[t.id] || 0))}"></label>`).join('')}</div>`).join('')}
+    <div class="btn-row"><button class="btn primary" data-act="bop-save" data-post="1">Save and post the bulletin</button><button class="btn" data-act="bop-save">Save without posting</button></div>
+    ${(s.bopLog || []).length ? `<p class="muted small">Last change ${esc(fmtDate((s.bopLog || []).slice(-1)[0].at))}.</p>` : ''}</section>`;
+}
+function lineupCardHtml() {
+  const rows = ['wec', 'elms', 'imsa'].filter(k => get('f1_series', k)).map(k => { const s = seriesDoc(k), stale = s.lineups !== LINEUPS_AT;
+    return `<tr><td><b>${esc(s.name)}</b></td><td class="muted small">${k === 'wec' ? '2027 changes announced so far (Cadillac, McLaren, Toyota, Alpine)' : k === 'elms' ? (stale ? 'Teams from the Le Mans entry list, fictional crews' : 'The real 2026 field and crews') : (stale ? 'GTP factory teams with fictional crews' : 'Real GTP crews for 2027')}</td><td>${stale ? `<button class="btn small" data-act="end-lineups" data-k="${k}">Update the line-ups</button>` : '<span class="tag player">Up to date</span>'}</td></tr>`; }).join('');
+  return rows ? `<section class="card"><h2>Real line-ups</h2><table class="data"><tbody>${rows}</tbody></table><p class="muted small">Seats not yet announced run with a reserve driver until a player or Race Control fills them. IMSA cars have a fourth seat used only at the Rolex 24.</p></section>` : '';
+}
+const _seriesViewP3 = ROUTES.series.view;
+ROUTES.series.view = function () { const h = _seriesViewP3.apply(this, arguments); return S.disc === 'endurance' && S.isGm ? h + lineupCardHtml() + (curSeries().discipline === 'endurance' ? bopCardHtml() : '') : h; };
+
+/* ---------------------------------------------------------------- pre-season tests (the Prologue, the Roar) */
+const testKey = t => `${curSeasonId()}:${t.id}`;
+ACTIONS['endtest-run'] = d => { const s = curSeries(), t = (seriesTests(s) || []).find(x => x.id === d.id); if (!S.isGm || !t) return;
+  if (endWOpen()) { toast('Finish the open weekend first.', true); return; }
+  const cars = endEntry(t.trackId); if (!cars.length) { toast('There are no cars in this series yet.', true); return; }
+  run(async () => {
+    const days = Array.from({ length: Math.max(1, t.days || 2) }, (_, i) => { const res = EnduranceEngine.practice({ seed: h32(t.id, curSeasonId(), 'day', i + 1), trackId: t.trackId, cars, bop: s.bopStrength != null ? s.bopStrength : 0.75 });
+      return { day: i + 1, rows: res.map(r => ({ carId: r.carId, cls: r.cls, num: r.num, team: r.team, best: r.best, bestStr: r.bestStr, by: r.by })) }; });
+    const tr = Object.assign({}, s.testResults || {}, { [testKey(t)]: { name: t.name, trackId: t.trackId, days, at: nowIso() } });
+    await Data.put('f1_series', s.id, Object.assign(clone(S.store.f1_series[s.id]), { testResults: tr }));
+    await Data.audit('test.run', `${s.name}: ${t.name} run`);
+    const best = {}; days.forEach(dd => dd.rows.forEach(r => { if (!best[r.cls] || r.best < best[r.cls].best) best[r.cls] = r; }));
+    try { await annPost(s.id, `⏱️ ${s.name}: ${t.name}`, `${plural(days.length, 'day')} of testing at ${(F1.track(t.trackId) || get('f1_tracks', t.trackId) || {}).name || t.trackId}.\n\n**Fastest in each class**\n${Object.entries(best).map(([k, r]) => `${(WEC_CLASSES[k] || [k])[0]}: ${r.num ? '#' + r.num + ' ' : ''}${r.team} (${r.by}), ${r.bestStr}`).join('\n')}`); } catch (e) { /* no Discord */ }
+  }, `${t.name} run.`);
+};
+function endTestsHtml() {
+  const s = curSeries(), tests = seriesTests(s) || []; if (!tests.length) return '';
+  return `<section class="card"><h2>Pre-season testing</h2>${tests.map(t => { const r = (s.testResults || {})[testKey(t)], trk = F1.track(t.trackId) || get('f1_tracks', t.trackId) || {};
+    if (!r) return `<p><b>${esc(t.name)}</b> <span class="muted">${esc(trk.name || t.trackId)}, ${plural(t.days || 2, 'day')}${t.date ? `, from ${esc(fmtDay(t.date))}` : ''}</span> ${S.isGm ? `<button class="btn small" data-act="endtest-run" data-id="${esc(t.id)}">Run the test</button>` : '<span class="muted small">Not run yet.</span>'}</p>`;
+    const best = {}; r.days.forEach(dd => dd.rows.forEach(x => { const b = best[x.carId]; if (!b || x.best < b.best) best[x.carId] = Object.assign({ day: dd.day }, x); }));
+    const byCls = {}; Object.values(best).forEach(x => (byCls[x.cls] = byCls[x.cls] || []).push(x));
+    return `<h3>${esc(t.name)} <span class="sub">${esc(trk.name || '')}, ${plural(r.days.length, 'day')}</span></h3><div class="cards">${Object.entries(byCls).map(([k, rows]) => `<article class="card end-class-res" style="--cc:${(WEC_CLASSES[k] || [0, '#888'])[1]}"><h4>${esc((WEC_CLASSES[k] || [k])[0])}</h4><ol class="small">${rows.sort((a, b) => a.best - b.best).slice(0, 6).map(x => `<li>${carNo(x.num)} ${esc(x.team)} <b>${esc(x.bestStr)}</b> <span class="muted">${esc(x.by)}, day ${x.day}</span></li>`).join('')}</ol></article>`).join('')}</div>`; }).join('')}
+    <p class="muted small">Testing is for the record and the storylines: the times show who looks quick. The order of each day is posted to the announcements channel.</p></section>`;
+}
+const _weekendViewP3 = ROUTES.weekend.view;
+ROUTES.weekend.view = function () { const h = _weekendViewP3.apply(this, arguments); if (S.disc !== 'endurance' || S.ui.endwView || endWOpen()) return h; return h + endTestsHtml(); };
+
+/* ---------------------------------------------------------------- live timing for Discord */
+async function drawEndTiming(w) {
+  const st = w.race.state, classes = [...new Set(st.cars.map(c => c.cls))], per = 6, H = 240 + classes.length * (66 + per * 46) + 50, cv = await endCanvas(H), g = cv.getContext('2d'), T = EXP_THEMES.dark, logo = await loadImg(leagueLogo());
+  g.fillStyle = '#1C1D22'; g.fillRect(0, 0, 1080, H);
+  const me = drawMark(g, 50, 44, Object.assign({}, T, { ink: '#FFFFFF' }), logo); g.fillStyle = '#FFFFFF'; g.font = cond(700, 46); fitText(g, w.event, z => cond(700, z), 46, 1000 - me); g.fillText(w.event, me + 24, 90);
+  const flag = { sc: 'Safety car', fcy: 'Full-course yellow', slowzone: 'Slow zone' }[st.flagState] || 'Green';
+  g.font = bodyF(600, 24); g.fillStyle = T.muted; g.fillText(`Live timing · ${EnduranceEngine.fmt(w.race.clock || 0)} of ${w.distanceKm ? `${w.distanceKm} km` : `${w.hours} hours`} · ${flag}${st.night ? ' · Night' : ''}${st.wet ? ' · Rain' : ''}`, me + 24, 128);
+  let y = 180;
+  classes.forEach(k => { const [nm, col] = WEC_CLASSES[k] || [k, '#888'], rows = st.cars.filter(c => c.cls === k && c.status !== 'retired').slice(0, per);
+    g.fillStyle = col; g.fillRect(50, y, 980, 6); g.fillStyle = '#FFFFFF'; g.font = cond(700, 30); g.fillText(nm, 50, y + 44); y += 62;
+    rows.forEach((c, i) => { g.fillStyle = i === 0 ? '#3A1D20' : '#25272D'; g.fillRect(50, y, 980, 40);
+      g.fillStyle = i === 0 ? '#F5C400' : '#FFFFFF'; g.font = cond(700, 24); g.fillText(String(c.classPos || i + 1), 64, y + 29);
+      g.fillStyle = '#FFFFFF'; g.font = bodyF(700, 20); const label = `${c.num ? '#' + c.num + ' ' : ''}${c.team}`; fitText(g, label, z => bodyF(700, z), 20, 420); g.fillText(label, 120, y + 27);
+      g.font = bodyF(500, 16); g.fillStyle = '#C9CCD2'; fitText(g, c.driver || '', z => bodyF(500, z), 16, 280); g.fillText(c.driver || '', 560, y + 27);
+      g.textAlign = 'right'; g.font = bodyF(600, 17); g.fillStyle = T.muted; g.fillText(i === 0 ? `${c.laps} laps` : (c.ahead ? `+${c.ahead}` : ''), 1015, y + 27); g.textAlign = 'left'; y += 46; });
+    y += 10; });
+  g.font = bodyF(500, 18); g.fillStyle = T.muted; g.textAlign = 'right'; g.fillText(stampText(), 1030, H - 22); g.textAlign = 'left';
+  return new Promise(ok => cv.toBlob(ok, 'image/png'));
+}
+ACTIONS['endw-timing-post'] = () => { const w = endWOpen(); if (!S.isGm || !w || !w.race || !w.race.state) return;
+  run(async () => { const blob = await drawEndTiming(w), ch = await discordSend('timing', { content: `**${w.event}**: live timing at ${EnduranceEngine.fmt(w.race.clock || 0)}` }, { blob, name: `${w.trackId}-timing.png` });
+    await Data.audit('discord.timing', `${w.event} live timing posted to #${ch}`); }, 'Live timing posted to Discord.'); };
+const _endTimingP3 = endTimingHtml;
+endTimingHtml = function (w) { const h = _endTimingP3(w); return S.isGm && w && w.status === 'race' && w.race && w.race.state ? `<div class="btn-row"><button class="btn" data-act="endw-timing-post">Post live timing to Discord</button></div>${h}` : h; };
+
+/* ---------------------------------------------------------------- Team HQ for endurance */
+function endTeamHtml() {
+  const teams = F1.teams(); if (!teams.length) return '<div class="empty">This series has no teams yet.</div>';
+  const my = S.charId ? F1.seats().find(x => x.holderCharId === S.charId) : null, tid = teams.some(t => t.id === S.ui.teamId) ? S.ui.teamId : (my && my.teamId) || teams[0].id, t = get('f1_teams', tid), s = curSeries();
+  const st = endStandings(s.id, curSeasonId()), cls = t.cls, adj = Number((s.bopManual || {})[t.id]) || 0;
+  const cars = [...new Set(F1.seats(tid).filter(x => x.role === 'driver').map(x => x.car || 1))].sort();
+  const carCard = car => { const id = `${tid}-${car}`, num = (t.numbers || [])[car - 1] || '', seats = F1.seats(tid).filter(x => x.role === 'driver' && (x.car || 1) === car).sort((a, b) => (a.slot || 0) - (b.slot || 0));
+    const dpos = (st.cars[cls] || []).findIndex(x => x.id === id), row = (st.cars[cls] || [])[dpos], prob = typeof crewProblem === 'function' ? crewProblem(tid, car) : null;
+    return `<article class="card" style="--team:${esc(t.color)}"><h3>${carNo(num)} ${esc(t.model || t.name)}</h3><ul class="end-crew">${seats.map(x => { const o = f1Occupant(x), cat = o.charId ? (get('characters', o.charId) || {}).category : o.person && o.person.category;
+      return `<li>${x.slot === 4 ? '<span class="muted small">Rolex 24 only:</span> ' : ''}${o.charId || o.person ? `<b>${o.person ? careerLink(o.person.id, o.name) : esc(o.name)}</b>${catTag(cat)}${o.charId ? ' <span class="tag player">Player</span>' : ''}` : `<span class="muted">${x.slot === 4 ? 'Open' : 'Not yet announced: a reserve driver races'}</span>`}</li>`; }).join('')}</ul>
+      ${prob ? `<p class="small" style="color:var(--warn)">${esc(prob)}</p>` : ''}
+      <p class="small">${row ? `<b>P${dpos + 1}</b> in the ${esc((WEC_CLASSES[cls] || [cls])[0])} teams’ championship, ${row.pts} points${row.wins ? `, ${plural(row.wins, 'win')}` : ''}.` : '<span class="muted">No points yet this season.</span>'}</p>
+      ${row && st.rounds.length ? `<p class="small muted">${st.rounds.map(w => { const r = row.rounds[w.id]; return `${esc((F1.track(w.trackId) || {}).flag || '')} ${r ? (r.status !== 'finished' ? (r.status === 'nc' ? 'NC' : 'DNF') : 'P' + r.pos) : '–'}`; }).join(' · ')}</p>` : ''}</article>`; };
+  return `<div class="page-head"><div><p class="eyebrow">Endurance · ${esc(s.name)}</p><h1>Team HQ</h1></div>
+      <label class="field" style="max-width:340px">Team<select data-change="team-pick">${teams.map(x => `<option value="${esc(x.id)}" ${x.id === tid ? 'selected' : ''}>${esc(x.name)} (${esc((WEC_CLASSES[x.cls] || [x.cls])[0])})</option>`).join('')}</select></label></div>
+    <section class="card team-head" style="--team:${esc(t.color)}"><h2>${esc(t.name)}</h2><p>${esc((WEC_CLASSES[cls] || [cls])[0])} · ${esc(t.manufacturer || '')}${t.model ? ` ${esc(t.model)}` : ''}${t.fictional ? ' · fictional team' : ''}${t.leMansOnly ? ' · Le Mans only' : ''}</p>
+      ${t.lineupNote ? `<p class="muted small">${esc(t.lineupNote)}</p>` : ''}<p class="small">Balance of Performance: ${adj ? `<b>${esc(bopTxt(adj))}</b> on top of the standard` : 'the standard for the class'}.</p></section>
+    <div class="cards">${cars.map(carCard).join('')}</div>`;
+}
+CHANGES['team-pick'] = v => { S.ui.teamId = v; render(); };
+const _teamViewP3 = ROUTES.team.view;
+ROUTES.team.view = function () { return S.disc === 'endurance' ? endTeamHtml() : _teamViewP3.apply(this, arguments); };
+
+/* ---------------------------------------------------------------- Seasons for endurance */
+ACTIONS['end-season-end'] = () => { const s = curSeries(), sea = curSeason(); if (!S.isGm || sea.status === 'archived') return;
+  if (endWOpen()) { toast('Finish or cancel the open weekend first.', true); return; }
+  const st = endStandings(s.id, sea.id);
+  askConfirm(`Catalogue ${s.name}’s ${sea.name} season? Its ${plural(st.rounds.length, 'race')} and each class’s champions go into the archive.`, 'Catalogue the season', () => run(async () => {
+    const classes = Object.fromEntries(st.classes.map(k => [k, { drivers: (st.drivers[k] || []).slice(0, 3).map(x => ({ name: x.name, pid: x.pid, charId: x.charId, pts: x.pts, teams: x.teams })), cars: (st.cars[k] || []).slice(0, 3).map(x => ({ num: x.num, team: x.team, pts: x.pts })),
+      makes: (st.makes[k] || []).slice(0, 1).map(x => ({ make: x.make, pts: x.pts })) }]));
+    const was = get('f1_seasons', sea.id) ? clone(S.store.f1_seasons[sea.id]) : {};
+    await Data.put('f1_seasons', sea.id, Object.assign(was, { seriesId: s.id, name: sea.name, status: 'archived', startedAt: sea.startedAt || null, endedAt: nowIso(), archive: { endurance: true, races: st.rounds.length, classes, drivers: [], teams: [] } }));
+    await Data.audit('season.end', `${s.name} ${sea.name} catalogued`);
+    try { await annPost(s.id, `🏆 ${s.name} ${sea.name}: the champions`, Object.entries(classes).map(([k, c]) => `**${(WEC_CLASSES[k] || [k])[0]}**: ${c.drivers[0] ? `${c.drivers[0].name} (${c.drivers[0].pts} points)` : '–'}${c.cars[0] ? `; teams: ${c.cars[0].num ? '#' + c.cars[0].num + ' ' : ''}${c.cars[0].team}` : ''}${c.makes[0] ? `; manufacturers: ${c.makes[0].make}` : ''}`).join('\n')); } catch (e) { /* no Discord */ }
+  }, `${sea.name} catalogued.`), true); };
+function endArchiveHtml(season) { const a = season.archive || {};
+  return `<section class="card season-card"><h2>${esc(season.name)} <span class="sub">${plural(a.races || 0, 'race')}. Catalogued ${esc(fmtDate(season.endedAt))}.</span></h2>
+    <div class="cards">${Object.entries(a.classes || {}).map(([k, c]) => `<article class="card end-class-res" style="--cc:${(WEC_CLASSES[k] || [0, '#888'])[1]}"><h4>${esc((WEC_CLASSES[k] || [k])[0])}</h4>
+      ${c.drivers[0] ? `<p><span class="tag trophy">Champions</span> <b>${esc(c.drivers.filter(x => x.pts === c.drivers[0].pts).map(x => x.name).join(', '))}</b>, ${c.drivers[0].pts} points</p>` : '<p class="muted">No points scored.</p>'}
+      ${c.cars[0] ? `<p class="small">Teams: ${carNo(c.cars[0].num)} ${esc(c.cars[0].team)}${c.makes && c.makes[0] ? ` · Manufacturers: ${esc(c.makes[0].make)}` : ''}</p>` : ''}</article>`).join('')}</div>
+    ${S.isGm ? `<div class="btn-row"><button class="btn small ghost" data-act="season-del-open" data-id="${esc(season.id)}">Delete this season</button></div>` : ''}</section>`; }
+const _seasonsViewP3 = ROUTES.seasons.view;
+ROUTES.seasons.view = function () {
+  if (S.disc !== 'endurance') return _seasonsViewP3.apply(this, arguments);
+  const s = curSeries(), sea = curSeason(), st = endStandings(s.id, sea.id), f = S.ui.form.newSeason = S.ui.form.newSeason || {};
+  const archived = list('f1_seasons').filter(x => x.seriesId === s.id && x.status === 'archived').sort((a, b) => String(b.endedAt).localeCompare(String(a.endedAt)));
+  let h = `<div class="page-head"><div><p class="eyebrow">Endurance · ${esc(s.name)}</p><h1>Seasons</h1><p>The current season, and every one catalogued before it.</p></div></div>`;
+  if (sea.status !== 'archived') h += `<section class="card"><h2>${esc(sea.name)} <span class="sub">In progress</span></h2><p>${st.rounds.length} of ${st.total} rounds run.</p>
+      ${st.classes.map(k => { const d = (st.drivers[k] || [])[0]; return d ? `<p class="small"><b>${esc((WEC_CLASSES[k] || [k])[0])}:</b> ${esc(d.name)} leads with ${d.pts} points.</p>` : ''; }).join('')}
+      ${S.isGm ? `<div class="btn-row"><button class="btn" data-act="end-season-end">Catalogue the season</button><button class="btn ghost" data-act="season-del-open" data-id="${esc(sea.id)}">Delete this season</button></div><p class="muted small">Do this after the last round: each class’s champions go into the archive. Then start the next season.</p>` : ''}</section>`;
+  else h += `<section class="card"><h2>Between seasons</h2><p>${esc(sea.name)} is catalogued. ${S.isGm ? 'Start the next season to open weekends again.' : 'Race Control will start the next season soon.'}</p>
+      ${S.isGm ? `<div class="btn-row"><button class="btn" data-act="season-reopen">Reopen ${esc(sea.name)}</button></div><div class="metrics" style="align-items:end"><label class="field">Season name<input type="text" data-bind="ui/form/newSeason/name" value="${esc(f.name || String((Number(sea.name) || 2027) + 1))}"></label>
+        <label class="small"><input type="checkbox" data-bind="ui/form/newSeason/keepSeats" ${f.keepSeats !== false ? 'checked' : ''}> Players keep their seats</label></div><div class="btn-row"><button class="btn primary" data-act="season-start">Start the new season</button></div>` : ''}</section>`;
+  return h + (archived.length ? archived.map(endArchiveHtml).join('') : '<p class="muted">No seasons catalogued yet.</p>');
 };
 
 /* start-up: every part has registered its routes, drawers and actions */
