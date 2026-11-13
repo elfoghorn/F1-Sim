@@ -25,6 +25,26 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v1.4.0: Endurance Phase 4, the race weekend
+
+13 November 2026. Build `f1sim-1.4.0`. **DATABASE UPDATE** (migration `20261113000010_endurance_weekends.sql`: endurance weekends get their own collection, `f1_endw`, which only Race Control writes).
+
+| Area | What it does |
+| --- | --- |
+| Opening a weekend | In Endurance, Race Weekend → Open a race weekend: pick the round, the weather, one or three practice sessions and the BoP strength. The crews on The Grid at that moment are the crews for the weekend. Race Control can cancel a weekend. |
+| Practice | Race Control runs each session. Every crew chooses what it works on (race pace, qualifying or night running); the gains build over the sessions and count in qualifying and the race. Each session has a timesheet. |
+| Qualifying and Hyperpole | One run for every car with a nominated driver (Hypercar crews pick theirs; LMGT3 cars qualify with their Bronze driver), then Hyperpole for the top ten of each class, which sets their grid. Hypercars line up ahead of LMGT3. |
+| The race | Race Control moves the clock on (+15 minutes, +1 hour, +6 hours, to the finish) or runs it live at 1, 5 or 15 minutes of race a second, and can pause. The race is re-simulated from the start up to the clock each time, with every crew's calls applied from the moment they were made: deterministic, and a call never changes what has already happened. It moves on only from Race Control's tab. |
+| Live timing | Everyone sees race time and time to go, local time with day or night, the track (dry or rain) and the flag (green, slow zone, full-course yellow, safety car); each class's order with the driver at the wheel and their category, laps, gaps, last and best laps, how far into the stint, tyres and stops; and the latest from the race log. Your own car is highlighted. |
+| The pit wall | Crews run their car (drivers and the car's engineer their own car; the team principal every car of the team; Race Control any car), within their involvement level. Set-up only: the practice focus and the qualifying driver. Full: also the stint plan (driver order, single, double or triple stints, new tyres every stop or every two or three stints) and live calls: box this lap, who drives next, tyres at the next stop (new dries, wets, keep these), and push, standard or save (push is quicker but harder on tyres and fuel, and a little riskier; save is the reverse). Hands-off crews get the team's defaults. |
+| Bronze minimum drive time | In LMGT3 the Bronze driver must drive about 28% of the race; if they are falling short, they take over in time (and the race log says so). |
+| Results | When the race ends the result is kept with the weekend: listed under Results this season, with the full classification by class, hour by hour, the race log and every car's stints. (Championships, Discord posts and reports for endurance come in Phase 6.) |
+| Preview races | The Phase 3 simulator stays under Preview races for Race Control; a shared preview shows to players under Preview race from Race Control. |
+| Cars without numbers | Cars whose numbers aren't announced yet (Ford's and McLaren's) show without one. |
+| Roadmap | Phase 4 is done; Phase 5 (Le Mans and the other events) is next. |
+
+---
+
 ## v1.3.0: Endurance Phase 3, the race engine
 
 13 November 2026. Build `f1sim-1.3.0`. **No database update.**
