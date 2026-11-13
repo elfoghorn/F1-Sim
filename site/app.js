@@ -1,4 +1,4 @@
-/* F1 SIM v1.5.0 (build f1sim-1.5.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v1.7.0 (build f1sim-1.7.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -8322,10 +8322,11 @@ const ENDURANCE_PHASES = [
   ['3', 'The endurance race engine', 'In place, with preview races on Race Weekend: timed races (6, 8, 10 or 24 hours), several classes on track at once with traffic and passing, fuel and tyre stints, driver stints and maximum drive time, day and night, weather through the race, slow zones, full-course yellows and safety cars, and Balance of Performance.', 'done'],
   ['4', 'The endurance race weekend', 'In place on Race Weekend: practice, Hyperpole qualifying, a race in hours shown live, and the pit wall: stint plans, driver changes, fuel and tyre calls, and night running, with the three involvement levels.', 'done'],
   ['5', 'Le Mans and the other events', 'In place: the 24 Hours of Le Mans with Test Day, night practice, the two-stage Hyperpole, LMP2 and the Le Mans-only entries; each venue’s own daylight (the Qatar 1812km and Bahrain run into the night); and lighter ELMS and IMSA Michelin Endurance Cup series for 2027.', 'done'],
-  ['6', 'Everything else, for endurance', 'Championships by class and for manufacturers, development and money, exports and Discord, race reports, records and the history views.', 'next']];
+  ['6', 'Everything else, for endurance', 'In place: championships by class for drivers, teams and manufacturers with each series’ points; the Championship page; results and standings images for Discord; race reports; endurance results on character and career pages; endurance seasons in the history views; and this weekend on Home. (Endurance uses Balance of Performance instead of development, and has no money, like GP.)', 'done'],
+  ['7', 'Strategy depth', 'Tyre compounds against track temperature and a tyre allowance, short-fills, driver fatigue, repair-or-carry-on decisions, weather and yellow-flag policies, strategy presets, a rain radar, gaps to the cars around you, and a race engineer who reads the race.', 'done']];
 route('endurance', 'Endurance', function () {
   const ch = ['WEC', 'Le Mans 24 Hours', 'IMSA', 'European Le Mans Series', 'GT World Challenge'], status = { done: ['In place', 'player'], next: ['Next', 'open'], later: ['Planned', ''] };
-  return `<div class="page-head"><div><p class="eyebrow">Endurance</p><h1>Endurance racing</h1><p>F1 SIM is expanding beyond Grand Prix racing. This is the home of the endurance simulator: built in phases, with everything the Grand Prix side has, plus what makes endurance racing its own.</p></div></div>
+  return `<div class="page-head"><div><p class="eyebrow">Endurance</p><h1>Endurance racing</h1><p>The endurance simulator: everything the Grand Prix side has, plus what makes endurance racing its own. All seven phases are in place.</p></div></div>
     <section class="card"><h2>The roadmap</h2><ol class="end-phases">${ENDURANCE_PHASES.map(([n, t, d, st]) => `<li class="end-phase ${st}"><span class="end-n">${n}</span><div><b>${esc(t)}</b> <span class="tag ${status[st][1]}">${status[st][0]}</span><p class="small">${esc(d)}</p></div></li>`).join('')}</ol></section>
     <div class="cols2" style="align-items:start">
       <section class="card"><h2>The 2027 FIA WEC season</h2><p class="muted small">Nine rounds and a pre-season test, as published by the FIA WEC on 12 June 2026. This is the calendar the simulator will race.</p>
@@ -8706,6 +8707,14 @@ const EnduranceEngine = (() => {
   const lapRef = (ref, cls) => { if (ref[cls] && typeof ref[cls] === 'number') return ref[cls]; const g = grp(cls); return g === 'gt' && ref.lmgt3 ? ref.lmgt3 : ref.hypercar * RATIO[g]; };
   /* Classes whose Bronze driver must drive a minimum share and starts the race. */
   const BRONZE_MIN = ['lmgt3', 'lmp2pa', 'gtd'];
+  /* Track temperature: each venue's typical afternoon value, about 7°C warmer at 15:00 than in the small hours, and cooler in rain. */
+  const TEMP = { qatar: 30, imola: 24, britain: 19, belgium: 21, lemans: 27, brazil: 26, usa: 36, fuji: 29, bahrain: 30, spain: 22, ricard: 30, portimao: 28, daytona: 20, sebring: 32, glen: 30, roadamerica: 31, roadatlanta: 27 };
+  const trackTemp = (trackId, startHour, t, wet) => { const h = (startHour + t / 3600) % 24; return Math.round((TEMP[trackId] || 25) + 7 * Math.cos((h - 15) / 24 * 2 * Math.PI) - 7 - (wet ? 6 : 0)); };
+  /* Michelin-style slicks: soft for cool track, medium in between, hard for heat. Outside its window a tyre is slower and wears faster. */
+  const COMP = { soft: { g: -0.004, deg: 1.4, lo: 5, hi: 22 }, medium: { g: 0, deg: 1, lo: 15, hi: 32 }, hard: { g: 0.0035, deg: 0.7, lo: 26, hi: 50 } };
+  const autoCompound = temp => temp < 19 ? 'soft' : temp < 29 ? 'medium' : 'hard';
+  /* Sets of slicks each car may use (F1 SIM's allowance): enough to double-stint, not to change every stop. Wets are not limited. */
+  const tyreSets = (dur, km) => dur >= 86400 ? 16 : (dur >= 8 * 3600 || km) ? 10 : dur >= 6 * 3600 ? 7 : 5;
   const TYRE_STOP = 26, SUNSET = 19.5, SUNRISE = 6.5;
   const gauss = r => { let u = 0, v = 0; while (u === 0) u = r(); while (v === 0) v = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
   const between = (r, a, b) => a + r() * (b - a);
@@ -8735,7 +8744,7 @@ const EnduranceEngine = (() => {
   function run(opts) {
     const r = RaceEngine.rng(opts.seed >>> 0), ref = REF[opts.trackId] || REF.britain, startHour = opts.startHour == null ? ref.start : opts.startHour;
     const distanceKm = opts.distanceKm || null, dur = (opts.hours || 6) * 3600, bop = opts.bop == null ? 0.75 : opts.bop, until = opts.until == null ? Infinity : opts.until;
-    const plans = opts.plans || {}, setup = opts.setup || {}, grid = opts.grid || [], callsBy = {};
+    const plans = opts.plans || {}, setup = opts.setup || {}, grid = opts.grid || [], callsBy = {}, SETS = tyreSets(dur, distanceKm);
     (opts.calls || []).slice().sort((a, b) => a.t - b.t).forEach(c => (callsBy[c.carId] = callsBy[c.carId] || []).push(Object.assign({ used: false }, c)));
     const rain = forecast(r, opts.weather || 'forecast', dur, ref.rain), wetAt = t => rain.find(w => t >= w.from && t < w.to);
     const classes = [...new Set(opts.cars.map(c => c.cls))], mean = {};
@@ -8747,18 +8756,26 @@ const EnduranceEngine = (() => {
     const cars = opts.cars.map(c => {
       const R = lapRef(ref, c.cls), lapEst = R, stintLaps = Math.max(3, Math.floor(CLASS[grp(c.cls)].stintMin * 60 / lapEst));
       const plan = plans[c.id] || {}, order = crewOrder(c, plan), gi = grid.indexOf(c.id), su = setup[c.id] || {};
+      const hs = String(c.id).split('').reduce((h, ch) => Math.imul(h ^ ch.charCodeAt(0), 16777619), 2166136261) >>> 0;
       return Object.assign({}, c, { t: gi >= 0 ? gi * 0.45 : 0, laps: 0, onTyre: 0, stintLap: 0, stintNo: 0, crewOrder: order, drvIdx: 0, driverStints: 0, stintLaps, tyreSet: 'dry', status: 'running',
-        perDriver: Math.max(1, Math.min(3, Number(plan.stints) || 2)), tyreEvery: Math.max(1, Math.min(3, Number(plan.tyreEvery) || 2)), mode: 'standard', nextDriver: null, nextTyres: null,
-        setupRace: Math.min(0.004, su.race || 0), nightPrep: Math.min(1, su.night || 0),
+        perDriver: Math.max(1, Math.min(3, Number(plan.stints) || 2)), tyreEvery: Math.max(1, Math.min(3, Number(plan.tyreEvery) || 2)), mode: plan.mode || 'standard', nextDriver: null, nextTyres: null,
+        compoundPlan: plan.compound || 'auto', wetPolicy: plan.wet || 'react', yellow: plan.yellow || 'auto', setsLeft: SETS - 1, fatigue: 0, damage: 0, carry: false, wetLaps: 0, dryLaps: 0, shortFill: false,
+        rr: RaceEngine.rng(((opts.seed >>> 0) ^ hs) >>> 0), setupRace: Math.min(0.004, su.race || 0), nightPrep: Math.min(1, su.night || 0),
         repair: 0, best: null, bestBy: null, pits: 0, stints: [{ driver: order[0].name, cat: order[0].category, from: 0, laps: 0 }], drive: {}, finished: false, garage: 0, lastLap: R });
     });
     const driver = c => c.crewOrder[c.drvIdx % c.crewOrder.length];
+    cars.forEach(c => { const t0 = trackTemp(opts.trackId, startHour, 0, wetAt(0)); c.tyreSet = wetAt(0) ? 'wet' : 'dry'; c.compound = c.tyreSet === 'wet' ? 'wet' : c.compoundPlan !== 'auto' ? c.compoundPlan : autoCompound(t0); c.stints[0].compound = c.compound; });
     /* A crew's calls take effect from the moment they were made. */
     function takeCalls(c) { const q = callsBy[c.id]; if (!q) return null; let box = null;
       q.filter(x => !x.used && x.t <= c.t).forEach(x => { x.used = true;
         if (x.type === 'mode') { c.mode = x.value; say(x.t, 'call', `${c.num ? '#' + c.num + ' ' : ''}${c.team}: ${x.value === 'push' ? 'push' : x.value === 'save' ? 'save fuel and tyres' : 'back to standard pace'}.`, c.id); }
         else if (x.type === 'driver') c.nextDriver = Number(x.value);
         else if (x.type === 'tyres') c.nextTyres = x.value;
+        else if (x.type === 'repair') { c.carry = x.value === 'later'; if (x.value === 'now') box = x; say(x.t, 'call', `${c.num ? '#' + c.num + ' ' : ''}${c.team}: ${x.value === 'later' ? 'carry on with the damage for now' : 'repair the car now'}.`, c.id); }
+        else if (x.type === 'plan' && x.value) { const v = x.value;   /* a stint plan change made during the race counts from that moment */
+          if (v.k === 'stints') c.perDriver = Math.max(1, Math.min(3, Number(v.v) || 2)); else if (v.k === 'tyreEvery') c.tyreEvery = Math.max(1, Math.min(3, Number(v.v) || 2));
+          else if (v.k === 'compound') c.compoundPlan = v.v || 'auto'; else if (v.k === 'wet') c.wetPolicy = v.v || 'react'; else if (v.k === 'yellow') c.yellow = v.v || 'auto';
+          else if (v.k === 'order' && Array.isArray(v.v)) { const cur = driver(c), o = crewOrder(c, { order: v.v }); c.crewOrder = o; c.drvIdx = Math.max(0, o.indexOf(cur)); } }
         else if (x.type === 'pit') box = x; });
       return box; }
     const stintDue = c => c.stintLaps + (c.mode === 'save' ? 1 : c.mode === 'push' ? -1 : 0);
@@ -8782,42 +8799,47 @@ const EnduranceEngine = (() => {
     let guard = 0;
     while (guard++ < 200000) {
       const live = cars.filter(c => c.status === 'running' && !c.finished); if (!live.length) break;
-      const c = live.reduce((a, b) => (b.t < a.t ? b : a));
+      const c = live.reduce((a, b) => (b.t < a.t ? b : a)), rc = c.rr;   /* this car's own luck: other cars' decisions don't change it */
       if (c.t >= until) break;
       const t0 = c.t, R = lapRef(ref, c.cls), K = CLASS[grp(c.cls)], d = driver(c);
       if (t0 >= hourNext) { hours.push(snapshot(hourNext)); hourNext += 3600; }
       if (scUntil && t0 >= scUntil) { scRelease(scUntil); scUntil = 0; }
       /* lap time */
       /* traffic: time lost lapping slower classes, and a little being lapped by faster ones */
-      const night = isNight(startHour, t0, opts.trackId), wet = wetAt(t0), traffic = between(r, 0.25, 1.3) * slowerThan(c.cls) / 18 + between(r, 0.1, 0.55) * fasterThan(c.cls) / 20;
+      const night = isNight(startHour, t0, opts.trackId), wet = wetAt(t0), traffic = between(rc, 0.25, 1.3) * slowerThan(c.cls) / 18 + between(rc, 0.1, 0.55) * fasterThan(c.cls) / 20;
       let lap = R + (c.manual || 0) - ((c.pace || 85) - mean[c.cls]) * (1 - bop) * 0.12 * (R / 100) + (85 - (d.pace || 80)) * 0.07 * (R / 100)
-        + gauss(r) * (0.25 + (90 - (d.consistency || 80)) * 0.012) * (R / 100) * (night ? 1.25 : 1) + c.onTyre * K.deg * (c.mode === 'push' ? 1.25 : c.mode === 'save' ? 0.85 : 1) * (R / 100) + traffic * (1.15 - (d.overtaking || 80) / 200);
+        + gauss(rc) * (0.25 + (90 - (d.consistency || 80)) * 0.012) * (R / 100) * (night ? 1.25 : 1) + c.onTyre * K.deg * (c.mode === 'push' ? 1.25 : c.mode === 'save' ? 0.85 : 1) * (R / 100) + traffic * (1.15 - (d.overtaking || 80) / 200);
       if (c.laps === 0) lap *= 1.04;
       lap *= (c.mode === 'push' ? 0.997 : c.mode === 'save' ? 1.004 : 1) * (1 - c.setupRace);
       if (night) lap *= 1 + 0.006 * (1.3 - (d.experience || 70) / 100) * (1 - 0.5 * c.nightPrep);
-      if (wet) lap *= c.tyreSet === 'wet' ? 1.09 * (1.1 - (d.wet || 80) / 250) + (wet.heavy ? 0.04 : 0) : 1.14 + (wet.heavy ? 0.08 : 0);
+      const temp = trackTemp(opts.trackId, startHour, t0, wet), C = COMP[c.compound], outOfWindow = C ? (temp < C.lo ? (C.lo - temp) : temp > C.hi ? (temp - C.hi) : 0) : 0;
+      if (wet) lap *= c.tyreSet === 'wet' ? (wet.heavy ? 1.11 : 1.05) * (1.1 - (d.wet || 80) / 250) : (wet.heavy ? 1.22 : 1.07);
       else if (c.tyreSet === 'wet') lap *= 1.06;
+      else if (C) lap *= 1 + C.g + Math.min(0.012, outOfWindow * 0.0008) + c.onTyre * K.deg * (R / 100) * (C.deg - 1 + outOfWindow * 0.03) / R;
+      const tired = Math.max(0, c.fatigue / 3600 - 2);   /* after two hours at the wheel a driver starts to fade */
+      lap *= 1 + tired * 0.003 + c.damage;
       /* neutralisations during the lap */
       const sc = active(t0, 'sc'), fcy = active(t0, 'fcy'), sz = neutral.find(n => n.kind === 'slowzone' && t0 < n.to && t0 + lap > n.from);
-      if (sc) lap = Math.max(lap, R * 1.55); else if (fcy) { const o = Math.min(t0 + lap, fcy.to) - Math.max(t0, fcy.from); lap += o * 0.8; } if (sz) lap += between(r, 3, 7);
+      if (sc) lap = Math.max(lap, R * 1.55); else if (fcy) { const o = Math.min(t0 + lap, fcy.to) - Math.max(t0, fcy.from); lap += o * 0.8; } if (sz) lap += between(rc, 3, 7);
       /* incidents */
       let p = 0.0011 + (night ? 0.0006 : 0) + (wet ? (c.tyreSet === 'wet' ? 0.002 : 0.006) : 0) + (d.category === 'B' ? 0.0009 : 0) + (grp(c.cls) === 'gt' ? 0.0004 : 0);
-      p *= (ref.us ? 1.3 : 1) * (1.35 - (d.consistency || 80) / 200) * (1.2 - (d.mental || 6) / 25) * (c.mode === 'push' ? 1.15 : 1);
-      if (!sc && r() < p) {
-        const k = r(), who = `${c.num ? '#' + c.num + ' ' : ''}${c.team} (${d.name})`;
-        if (k < 0.6) { const loss = between(r, 6, 25); lap += loss; say(t0 + lap, 'incident', `${who} goes off and loses ${Math.round(loss)} seconds.`, c.id); if (r() < 0.35) neutralise(t0 + lap * 0.5, 'slowzone', `${c.team} car off the track`); }
-        else if (k < 0.86) { c.repair = between(r, 45, 240); lap += between(r, 4, 12); say(t0 + lap, 'incident', `${who} makes contact and damages the car: repairs at the next stop.`, c.id); neutralise(t0 + lap * 0.5, r() < 0.4 ? 'fcy' : 'slowzone', `debris from the ${c.team} car`); }
-        else { neutralise(t0 + lap * 0.5, r() < (opts.trackId === 'lemans' ? 0.75 : 0.55) ? 'sc' : 'fcy', `${c.team} crash`);
-          if (r() < 0.55) { c.status = 'retired'; c.why = 'Accident'; c.t = t0 + lap; say(c.t, 'retire', `${who} crashes out.`, c.id); continue; }
-          c.garage = between(r, 480, 1500); say(t0 + lap, 'incident', `${who} crashes and limps back for long repairs.`, c.id); }
+      p *= (ref.us ? 1.3 : 1) * (1.35 - (d.consistency || 80) / 200) * (1.2 - (d.mental || 6) / 25) * (c.mode === 'push' ? 1.15 : 1) * (1 + tired * 0.35);
+      if (!sc && rc() < p) {
+        const k = rc(), who = `${c.num ? '#' + c.num + ' ' : ''}${c.team} (${d.name})`;
+        if (k < 0.6) { const loss = between(rc, 6, 25); lap += loss; say(t0 + lap, 'incident', `${who} goes off and loses ${Math.round(loss)} seconds.`, c.id); if (rc() < 0.35) neutralise(t0 + lap * 0.5, 'slowzone', `${c.team} car off the track`); }
+        else if (k < 0.86) { c.damage = Math.round(between(rc, 0.004, 0.015) * 1000) / 1000; c.repair = Math.round(30 + c.damage * 12000); lap += between(rc, 4, 12); say(t0 + lap, 'incident', `${who} makes contact: the car is damaged (${(c.damage * 100).toFixed(1)}% slower a lap until a ${fmt(c.repair)} repair).`, c.id); neutralise(t0 + lap * 0.5, rc() < 0.4 ? 'fcy' : 'slowzone', `debris from the ${c.team} car`); }
+        else { neutralise(t0 + lap * 0.5, rc() < (opts.trackId === 'lemans' ? 0.75 : 0.55) ? 'sc' : 'fcy', `${c.team} crash`);
+          if (rc() < 0.55) { c.status = 'retired'; c.why = 'Accident'; c.t = t0 + lap; say(c.t, 'retire', `${who} crashes out.`, c.id); continue; }
+          c.garage = between(rc, 480, 1500); say(t0 + lap, 'incident', `${who} crashes and limps back for long repairs.`, c.id); }
       }
       /* reliability, checked once an hour of running */
       const off = c.relOffset || (c.relOffset = 600 + (RaceEngine.rng(String(c.id).length * 7919 + (c.num | 0))() * 3000));   /* each car checked at its own moment in the hour */
-      if (Math.floor((t0 + lap - off) / 3600) > Math.floor((t0 - off) / 3600) && r() < (100 - (c.reliability || 90)) * 0.0015) {
-        if (r() < 0.3) { c.status = 'retired'; c.why = 'Mechanical'; c.t = t0 + lap; say(c.t, 'retire', `${c.num ? '#' + c.num + ' ' : ''}${c.team} retires with a mechanical problem.`, c.id); continue; }
-        c.garage = between(r, 300, 1200); say(t0 + lap, 'incident', `${c.num ? '#' + c.num + ' ' : ''}${c.team} goes to the garage with a technical problem.`, c.id);
+      if (Math.floor((t0 + lap - off) / 3600) > Math.floor((t0 - off) / 3600) && rc() < (100 - (c.reliability || 90)) * 0.0015) {
+        if (rc() < 0.3) { c.status = 'retired'; c.why = 'Mechanical'; c.t = t0 + lap; say(c.t, 'retire', `${c.num ? '#' + c.num + ' ' : ''}${c.team} retires with a mechanical problem.`, c.id); continue; }
+        c.garage = between(rc, 300, 1200); say(t0 + lap, 'incident', `${c.num ? '#' + c.num + ' ' : ''}${c.team} goes to the garage with a technical problem.`, c.id);
       }
       c.t = t0 + lap; c.laps += 1; c.onTyre += 1; c.stintLap += 1; c.lastLap = lap; c.drive[d.name] = (c.drive[d.name] || 0) + lap;
+      c.fatigue += lap * (night ? 1.3 : 1) * (temp > 30 ? 1.2 : 1); if (wet && c.tyreSet === 'dry') c.wetLaps += 1; else c.wetLaps = 0; if (!wet && c.tyreSet === 'wet') c.dryLaps += 1; else c.dryLaps = 0;
       c.stints[c.stints.length - 1].laps += 1;
       if (!sc && !fcy && !wet && (c.best == null || lap < c.best)) { c.best = lap; c.bestBy = d.name; }
       /* the chequered flag */
@@ -8825,23 +8847,33 @@ const EnduranceEngine = (() => {
       if (!flag && finishLine && c.laps >= maxLaps()) { flag = c.t; say(c.t, 'flag', `The chequered flag: ${c.num ? '#' + c.num + ' ' : ''}${c.team} takes it.`, c.id); }
       if (flag && c.t >= flag) { c.finished = true; continue; }
       /* pit stops: fuel, maybe tyres, maybe a driver change; early under a neutralisation if the stint is nearly done; at once for wet tyres in rain or dries once it stops */
-      const nowWet = wetAt(c.t), tyreWrong = (nowWet && c.tyreSet === 'dry' && (nowWet.heavy || c.stintLap > 1)) || (!nowWet && c.tyreSet === 'wet' && c.stintLap > 1);
+      const nowWet = wetAt(c.t), wp = c.wetPolicy;
+      const tyreWrong = (nowWet && c.tyreSet === 'dry' && (nowWet.heavy || (wp === 'react' ? true : wp === 'wait' ? c.wetLaps >= 3 : false))) || (!nowWet && c.tyreSet === 'wet' && c.dryLaps >= (wp === 'react' ? 1 : 2));
       const boxCall = takeCalls(c), due = stintDue(c);
-      const cheap = (active(c.t, 'sc') || active(c.t, 'fcy')) && c.stintLap >= due - 3 && !c.noAutoCheap;
-      if (c.stintLap >= due || cheap || tyreWrong || c.repair || c.garage || (boxCall && c.stintLap >= 1)) {
+      const cheap = c.yellow !== 'never' && (active(c.t, 'sc') || active(c.t, 'fcy')) && c.stintLap >= due - (c.yellow === 'early' ? 6 : 3);
+      if (c.stintLap >= due || cheap || tyreWrong || (c.repair && !c.carry) || c.garage || (boxCall && c.stintLap >= 1)) {
         if (boxCall) say(c.t, 'call', `${c.num ? '#' + c.num + ' ' : ''}${c.team} is called in.`, c.id);
-        const tyres = c.nextTyres === 'keep' ? false : c.nextTyres === 'new' || c.nextTyres === 'wet' || c.nextTyres === 'dry' ? true : (c.onTyre >= due * c.tyreEvery - 1 || tyreWrong);
-        let stop = ref.pit * (cheap ? 0.65 : 1) + K.fuelStop + (tyres ? TYRE_STOP : 0) + gauss(r) * (3 - (c.pitSpeed || 85) / 50) + c.repair + c.garage;
+        const want = c.nextTyres === 'keep' ? false : c.nextTyres && c.nextTyres !== 'auto' ? true : (c.onTyre >= due * c.tyreEvery - 1 || tyreWrong);
+        const goWet = c.nextTyres === 'wet' || (!c.nextTyres || c.nextTyres === 'new' || c.nextTyres === 'auto' || c.nextTyres === 'dry' ? (c.nextTyres === 'dry' ? false : !!nowWet && (tyreWrong || c.tyreSet === 'wet')) : false);
+        let tyres = want;
+        if (want && !goWet && c.setsLeft <= 0) { tyres = false; if (!c.outOfSets) { c.outOfSets = true; say(c.t, 'call', `${c.num ? '#' + c.num + ' ' : ''}${c.team} has used every set of slicks: these have to last.`, c.id); } }
+        /* the last stop only takes the fuel needed to finish */
+        const lapsLeft = distanceKm ? Math.ceil((distanceKm - c.laps * ref.km) / ref.km) : Math.ceil((dur - c.t) / (c.lastLap || R)) + 1, fill = lapsLeft < due ? Math.max(0.3, lapsLeft / due) : 1;
+        const fixing = c.repair && !c.carry ? c.repair : 0;
+        let stop = ref.pit * (cheap ? 0.65 : 1) + K.fuelStop * fill + (tyres ? TYRE_STOP : 0) + gauss(rc) * (3 - (c.pitSpeed || 85) / 50) + fixing + c.garage;
+        if (fill < 1 && !c.shortFill) { c.shortFill = true; say(c.t, 'pit', `${c.num ? '#' + c.num + ' ' : ''}${c.team} takes a short fill: just enough fuel to finish.`, c.id); }
         if (c.garage) say(c.t, 'pit', `${c.num ? '#' + c.num + ' ' : ''}${c.team} spends ${fmt(c.garage)} in the garage.`, c.id);
-        c.t += Math.max(20, stop); c.pits += 1; c.repair = 0; c.garage = 0; c.stintLap = 0; c.stintNo += 1;
-        if (tyres) { c.onTyre = 0; c.tyreSet = c.nextTyres === 'wet' ? 'wet' : c.nextTyres === 'dry' ? 'dry' : nowWet ? 'wet' : 'dry'; }
+        c.t += Math.max(20, stop); c.pits += 1; if (fixing) { c.repair = 0; c.damage = 0; } c.garage = 0; c.stintLap = 0; c.stintNo += 1;
+        if (tyres) { c.onTyre = 0; c.tyreSet = goWet ? 'wet' : 'dry';
+          if (c.tyreSet === 'dry') { c.setsLeft -= 1; const pick = ['soft', 'medium', 'hard'].indexOf(c.nextTyres) !== -1 ? c.nextTyres : c.compoundPlan !== 'auto' ? c.compoundPlan : autoCompound(trackTemp(opts.trackId, startHour, c.t, false)); c.compound = pick; } else c.compound = 'wet'; }
         c.nextTyres = null; c.driverStints += 1;
         if (c.nextDriver != null) { const want = c.crew[c.nextDriver], i = want ? c.crewOrder.indexOf(want) : -1; if (i >= 0 && i !== c.drvIdx % c.crewOrder.length) { c.drvIdx = i; c.driverStints = 0; } c.nextDriver = null; }
         else if (c.driverStints >= c.perDriver) { c.drvIdx += 1; c.driverStints = 0; }   /* each driver does their planned stints, then hands over */
         /* LMGT3: the Bronze driver must reach the minimum drive time (about 28% of the race); if time is running out, they take over now. */
         if (BRONZE_MIN.indexOf(c.cls) !== -1) { const bronze = c.crewOrder.find(x => x.category === 'B'), need = bronze ? dur * 0.28 - (c.drive[bronze.name] || 0) : 0, left = dur - c.t, stintTime = stintDue(c) * (c.lastLap || 100);
           if (bronze && need > 0 && driver(c) !== bronze && left <= need + stintTime * 1.2) { c.drvIdx = c.crewOrder.indexOf(bronze); c.driverStints = 0; say(c.t, 'call', `${c.num ? '#' + c.num + ' ' : ''}${c.team}: ${bronze.name} takes over to reach the Bronze minimum drive time.`, c.id); } }
-        const nd = driver(c); c.stints.push({ driver: nd.name, cat: nd.category, from: Math.round(c.t), laps: 0, tyres, cheap: !!cheap });
+        const nd = driver(c); if (nd !== d) c.fatigue = 0;   /* a fresh driver */
+        c.stints.push({ driver: nd.name, cat: nd.category, from: Math.round(c.t), laps: 0, tyres, cheap: !!cheap, compound: c.compound });
       }
     }
     if (until !== Infinity && cars.some(c => c.status === 'running' && !c.finished)) {
@@ -8849,14 +8881,19 @@ const EnduranceEngine = (() => {
         .sort((a, b) => (a.c.status === 'retired') - (b.c.status === 'retired') || b.d - a.d);
       const lead = {}; order.forEach(x => { if (!lead[x.c.cls] && x.c.status !== 'retired') lead[x.c.cls] = x; });
       const cls = {}, sc = active(at, 'sc'), fcy = active(at, 'fcy'), sz = neutral.find(n => n.kind === 'slowzone' && at >= n.from && at < n.to);
-      return { live: true, clock: Math.round(at), duration: dur, distanceKm, startHour, trackId: opts.trackId, night: isNight(startHour, at, opts.trackId), wet: !!wetAt(at), flagState: sc ? 'sc' : fcy ? 'fcy' : sz ? 'slowzone' : 'green',
+      const soon = rain.filter(w => w.to > at && w.from < at + 5400).map(w => ({ inMin: Math.max(0, Math.round((w.from - at) / 300) * 5), forMin: Math.round((w.to - Math.max(at, w.from)) / 300) * 5, heavy: w.heavy }));
+      const gapTxt = (a2, b2, lapSec) => { const dd = a2.d - b2.d; return dd >= 1 ? `${Math.floor(dd)} lap${Math.floor(dd) > 1 ? 's' : ''}` : `${(dd * (lapSec || 100)).toFixed(1)}s`; };
+      const withGaps = arr => { const byCls = {}; arr.forEach(x => { if (x.status !== 'retired') (byCls[x.cls] = byCls[x.cls] || []).push(x); });
+        Object.values(byCls).forEach(q => q.forEach((x, i) => { x.ahead = i ? gapTxt(q[i - 1], x, x.lapSec) : null; x.aheadId = i ? q[i - 1].id : null; x.behind = i < q.length - 1 ? gapTxt(x, q[i + 1], x.lapSec) : null; x.behindId = i < q.length - 1 ? q[i + 1].id : null; })); return arr; };
+      return { live: true, clock: Math.round(at), duration: dur, distanceKm, startHour, trackId: opts.trackId, night: isNight(startHour, at, opts.trackId), temp: trackTemp(opts.trackId, startHour, at, wetAt(at)), tempIn1h: trackTemp(opts.trackId, startHour, at + 3600, wetAt(at + 3600)), forecast: soon, sets: SETS, wet: !!wetAt(at), flagState: sc ? 'sc' : fcy ? 'fcy' : sz ? 'slowzone' : 'green',
         log: log.filter(x => x.t <= at).sort((a, b) => a.t - b.t).map(x => Object.assign(x, { clock: fmt(x.t) })), hours: hours.filter(h => h.at <= at),
-        cars: order.map((x, i) => { const c = x.c, l = lead[c.cls], d = driver(c); cls[c.cls] = (cls[c.cls] || 0) + (c.status === 'retired' ? 0 : 1);
+        cars: withGaps(order.map((x, i) => { const c = x.c, l = lead[c.cls], d = driver(c); cls[c.cls] = (cls[c.cls] || 0) + (c.status === 'retired' ? 0 : 1);
           const gapL = l && l.c !== c ? l.d - x.d : 0;
           return { id: c.id, num: c.num, team: c.team, teamId: c.teamId, cls: c.cls, pos: i + 1, classPos: c.status === 'retired' ? null : cls[c.cls], status: c.status, why: c.why || null, laps: c.laps,
             gap: !l || l.c === c ? null : gapL >= 1 ? `+${Math.floor(gapL)} lap${Math.floor(gapL) > 1 ? 's' : ''}` : `+${(gapL * (c.lastLap || 100)).toFixed(1)}s`,
             driver: d.name, cat: d.category, stintLap: c.stintLap, stintDue: stintDue(c), tyreAge: c.onTyre, tyres: c.tyreSet, pits: c.pits, last: c.lastLap ? lapFmt(c.lastLap) : null,
-            best: c.best ? lapFmt(c.best) : null, mode: c.mode, drive: Object.fromEntries(Object.entries(c.drive).map(([k, v]) => [k, Math.round(v)])), stints: c.stints.filter(s2 => s2.laps) }; }) };
+            best: c.best ? lapFmt(c.best) : null, mode: c.mode, compound: c.compound, setsLeft: c.setsLeft, fatigue: Math.round(c.fatigue / 360) / 10, damage: c.damage, carry: c.carry, repair: c.repair,
+            compoundPlan: c.compoundPlan, wetPolicy: c.wetPolicy, yellow: c.yellow, perDriver: c.perDriver, tyreEvery: c.tyreEvery, lapSec: c.lastLap, d: x.d, drive: Object.fromEntries(Object.entries(c.drive).map(([k, v]) => [k, Math.round(v)])), stints: c.stints.filter(s2 => s2.laps) }; })) };
     }
     if (hours.length < Math.floor(dur / 3600)) hours.push(snapshot(Math.min(dur, flag || dur)));
     function snapshot(at) {
@@ -8913,7 +8950,7 @@ const EnduranceEngine = (() => {
       out.classes[k] = { q, hp, hp1, order }; out.grid = out.grid.concat(order); });
     return out;
   }
-  return { run, practice, qualify, REF, GROUP, RATIO, fmt, lapFmt, isNight, SUNSET, SUNRISE };
+  return { run, practice, qualify, REF, GROUP, RATIO, COMP, TEMP, trackTemp, autoCompound, tyreSets, fmt, lapFmt, isNight, SUNSET, SUNRISE };
 })();
 
 /* =====================================================================
@@ -8982,7 +9019,7 @@ function endResultsHtml(x) {
       <ol class="end-log">${x.log.filter(kinds[lf] || kinds.all).map(e => `<li class="ev-${esc(e.type)}"><b>${esc(e.clock)}</b> ${esc(e.text)}</li>`).join('') || '<li class="muted">Nothing of that kind.</li>'}</ol></section>`;
   const car = S.ui.endCar && x.results.find(r => r.id === S.ui.endCar);
   const carHtml = car ? `<section class="card" id="end-car"><h2>${carNo(car.num)} ${esc(car.team)}: stints</h2><p class="muted small">${car.laps} laps, ${car.pits} stops. ${car.status === 'finished' ? `${esc(clsName(car.cls))} P${car.classPosition}.` : esc(car.gap || '')}</p>
-      <div class="stint-bar">${car.stints.map(st => `<span class="st cat-${esc(st.cat || 'G')}" style="flex:${st.laps}" title="${esc(st.driver)}: ${st.laps} laps from ${fmt(st.from)}${st.tyres ? ', new tyres' : ''}">${st.laps > 6 ? esc(st.driver.split(' ').slice(-1)[0]) : ''}</span>`).join('')}</div>
+      <div class="stint-bar">${car.stints.map(st => `<span class="st cat-${esc(st.cat || 'G')}" style="flex:${st.laps}" title="${esc(st.driver)}: ${st.laps} laps from ${fmt(st.from)}${st.tyres ? `, new ${(st.compound || 'tyres').toLowerCase()}${st.compound && st.compound !== 'wet' ? ' tyres' : ''}` : ''}">${st.laps > 6 ? esc(st.driver.split(' ').slice(-1)[0]) : ''}</span>`).join('')}</div>
       <table class="data compact"><thead><tr><th>Driver</th><th>Category</th><th class="num">Time at the wheel</th><th class="num">Share</th></tr></thead><tbody>${car.crew.map(c => { const s = car.drive[c.name] || 0, tot = Object.values(car.drive).reduce((a, b) => a + b, 0) || 1;
         return `<tr><td>${esc(c.name)}</td><td>${esc(CAT_NAME[c.category] || '–')}</td><td class="num">${fmt(s)}</td><td class="num">${Math.round(s / tot * 100)}%</td></tr>`; }).join('')}</tbody></table>
       <button class="btn small ghost" data-act="endsim-car" data-id="">Close</button></section>` : '';
@@ -9089,7 +9126,7 @@ async function endAdvance(to) {
   const w = endWOpen(); if (!S.isGm || !w || w.status !== 'race') return;
   const res = EnduranceEngine.run(endRaceOpts(w, to));
   const doc = clone(S.store.f1_endw[w.id]);
-  if (res.live) { doc.race = { clock: res.clock, state: { cars: res.cars, log: res.log.slice(-40), hours: res.hours, flagState: res.flagState, night: res.night, wet: res.wet, startHour: res.startHour, duration: res.duration } }; }
+  if (res.live) { doc.race = { clock: res.clock, state: { cars: res.cars, log: res.log.slice(-40), hours: res.hours, flagState: res.flagState, night: res.night, wet: res.wet, startHour: res.startHour, duration: res.duration, temp: res.temp, tempIn1h: res.tempIn1h, forecast: res.forecast, sets: res.sets } }; }
   else { endAutoStop(); doc.status = 'finished'; doc.finishedAt = nowIso(); doc.race = { clock: res.flag };
     doc.results = { trackId: w.trackId, results: res.results, log: res.log, hours: res.hours, rain: res.rain, neutral: res.neutral, startHour: res.startHour, duration: res.duration, distanceKm: res.distanceKm, flag: res.flag, bop: res.bop };
     await Data.audit('endurance.finish', `${w.event} finished`); }
@@ -9158,7 +9195,7 @@ function endTimingHtml(w) {
   const classes = [...new Set(st.cars.map(c => c.cls))], show = S.ui.endwCls && classes.indexOf(S.ui.endwCls) !== -1 ? [S.ui.endwCls] : classes;
   const table = k => `<section class="card end-class-res" style="--cc:${(WEC_CLASSES[k] || [0, '#888'])[1]}"><h3>${esc((WEC_CLASSES[k] || [k])[0])}</h3><div class="scroll-x"><table class="data compact end-timing"><thead><tr><th>Pos</th><th>Car</th><th>Driving</th><th class="num">Laps</th><th>Gap</th><th>Last</th><th>Best</th><th>Stint</th><th>Tyres</th><th class="num">Stops</th></tr></thead><tbody>
     ${st.cars.filter(c => c.cls === k).map(c => `<tr class="${c.status === 'retired' ? 'muted' : ''}${mine.has(c.id) ? ' me' : ''}"><td><b>${c.classPos || 'DNF'}</b></td><td><b>${carNo(c.num)}</b> ${esc(c.team)}</td><td>${esc(c.driver)}${catTag(c.cat)}${c.mode && c.mode !== 'standard' ? ` <span class="tag">${esc(c.mode)}</span>` : ''}</td>
-      <td class="num">${c.laps}</td><td>${esc(c.status === 'retired' ? `Out (${c.why})` : c.gap || 'Leader')}</td><td>${esc(c.last || '–')}</td><td>${esc(c.best || '–')}</td><td>${c.stintLap}/${c.stintDue}</td><td>${c.tyres === 'wet' ? 'Wet' : 'Dry'}, ${c.tyreAge}</td><td class="num">${c.pits}</td></tr>`).join('')}</tbody></table></div></section>`;
+      <td class="num">${c.laps}</td><td>${esc(c.status === 'retired' ? `Out (${c.why})` : c.gap || 'Leader')}</td><td>${esc(c.last || '–')}</td><td>${esc(c.best || '–')}</td><td>${c.stintLap}/${c.stintDue}</td><td title="${esc(COMP_NAME[c.compound] || '')}">${c.compound ? compShort(c.compound) : (c.tyres === 'wet' ? 'W' : 'D')} · ${c.tyreAge}</td><td class="num">${c.pits}</td></tr>`).join('')}</tbody></table></div></section>`;
   return `${head}${classes.length > 1 ? `<label class="field" style="max-width:260px">Show<select data-change="endw-cls"><option value="">Both classes</option>${classes.map(k => `<option value="${k}" ${S.ui.endwCls === k ? 'selected' : ''}>${esc((WEC_CLASSES[k] || [k])[0])}</option>`).join('')}</select></label>` : ''}
     ${show.map(table).join('')}<section class="card"><h3>Latest</h3><ol class="end-log">${st.log.slice().reverse().slice(0, 14).map(e => `<li class="ev-${esc(e.type)}"><b>${esc(e.clock)}</b> ${esc(e.text)}</li>`).join('') || '<li class="muted">Nothing yet.</li>'}</ol></section>`;
 }
@@ -9363,6 +9400,299 @@ ROUTES.series.view = function () {
   return h + (needLm ? `<section class="card"><h2>Le Mans entries for the WEC</h2><p>Add LMP2 and the Le Mans-only cars, with their 2026 Le Mans crews.</p>${S.isGm ? '<button class="btn primary" data-act="wec-lemans">Add the Le Mans entries</button>' : ''}</section>` : '')
     + card('elms', 'Six 4-hour races (Barcelona, Le Castellet, Imola, Spa-Francorchamps, Silverstone, Portimão) after the Barcelona Prologue. LMP2, LMP2 Pro-Am and LMGT3, with teams from the Le Mans entry list and fictional crews to start with.')
     + card('imsa', 'The five Michelin Endurance Cup races: the Rolex 24 At Daytona, the Twelve Hours of Sebring, Six Hours of The Glen, Road America (6 hours) and Petit Le Mans (10 hours), after the Roar Before the Rolex 24. GTP (Porsche Penske, Cadillac Wayne Taylor Racing, BMW M Team RLL), GTD Pro and GTD (fictional teams), with fictional crews to start with.');
+};
+
+/* =====================================================================
+   F1 SIM — Endurance Phase 6: championships, posts, reports, records.
+   Points follow each series: the WEC's three scales by race length
+   (6 hours; 8 and 10 hours, including the 1812 km; the 24 Hours of Le
+   Mans) with a point for pole, the ELMS's with a point for pole, and
+   IMSA's (lighter: race points only). Only championship entries score:
+   Le Mans-only cars are left out, and those behind them move up. Each
+   class has a drivers' and a teams' (per car) championship, and the top
+   classes (Hypercar, GTP) a manufacturers' championship too.
+   ===================================================================== */
+'use strict';
+
+const PTS = { six: [25, 18, 15, 12, 10, 8, 6, 4, 2, 1], long: [38, 27, 23, 18, 15, 12, 9, 6, 3, 2], lemans: [50, 36, 30, 24, 20, 16, 12, 8, 4, 2],
+  imsa: [350, 320, 300, 280, 260, 250, 240, 230, 220, 210, 200, 190, 180, 170, 160, 150, 140, 130, 120, 110] };
+const champClasses = s => s.template === 'wec' || s.id === 'wec' ? ['hypercar', 'lmgt3'] : (s.classes || []);
+const mfrClasses = ['hypercar', 'gtp'];
+function ptsScale(s, w) { if ((s.template || s.id) === 'imsa') return { table: PTS.imsa, pole: 0 }; if ((s.template || s.id) === 'elms') return { table: PTS.six, pole: 1 };
+  return { table: w.hours >= 24 ? PTS.lemans : (w.hours >= 8 || w.distanceKm) ? PTS.long : PTS.six, pole: 1 }; }
+const eligible = r => { const t = get('f1_teams', r.teamId); return !(t && t.leMansOnly); };
+/* Points from one finished weekend: per car, by class. */
+function endRacePoints(w) {
+  const s = seriesDoc(w.seriesId), sc = ptsScale(s, w), out = {}, res = (w.results || {}).results || [];
+  champClasses(s).forEach(k => {
+    res.filter(r => r.cls === k && eligible(r) && r.status === 'finished').sort((a, b) => a.classPosition - b.classPosition).forEach((r, i) => { out[r.id] = (sc.table[i] || 0); });
+    const q = w.quali && w.quali.classes && w.quali.classes[k], pole = q && (q.order || []).find(id => { const r = res.find(x => x.id === id); return r && eligible(r); });
+    if (pole && sc.pole) out[pole] = (out[pole] || 0) + sc.pole;
+  });
+  return out;
+}
+function endStandings(sid, seasonId) {
+  const s = seriesDoc(sid), ws = list('f1_endw').filter(w => w.seriesId === sid && w.seasonId === seasonId && w.status === 'finished').sort((a, b) => (a.round || 0) - (b.round || 0));
+  const classes = champClasses(s), drv = {}, car = {}, mfr = {};
+  ws.forEach((w, ri) => { const pts = endRacePoints(w), res = w.results.results || [], sc = ptsScale(s, w);
+    classes.forEach(k => {
+      res.filter(r => r.cls === k && eligible(r)).forEach(r => { const p = pts[r.id] || 0, t = get('f1_teams', r.teamId) || {};
+        const ck = car[k] = car[k] || {}, c = ck[r.id] = ck[r.id] || { id: r.id, num: r.num, team: r.team, teamId: r.teamId, pts: 0, wins: 0, podiums: 0, rounds: {} };
+        c.pts += p; c.rounds[w.id] = { p, pos: r.classPosition, status: r.status }; if (r.classPosition === 1) c.wins++; if (r.classPosition && r.classPosition <= 3) c.podiums++;
+        r.crew.forEach(d => { if (!(r.drive || {})[d.name]) return; const key = d.pid || d.charId || d.name, dk = drv[k] = drv[k] || {}, x = dk[key] = dk[key] || { key, name: d.name, pid: d.pid || null, charId: d.charId || null, category: d.category, teams: new Set(), pts: 0, wins: 0, podiums: 0, rounds: {} };
+          x.pts += p; x.teams.add(r.team); x.rounds[w.id] = { p, pos: r.classPosition, status: r.status }; if (r.classPosition === 1) x.wins++; if (r.classPosition && r.classPosition <= 3) x.podiums++; });
+      });
+      /* manufacturers: the best two cars of each make in the WEC (best one in IMSA), by class order */
+      if (mfrClasses.indexOf(k) !== -1) { const per = {}, best = (s.template || s.id) === 'imsa' ? 1 : 2;
+        res.filter(r => r.cls === k && eligible(r) && r.status === 'finished').sort((a, b) => a.classPosition - b.classPosition).forEach(r => { const m = (get('f1_teams', r.teamId) || {}).manufacturer || r.team; per[m] = (per[m] || []).concat([r]); });
+        const ranked = Object.entries(per).map(([m, rs]) => [m, rs.slice(0, best)]);
+        if ((s.template || s.id) === 'imsa') ranked.sort((a, b) => a[1][0].classPosition - b[1][0].classPosition).forEach(([m], i) => { const mm = mfr[k] = mfr[k] || {}, x = mm[m] = mm[m] || { make: m, pts: 0, rounds: {} }; x.pts += sc.table[i] || 0; x.rounds[w.id] = sc.table[i] || 0; });
+        else ranked.forEach(([m, rs]) => { const mm = mfr[k] = mfr[k] || {}, x = mm[m] = mm[m] || { make: m, pts: 0, rounds: {} }, got = rs.reduce((a, r) => a + (pts[r.id] || 0), 0); x.pts += got; x.rounds[w.id] = got; });
+      }
+    }); });
+  const sort = o => Object.values(o || {}).sort((a, b) => b.pts - a.pts || (b.wins || 0) - (a.wins || 0) || (b.podiums || 0) - (a.podiums || 0));
+  return { rounds: ws, classes, drivers: Object.fromEntries(classes.map(k => [k, sort(drv[k]).map(x => Object.assign(x, { teams: [...x.teams] }))])), cars: Object.fromEntries(classes.map(k => [k, sort(car[k])])), makes: Object.fromEntries(classes.map(k => [k, sort(mfr[k])])), done: ws.length, total: F1.tracks().length };
+}
+
+/* ---------------------------------------------------------------- the Championship page in Endurance */
+ACTIONS['es-cls'] = d => { S.ui.esCls = d.k; render(); };
+ACTIONS['es-view'] = d => { S.ui.esView = d.v; render(); };
+function endChampHtml() {
+  const s = curSeries(), st = endStandings(curSeriesId(), curSeasonId()), cls = st.classes.indexOf(S.ui.esCls) !== -1 ? S.ui.esCls : st.classes[0];
+  let view = S.ui.esView || 'drivers';
+  if (!cls) return '<div class="empty">This series has no championship classes yet.</div>';
+  const mfrOk = mfrClasses.indexOf(cls) !== -1; if (view === 'makes' && !mfrOk) view = 'drivers';   /* only the top classes have a manufacturers’ championship */
+  const views = [['drivers', 'Drivers'], ['teams', 'Teams']].concat(mfrOk ? [['makes', 'Manufacturers']] : []).concat([['history', 'Career: every championship']]);
+  const rounds = st.rounds, rc = id => rounds.findIndex(w => w.id === id), cell = r => !r ? '<td class="muted">–</td>' : `<td class="num ${r.pos === 1 ? 'gold' : ''}">${r.status !== 'finished' ? (r.status === 'nc' ? 'NC' : 'DNF') : r.pos}${r.p ? `<small> ${r.p}</small>` : ''}</td>`;
+  const head = `<tr><th>Pos</th><th>${view === 'drivers' ? 'Driver' : view === 'teams' ? 'Car' : 'Manufacturer'}</th>${rounds.map(w => `<th class="num" title="${esc(w.event)}">${esc((F1.track(w.trackId) || {}).flag || '')} ${esc(String(w.round || ''))}</th>`).join('')}<th class="num">Points</th></tr>`;
+  let body = '';
+  if (view === 'drivers') body = st.drivers[cls].map((x, i) => `<tr class="${x.charId && x.charId === S.charId ? 'me' : ''}"><td><b>${i + 1}</b></td><td>${x.pid ? careerLink(x.pid, x.name) : esc(x.name)}${catTag(x.category)}${x.charId ? ' <span class="tag player">Player</span>' : ''}<br><small class="muted">${esc(x.teams.join(', '))}</small></td>${rounds.map(w => cell(x.rounds[w.id])).join('')}<td class="num"><b>${x.pts}</b></td></tr>`).join('');
+  else if (view === 'teams') body = st.cars[cls].map((x, i) => `<tr><td><b>${i + 1}</b></td><td><b>${carNo(x.num)}</b> ${esc(x.team)}</td>${rounds.map(w => cell(x.rounds[w.id])).join('')}<td class="num"><b>${x.pts}</b></td></tr>`).join('');
+  else if (view === 'makes') body = (st.makes[cls] || []).map((x, i) => `<tr><td><b>${i + 1}</b></td><td>${esc(x.make)}</td>${rounds.map(w => `<td class="num">${x.rounds[w.id] != null ? x.rounds[w.id] : '–'}</td>`).join('')}<td class="num"><b>${x.pts}</b></td></tr>`).join('');
+  const table = view === 'history' ? (typeof historyViewHtml === 'function' ? historyViewHtml() : '') : `<section class="card end-class-res" style="--cc:${(WEC_CLASSES[cls] || [0, '#888'])[1]}"><h2>${esc((WEC_CLASSES[cls] || [cls])[0])}: ${esc(views.find(v => v[0] === view)[1])}</h2>
+      ${rounds.length ? `<div class="scroll-x"><table class="data compact es-table"><thead>${head}</thead><tbody>${body || `<tr><td colspan="${rounds.length + 3}" class="muted">No points yet.</td></tr>`}</tbody></table></div>` : '<p class="muted">No races finished this season yet.</p>'}
+      ${view === 'makes' ? `<p class="muted small">${(s.template || s.id) === 'imsa' ? 'Each make scores with its best car.' : 'Each make scores with its two best-placed cars.'}</p>` : ''}</section>`;
+  const scaleNote = (s.template || s.id) === 'imsa' ? 'Points: 350 for a win, 320, 300, 280, 260 and down (race points only).' : (s.template || s.id) === 'elms' ? 'Points: 25, 18, 15, 12, 10, 8, 6, 4, 2, 1, and 1 for pole.'
+    : 'Points: 6-hour races 25, 18, 15, 12, 10, 8, 6, 4, 2, 1; 8 and 10-hour races (the Qatar 1812 km and Bahrain) 38, 27, 23, 18, 15, 12, 9, 6, 3, 2; Le Mans 50, 36, 30, 24, 20, 16, 12, 8, 4, 2; and 1 for pole. Le Mans-only cars don’t score, and those behind them move up.';
+  return `<div class="page-head"><div><p class="eyebrow">Endurance · ${esc(s.name)} · ${esc(curSeason().name)} season</p><h1>Championship</h1><p>${st.done} of ${st.total} rounds run.</p></div>
+      ${S.isGm && rounds.length ? `<div class="btn-row"><button class="btn" data-act="es-post" data-k="${esc(cls)}">Post ${esc((WEC_CLASSES[cls] || [cls])[0])} standings to Discord</button></div>` : ''}</div>
+    <div class="seg" role="tablist" aria-label="Class">${st.classes.map(k => `<button role="tab" aria-selected="${k === cls}" data-act="es-cls" data-k="${k}">${esc((WEC_CLASSES[k] || [k])[0])}</button>`).join('')}</div>
+    <div class="seg" role="tablist" aria-label="Championship" style="margin-top:8px">${views.map(([k, l]) => `<button role="tab" aria-selected="${view === k}" data-act="es-view" data-v="${k}">${esc(l)}</button>`).join('')}</div>
+    ${table}${view !== 'history' ? `<p class="muted small">${esc(scaleNote)}</p>` : ''}`;
+}
+const _standingsViewEnd = ROUTES.standings.view;
+ROUTES.standings.view = function () { return S.disc === 'endurance' ? endChampHtml() : _standingsViewEnd.apply(this, arguments); };
+
+/* ---------------------------------------------------------------- history: endurance seasons in the timeline and calendar */
+const _histEntriesEnd = histEntries;
+histEntries = function (name) {
+  const out = _histEntriesEnd(name), s = allSeries().find(x => x.name === name); if (!s || seriesDisc(s) !== 'endurance') return out;
+  const seasons = {}; list('f1_endw').filter(w => w.seriesId === s.id && w.status === 'finished').forEach(w => (seasons[w.seasonId] = seasons[w.seasonId] || []).push(w));
+  Object.entries(seasons).forEach(([sea, ws]) => { const yr = parseInt(seasonDoc(sea).name, 10); if (!yr) return;
+    const st = endStandings(s.id, sea), complete = ws.length >= ((seriesDoc(s.id).calendar || []).length || 99), seen = {};
+    st.classes.forEach(k => st.drivers[k].forEach((x, i) => { const pid = x.pid || (x.charId ? f1PcId(x.charId) : null); if (!pid || seen[pid]) return; seen[pid] = 1;
+      const t = list('f1_teams').find(tt => x.teams.indexOf(tt.name) !== -1) || {};
+      out.push({ pid, name: x.name, charId: x.charId, year: yr, team: x.teams[0] || '', col: t.color || '#0A4DA2', role: 'driver', pos: i + 1, champ: complete && i === 0, lead: !complete && i === 0, src: 'sim', soFar: !complete }); }));
+  });
+  return out;
+};
+
+/* ---------------------------------------------------------------- images for Discord */
+async function endCanvas(h) { const cv = document.createElement('canvas'); cv.width = 1080; cv.height = h; try { await Promise.all(['700 40px "Titillium Web"', '600 20px "Titillium Web"'].map(f => document.fonts.load(f))); } catch (e) { /* fall back */ } return cv; }
+async function drawEndResults(w) {
+  const res = w.results.results, classes = [...new Set(res.map(r => r.cls))], per = 6, H = 230 + classes.length * (70 + per * 52) + 60, cv = await endCanvas(H), g = cv.getContext('2d'), T = EXP_THEMES.dark, logo = await loadImg(leagueLogo());
+  g.fillStyle = '#1C1D22'; g.fillRect(0, 0, 1080, H);
+  const me = drawMark(g, 50, 44, Object.assign({}, T, { ink: '#FFFFFF' }), logo); g.fillStyle = '#FFFFFF'; g.font = cond(700, 50); fitText(g, w.event, z => cond(700, z), 50, 1000 - me); g.fillText(w.event, me + 24, 92);
+  g.font = bodyF(500, 24); g.fillStyle = T.muted; g.fillText(`${seriesDoc(w.seriesId).name} · ${w.distanceKm ? `${w.distanceKm} km` : `${w.hours} hours`} · Result`, me + 24, 130);
+  let y = 190;
+  classes.forEach(k => { const [nm, col] = WEC_CLASSES[k] || [k, '#888'], rows = res.filter(r => r.cls === k).slice(0, per);
+    g.fillStyle = col; g.fillRect(50, y, 980, 6); g.fillStyle = '#FFFFFF'; g.font = cond(700, 32); g.fillText(nm, 50, y + 46); y += 66;
+    rows.forEach(r => { g.fillStyle = r.classPosition === 1 ? '#3A1D20' : '#25272D'; g.fillRect(50, y, 980, 46);
+      g.fillStyle = r.classPosition === 1 ? '#F5C400' : '#FFFFFF'; g.font = cond(700, 26); g.fillText(r.classPosition ? String(r.classPosition) : r.status === 'nc' ? 'NC' : 'DNF', 64, y + 32);
+      g.fillStyle = '#FFFFFF'; g.font = bodyF(700, 22); const label = `${r.num ? '#' + r.num + ' ' : ''}${r.team}`; fitText(g, label, z => bodyF(700, z), 22, 400); g.fillText(label, 130, y + 30);
+      g.font = bodyF(500, 17); g.fillStyle = '#C9CCD2'; const crew = r.crew.map(c => c.name.split(' ').slice(-1)[0]).join(' / '); fitText(g, crew, z => bodyF(500, z), 17, 330); g.fillText(crew, 545, y + 30);
+      g.textAlign = 'right'; g.font = bodyF(600, 18); g.fillStyle = T.muted; g.fillText(r.gap || `${r.laps} laps`, 1015, y + 30); g.textAlign = 'left'; y += 52; });
+    y += 12; });
+  g.font = bodyF(500, 18); g.fillStyle = T.muted; g.textAlign = 'right'; g.fillText(stampText(), 1030, H - 26); g.textAlign = 'left';
+  return new Promise(ok => cv.toBlob(ok, 'image/png'));
+}
+async function drawEndStandings(sid, k) {
+  const st = endStandings(sid, curSeasonId()), rows = (st.drivers[k] || []).slice(0, 15), H = 260 + rows.length * 54 + 60, cv = await endCanvas(H), g = cv.getContext('2d'), T = EXP_THEMES.dark, logo = await loadImg(leagueLogo()), [nm, col] = WEC_CLASSES[k] || [k, '#888'];
+  g.fillStyle = '#1C1D22'; g.fillRect(0, 0, 1080, H);
+  const me = drawMark(g, 50, 44, Object.assign({}, T, { ink: '#FFFFFF' }), logo); g.fillStyle = '#FFFFFF'; g.font = cond(700, 50); g.fillText(`${nm} drivers`, me + 24, 92);
+  g.font = bodyF(500, 24); g.fillStyle = T.muted; g.fillText(`${seriesDoc(sid).name} · after ${st.done} of ${st.total} rounds`, me + 24, 130); g.fillStyle = col; g.fillRect(50, 170, 980, 6);
+  rows.forEach((x, i) => { const y = 200 + i * 54; g.fillStyle = i === 0 ? '#3A1D20' : '#25272D'; g.fillRect(50, y, 980, 46);
+    g.fillStyle = i === 0 ? '#F5C400' : '#FFFFFF'; g.font = cond(700, 26); g.fillText(String(i + 1), 64, y + 32);
+    g.fillStyle = '#FFFFFF'; g.font = bodyF(700, 22); g.fillText(x.name, 130, y + 30); g.font = bodyF(500, 17); g.fillStyle = '#C9CCD2'; fitText(g, x.teams.join(', '), z => bodyF(500, z), 17, 360); g.fillText(x.teams.join(', '), 520, y + 30);
+    g.textAlign = 'right'; g.font = cond(700, 26); g.fillStyle = '#FFFFFF'; g.fillText(String(x.pts), 1015, y + 32); g.textAlign = 'left'; });
+  g.font = bodyF(500, 18); g.fillStyle = T.muted; g.textAlign = 'right'; g.fillText(stampText(), 1030, H - 26); g.textAlign = 'left';
+  return new Promise(ok => cv.toBlob(ok, 'image/png'));
+}
+ACTIONS['endw-post'] = d => { const w = get('f1_endw', d.id); if (!S.isGm || !w || w.status !== 'finished') return;
+  run(async () => { const blob = await drawEndResults(w), wins = [...new Set(w.results.results.map(r => r.cls))].map(k => { const r = w.results.results.find(x => x.cls === k && x.classPosition === 1); return r ? `**${(WEC_CLASSES[k] || [k])[0]}:** ${r.num ? '#' + r.num + ' ' : ''}${r.team} (${r.crew.map(c => c.name).join(', ')})` : ''; }).filter(Boolean).join('\n');
+    const ch = await discordSend('results', { content: `**${w.event}**: result\n${wins}` }, { blob, name: `${w.trackId}-result.png` }); await Data.audit('discord.results', `${w.event} result posted to #${ch}`); }, 'Posted to Discord.'); };
+ACTIONS['es-post'] = d => { if (!S.isGm) return; const sid = curSeriesId();
+  run(async () => { const blob = await drawEndStandings(sid, d.k), ch = await discordSend('standings', { content: `**${seriesDoc(sid).name}**: ${(WEC_CLASSES[d.k] || [d.k])[0]} drivers’ standings` }, { blob, name: `${sid}-${d.k}-standings.png` });
+    await Data.audit('discord.standings', `${seriesDoc(sid).name} ${d.k} standings posted to #${ch}`); }, 'Posted to Discord.'); };
+
+/* ---------------------------------------------------------------- the race report */
+function endReportText(w) {
+  const fmt = EnduranceEngine.fmt, x = w.results, pts = endRacePoints(w), classes = [...new Set(x.results.map(r => r.cls))], lines = [];
+  lines.push(`${w.event} — ${seriesDoc(w.seriesId).name}, ${seasonDoc(w.seasonId).name} season`, `${w.distanceKm ? `${w.distanceKm} km` : `${w.hours} hours`}. Exported ${stampText()}.`, '');
+  classes.forEach(k => { lines.push(`${(WEC_CLASSES[k] || [k])[0].toUpperCase()}`);
+    x.results.filter(r => r.cls === k).forEach(r => lines.push(`  ${String(r.classPosition || (r.status === 'nc' ? 'NC' : 'DNF')).padEnd(4)}${(r.num ? '#' + r.num : '').padEnd(6)}${r.team.padEnd(30)}${String(r.laps).padStart(4)} laps  ${(r.gap || 'Winner').padEnd(18)}${r.pits} stops  best ${r.best || '–'}${pts[r.id] ? `  ${pts[r.id]} pts` : ''}\n        ${r.crew.map(c => `${c.name} (${CAT_NAME[c.category] || '–'}) ${fmt((r.drive || {})[c.name] || 0)}`).join(', ')}`)); lines.push(''); });
+  lines.push('HOUR BY HOUR'); x.hours.forEach(h => lines.push(`  ${String(h.hour).padStart(2)}h  ${classes.map(k => `${(WEC_CLASSES[k] || [k])[0]}: ${((h.classes[k] || [])[0] || {}).team || '–'}`).join('   ')}`)); lines.push('');
+  lines.push('RACE LOG'); x.log.forEach(e => lines.push(`  ${e.clock.padStart(8)}  ${e.text}`));
+  return lines.join('\n');
+}
+ACTIONS['endw-report'] = d => { const w = get('f1_endw', d.id); if (!w || w.status !== 'finished') return;
+  const name = `${w.trackId}-${seasonDoc(w.seasonId).name}-race-report.txt`, data = endReportText(w);
+  Promise.resolve(window.claude.use('downloads')).then(dl => dl.save({ filename: name, data })).catch(() => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data], { type: 'text/plain' })); a.download = name; document.body.appendChild(a); a.click(); a.remove(); });
+  toast('Race report downloaded.'); };
+/* buttons on a finished race */
+const _weekendViewES = ROUTES.weekend.view;
+ROUTES.weekend.view = function () { const h = _weekendViewES.apply(this, arguments); const v = S.disc === 'endurance' && S.ui.endwView && get('f1_endw', S.ui.endwView);
+  if (!v || v.status !== 'finished') return h;
+  const pts = endRacePoints(v), btns = `<div class="btn-row">${S.isGm ? `<button class="btn" data-act="endw-post" data-id="${esc(v.id)}">Post the result to Discord</button>` : ''}<button class="btn" data-act="endw-report" data-id="${esc(v.id)}">Download the race report</button><button class="btn ghost" data-act="nav" data-route="standings">Championship</button></div>`;
+  return h.replace('<section class="card end-head">', btns + '<section class="card end-head">'); };
+
+/* ---------------------------------------------------------------- records: endurance results on character and career pages */
+function endRecordHtml(match) {
+  const rows = []; list('f1_endw').filter(w => w.status === 'finished').forEach(w => (w.results.results || []).forEach(r => { const d = r.crew.find(match); if (d) rows.push({ w, r, d }); }));
+  if (!rows.length) return '';
+  rows.sort((a, b) => String(b.w.finishedAt).localeCompare(String(a.w.finishedAt)));
+  const wins = rows.filter(x => x.r.classPosition === 1).length, pods = rows.filter(x => x.r.classPosition && x.r.classPosition <= 3).length;
+  return `<section class="card"><h2>Endurance results</h2><div class="metrics"><div class="metric"><b>${rows.length}</b><span>Races</span></div><div class="metric"><b>${wins}</b><span>Class wins</span></div><div class="metric"><b>${pods}</b><span>Class podiums</span></div></div>
+    <div class="scroll-x"><table class="data compact"><thead><tr><th>Event</th><th>Series</th><th>Class</th><th>Car</th><th>Result</th><th class="num">At the wheel</th></tr></thead><tbody>${rows.map(({ w, r, d }) => `<tr><td>${esc(w.event)} <span class="muted small">${esc(seasonDoc(w.seasonId).name)}</span></td><td>${esc(seriesDoc(w.seriesId).short || seriesDoc(w.seriesId).name)}</td><td>${esc((WEC_CLASSES[r.cls] || [r.cls])[0])}</td><td>${carNo(r.num)} ${esc(r.team)}</td>
+      <td><b>${r.classPosition ? 'P' + r.classPosition : r.status === 'nc' ? 'NC' : 'DNF'}</b></td><td class="num">${EnduranceEngine.fmt((r.drive || {})[d.name] || 0)}</td></tr>`).join('')}</tbody></table></div></section>`;
+}
+const _characterViewES = ROUTES.character.view;
+ROUTES.character.view = function () { const h = _characterViewES.apply(this, arguments), c = get('characters', S.ui.charEdit); if (!c) return h; const rec = endRecordHtml(d => d.charId === c.id); if (!rec) return h; const i = h.lastIndexOf('<p class="muted small char-id">'); return i < 0 ? h + rec : h.slice(0, i) + rec + h.slice(i); };
+const _careerViewES = ROUTES.career.view;
+ROUTES.career.view = function () { const h = _careerViewES.apply(this, arguments), pid = S.ui.career; if (!pid) return h; const rec = endRecordHtml(d => d.pid === pid); return rec ? h + rec : h; };
+
+/* ---------------------------------------------------------------- Home in Endurance: this weekend */
+const _homeViewES = ROUTES.home.view;
+ROUTES.home.view = function () {
+  const h = _homeViewES.apply(this, arguments); if (S.disc !== 'endurance' || !F1.teams().length) return h;
+  const w = typeof endWOpen === 'function' ? endWOpen() : null, mine = w ? endMyCars(w) : [], st = w && w.race && w.race.state, car = st && mine.length ? st.cars.find(c => c.id === mine[0]) : null;
+  const next = F1.tracks().find(t => !list('f1_endw').some(x => x.seriesId === curSeriesId() && x.seasonId === curSeasonId() && x.trackId === t.id && x.status === 'finished'));
+  const stage = w ? ({ practice: 'Practice', quali: 'Qualifying and Hyperpole', race: 'Race' }[w.status] || '') : '';
+  const card = w ? `<section class="card end-home"><p class="eyebrow">${esc(curSeries().name)} · this weekend</p><h2>${esc(w.event)}</h2><p>${esc(stage)}${st ? ` · ${EnduranceEngine.fmt(w.race.clock || 0)} of ${w.distanceKm ? `${w.distanceKm} km` : `${w.hours} hours`}` : ''}${car ? ` · your car ${carNo(car.num)} ${esc(car.team)} is <b>${car.classPos ? 'P' + car.classPos + ' in class' : esc(car.status)}</b>, ${esc(car.driver)} driving` : ''}</p>
+      <div class="btn-row"><button class="btn primary" data-act="nav" data-route="weekend">${mine.length ? 'Go to the pit wall' : 'Race Weekend'}</button></div></section>`
+    : next ? `<section class="card end-home"><p class="eyebrow">${esc(curSeries().name)} · next</p><h2>${esc(next.name)}</h2><p>Round ${esc(next.round)}${(curSeries().dates || {})[next.id] ? ` · ${esc(fmtDay((curSeries().dates || {})[next.id]))}` : ''}</p><div class="btn-row"><button class="btn" data-act="nav" data-route="calendar">Calendar</button><button class="btn ghost" data-act="nav" data-route="standings">Championship</button></div></section>` : '';
+  const i = h.indexOf('</div></div>'); return card ? (i >= 0 && h.indexOf('page-head') !== -1 ? h.slice(0, i + 12) + card + h.slice(i + 12) : card + h) : h;
+};
+
+/* =====================================================================
+   F1 SIM — Endurance Phase 7: strategy depth.
+   Tyre compounds against track temperature and a tyre allowance;
+   short-fills; driver fatigue; repair-or-carry-on decisions; weather and
+   yellow-flag policies; strategy presets; a race engineer who reads the
+   race for you. Each car's plan is frozen when the race starts, and any
+   change after that is a timed call that counts from that moment, so the
+   race can be re-simulated without rewriting the past.
+   ===================================================================== */
+'use strict';
+
+const COMP_NAME = { soft: 'Soft', medium: 'Medium', hard: 'Hard', wet: 'Wet' };
+const compShort = c => ({ soft: 'S', medium: 'M', hard: 'H', wet: 'W' }[c] || '–');
+const PLAN_KEYS = ['order', 'stints', 'tyreEvery', 'compound', 'wet', 'yellow', 'mode'];
+const END_PRESETS = { aggressive: ['Aggressive', 'Push, fresh tyres every stop, pit early under yellows.', { mode: 'push', yellow: 'early', compound: 'auto', stints: 2, tyreEvery: 1, wet: 'react' }],
+  balanced: ['Balanced', 'Standard pace, double stints on the tyres, the team’s calls.', { mode: 'standard', yellow: 'auto', compound: 'auto', stints: 2, tyreEvery: 2, wet: 'react' }],
+  conservative: ['Conservative', 'Save fuel and tyres, triple stints, wait and see on rain.', { mode: 'save', yellow: 'auto', compound: 'auto', stints: 3, tyreEvery: 3, wet: 'wait' }] };
+
+/* ---------------------------------------------------------------- the plan at the start, and timed changes */
+const _endAdvanceP7 = endAdvance;
+endAdvance = async function (to) {
+  const w = endWOpen();
+  if (S.isGm && w && w.status === 'race' && !w.plans0) {
+    const plans0 = {}; w.entry.forEach(c => { const p = planOf(w, c.id, 'strategy') || {}, o = {}; PLAN_KEYS.forEach(k => { if (p[k] != null && p[k] !== '') o[k] = p[k]; }); if (Object.keys(o).length) plans0[c.id] = o; });
+    await Data.put('f1_endw', w.id, Object.assign(clone(S.store.f1_endw[w.id]), { plans0 }));
+  }
+  return _endAdvanceP7(to);
+};
+const _endRaceOptsP7 = endRaceOpts;
+endRaceOpts = function (w, until) {
+  const o = _endRaceOptsP7(w, until);
+  if (w.plans0) o.plans = w.plans0;
+  o.calls = endCalls(w.id).filter(c => !c.charId || involveAllows(c.charId, 'strategy')).map(c => ({ carId: c.carId, t: c.t, type: c.type, value: c.value }));
+  return o;
+};
+function endChangePlan(w, carId, patch) {
+  if (w.status === 'race' && w.plans0) return run(async () => {
+    for (const [k, v] of Object.entries(patch)) await Data.put('f1_calls', newId('ec'), { kind: 'end', weekendId: w.id, carId, t: (w.race.clock || 0) + 1, type: k === 'mode' ? 'mode' : 'plan', value: k === 'mode' ? v : { k, v }, userId: asOwner(), charId: S.isGm ? null : S.charId, at: nowIso() });
+    const prev = endPlan(w.id, carId), id = prev ? prev.id : newId('ep');
+    await Data.put('f1_plans', id, Object.assign(prev ? clone(S.store.f1_plans[id]) : { kind: 'end', weekendId: w.id, carId }, patch, { userId: asOwner(), charId: S.isGm ? null : S.charId, byGm: S.isGm, at: nowIso() }));
+  }, 'Sent: it counts from now.');
+  return endSavePlan(w, carId, patch);
+}
+CHANGES['endw-plan'] = (v, d) => { const w = endWOpen(); if (!w || !endCanRun(w, d.car)) return;
+  const prev = endPlan(w.id, d.car) || {}, car = w.entry.find(c => c.id === d.car);
+  if (d.k === 'order') { const o = (prev.order || car.crew.map((_, i) => i)).slice(); o[Number(d.i)] = Number(v); return endChangePlan(w, d.car, { order: o }); }
+  if (d.k === 'qualiDriver' || d.k === 'focus') return endSavePlan(w, d.car, { [d.k]: d.k === 'focus' ? v : (v === '' ? null : Number(v)) });
+  endChangePlan(w, d.car, { [d.k]: ['stints', 'tyreEvery'].indexOf(d.k) !== -1 ? Number(v) : v }); };
+ACTIONS['endw-preset'] = d => { const w = endWOpen(); if (!w || !endCanRun(w, d.car) || !endLevel('strategy')) return; endChangePlan(w, d.car, Object.assign({}, END_PRESETS[d.p][2])); };
+
+/* ---------------------------------------------------------------- the race engineer */
+function endAdvice(st, c) {
+  const out = [], fmt = EnduranceEngine.fmt, left = c.stintDue - c.stintLap;
+  if (c.damage && c.carry) out.push(`The car is damaged and ${(c.damage * 100).toFixed(1)}% slower a lap. A repair takes about ${fmt(c.repair)}: worth it with more than ${Math.ceil(c.repair / Math.max(0.01, c.damage * (c.lapSec || 100)))} laps to go.`);
+  else if (c.damage) out.push(`Damage: ${(c.damage * 100).toFixed(1)}% a lap. The crew repairs it at the next stop (about ${fmt(c.repair)}), unless you carry on.`);
+  if (left <= 2) out.push(`Fuel: box ${left <= 0 ? 'this lap' : `in ${left} lap${left > 1 ? 's' : ''}`}.`);
+  if ((st.flagState === 'sc' || st.flagState === 'fcy') && left <= 6) out.push(`${st.flagState === 'sc' ? 'Safety car' : 'Full-course yellow'}: a stop now costs about a third less time.`);
+  const rain = (st.forecast || [])[0];
+  if (rain && c.tyres !== 'wet') out.push(rain.inMin === 0 ? `It’s raining${rain.heavy ? ' hard' : ''}. Wets now, or gamble on slicks${!rain.heavy && rain.forMin <= 20 ? ` (it may pass in about ${rain.forMin} minutes)` : ''}.` : `Rain expected in about ${rain.inMin} minutes${rain.heavy ? ', heavy' : ''}: think about wets at the next stop.`);
+  if (!st.wet && c.tyres === 'wet') out.push('The track is drying: slicks at the next stop.');
+  const best = EnduranceEngine.autoCompound(st.tempIn1h);
+  if (c.tyres !== 'wet' && c.compound && c.compound !== best) out.push(`Track ${st.temp}°C, ${st.tempIn1h}°C in an hour: ${COMP_NAME[best].toLowerCase()} tyres suit it best (you’re on ${COMP_NAME[c.compound].toLowerCase()}).`);
+  if (c.setsLeft <= 1) out.push(c.setsLeft <= 0 ? 'No new slicks left: these have to last.' : 'One set of new slicks left: keep it for when it counts.');
+  if (c.fatigue >= 2) out.push(`${c.driver} is tiring (${c.fatigue} hours’ effort): slower and more likely to make a mistake. Change drivers at the next stop.`);
+  if (c.ahead && /s$/.test(c.ahead) && parseFloat(c.ahead) < 2) out.push(`${parseFloat(c.ahead)} s behind the car ahead: push mode could make the pass, at a cost to tyres and fuel.`);
+  if (!out.length) out.push('All good: stick to the plan.');
+  return out;
+}
+
+/* ---------------------------------------------------------------- the pit wall */
+endPitWallHtml = function (w) {
+  const mine = S.isGm ? w.entry.map(c => c.id) : endMyCars(w); if (!mine.length) return '<p class="muted">You don’t run a car this weekend. Live timing shows every car.</p>';
+  const fmt = EnduranceEngine.fmt, carId = mine.indexOf(S.ui.endwCar) !== -1 ? S.ui.endwCar : mine[0], car = w.entry.find(c => c.id === carId), stAll = w.race && w.race.state, st = stAll ? (stAll.cars || []).find(x => x.id === carId) : null;
+  const plan = Object.assign({}, (w.plans0 || {})[carId] || {}, endPlan(w.id, carId) || {}), order = plan.order || car.crew.map((_, i) => i), setupOk = endLevel('setup'), stratOk = endLevel('strategy'), ch = currentChar();
+  const pick = mine.length > 1 ? `<label class="field" style="max-width:360px">Car<select data-change="endw-car">${mine.map(id => { const x = w.entry.find(e => e.id === id); return `<option value="${esc(id)}" ${id === carId ? 'selected' : ''}>${carNo(x.num)} ${esc(x.team)}</option>`; }).join('')}</select></label>` : '';
+  const sel = (k, opts, val, extra) => `<select data-change="endw-plan" data-car="${esc(carId)}" data-k="${k}" ${extra || ''}>${opts.map(([v, l]) => `<option value="${esc(v)}" ${String(val) === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+  /* status */
+  const status = st ? `<div class="metrics end-car-now">
+      <div class="metric"><b>${st.classPos ? `P${st.classPos}` : esc(st.status)}</b><span>In class</span><small class="muted">${st.ahead ? `${esc(st.ahead)} to the car ahead` : 'Leading'}${st.behind ? ` · ${esc(st.behind)} to the car behind` : ''}</small></div>
+      <div class="metric ${st.fatigue >= 2 ? 'warn' : ''}"><b>${esc(st.driver)}${catTag(st.cat)}</b><span>Driving now</span><small class="muted">${st.fatigue} hours’ effort${st.fatigue >= 2 ? ': tiring' : ''}</small></div>
+      <div class="metric ${st.stintDue - st.stintLap <= 2 ? 'warn' : ''}"><b>${Math.max(0, st.stintDue - st.stintLap)} laps</b><span>Fuel left</span><small class="muted">${st.stintLap} of ${st.stintDue} into the stint</small></div>
+      <div class="metric"><b>${esc(COMP_NAME[st.compound] || (st.tyres === 'wet' ? 'Wet' : 'Dry'))}, ${st.tyreAge} laps</b><span>Tyres</span><small class="muted">${st.setsLeft} new set${st.setsLeft === 1 ? '' : 's'} of slicks left</small></div>
+      <div class="metric"><b>${esc({ push: 'Push', save: 'Save', standard: 'Standard' }[st.mode] || 'Standard')}</b><span>Pace</span></div>
+      ${st.damage ? `<div class="metric warn"><b>${(st.damage * 100).toFixed(1)}% slower</b><span>Damage</span><small class="muted">${st.carry ? 'Carrying on' : 'Repair at the next stop'} (${fmt(st.repair)})</small></div>` : ''}</div>` : '';
+  const cond = stAll && stAll.temp != null ? `<section class="card end-cond"><h3>Conditions</h3><div class="end-cond-row"><span><b>${stAll.temp}°C</b> track now, ${stAll.tempIn1h}°C in an hour</span><span>${stAll.night ? '☾ Night' : '☀ Day'}</span>
+      <span>${stAll.wet ? '<b>Raining</b>' : 'Dry'}</span></div><p class="small"><b>Radar:</b> ${(stAll.forecast || []).length ? stAll.forecast.map(f => f.inMin === 0 ? `rain now for about ${f.forMin} more minutes${f.heavy ? ', heavy' : ''}` : `rain in about ${f.inMin} minutes for about ${f.forMin}${f.heavy ? ', heavy' : ''}`).join('; ') : 'no rain expected in the next 90 minutes'}.</p></section>` : '';
+  const advice = st && st.status === 'running' ? `<section class="card end-advice"><h3>Your race engineer</h3><ul>${endAdvice(stAll, st).map(a => `<li>${esc(a)}</li>`).join('')}</ul></section>` : '';
+  const practice = w.status === 'practice' ? `<section class="card"><h3>Practice focus</h3>${setupOk ? `<p class="muted small">What the crew works on in the next session. It builds over the sessions.</p><div class="role-tiles">${[['race', 'Race pace'], ['quali', 'Qualifying'], ['night', 'Night running']].map(([k, l]) => `<button type="button" class="role-tile${(plan.focus || 'race') === k ? ' on' : ''}" data-act="endw-focus" data-car="${esc(carId)}" data-k="${k}">${l}</button>`).join('')}</div>` : '<p class="muted small">Hands-off: the team chooses.</p>'}
+      ${car.cls === 'hypercar' || car.cls === 'gtp' || car.cls === 'lmp2' ? `<h3>Qualifying driver</h3>${setupOk ? `<select data-change="endw-plan" data-car="${esc(carId)}" data-k="qualiDriver"><option value="">The team’s choice (the quickest)</option>${car.crew.map((d, j) => `<option value="${j}" ${plan.qualiDriver === j ? 'selected' : ''}>${esc(d.name)}</option>`).join('')}</select>` : ''}` : '<p class="muted small">This class qualifies with its Bronze driver.</p>'}</section>` : '';
+  const sets = EnduranceEngine.tyreSets((w.hours || 6) * 3600, w.distanceKm);
+  const strat = w.status !== 'finished' ? `<section class="card"><h3>Strategy</h3>${stratOk ? `<p class="muted small">${w.status === 'race' ? 'Changes count from the race clock now.' : 'Set before the race; changes during the race count from when you make them.'} This race allows ${sets} sets of slicks per car (wets are unlimited).</p>
+      <div class="role-tiles end-presets">${Object.entries(END_PRESETS).map(([k, [l, blurb]]) => `<button type="button" class="role-tile" data-act="endw-preset" data-car="${esc(carId)}" data-p="${k}" title="${esc(blurb)}">${esc(l)}<span class="seat-status">${esc(blurb)}</span></button>`).join('')}</div>
+      <div class="form-grid end-plan">${car.crew.map((_, i) => `<label class="field">Driver ${i + 1}<select data-change="endw-plan" data-car="${esc(carId)}" data-k="order" data-i="${i}">${car.crew.map((d, j) => `<option value="${j}" ${order[i] === j ? 'selected' : ''}>${esc(d.name)} (${esc(CAT_NAME[d.category] || '–')})</option>`).join('')}</select></label>`).join('')}
+      <label class="field">Stints each${sel('stints', [[1, 'Single stints'], [2, 'Double stints'], [3, 'Triple stints']], plan.stints || 2)}</label>
+      <label class="field">New tyres${sel('tyreEvery', [[1, 'Every stop'], [2, 'Every 2 stints'], [3, 'Every 3 stints']], plan.tyreEvery || 2)}</label>
+      <label class="field">Slick compound${sel('compound', [['auto', 'By track temperature'], ['soft', 'Soft (cool track)'], ['medium', 'Medium'], ['hard', 'Hard (hot track)']], plan.compound || 'auto')}</label>
+      <label class="field">When it rains${sel('wet', [['react', 'Wets at once'], ['wait', 'Wait and see (3 laps)'], ['gamble', 'Stay on slicks unless it’s heavy']], plan.wet || 'react')}</label>
+      <label class="field">Under yellows${sel('yellow', [['auto', 'Pit if within 3 laps of the stop'], ['early', 'Pit if within 6 laps'], ['never', 'Never change the plan']], plan.yellow || 'auto')}</label></div>
+      <p class="muted small">Longer stints save time in the pits but tire the driver; fresh tyres every stop are quickest on track but use the allowance and cost time in each stop.</p>` : '<p class="muted small">The team runs the strategy at your involvement level.</p>'}</section>` : '';
+  const callRow = (type, label, control) => `<span class="end-call">${control || ''}<button class="btn" data-act="endw-call" data-car="${esc(carId)}" data-type="${type}">${esc(label)}</button></span>`;
+  const calls = w.status === 'race' && stratOk ? `<section class="card"><h3>Calls</h3><div class="end-calls">
+      <button class="btn primary" data-act="endw-call" data-car="${esc(carId)}" data-type="pit" data-v="1">Box this lap</button>
+      ${callRow('driver', 'Next driver', `<select id="endw-driver-${esc(carId)}">${car.crew.map((d, j) => `<option value="${j}">${esc(d.name)}</option>`).join('')}</select>`)}
+      ${callRow('tyres', 'Tyres at the next stop', `<select id="endw-tyres-${esc(carId)}"><option value="auto">The team’s choice</option><option value="soft">New softs</option><option value="medium">New mediums</option><option value="hard">New hards</option><option value="wet">Wets</option><option value="keep">Keep these</option></select>`)}
+      <span class="end-call">${['push', 'standard', 'save'].map(m => `<button class="btn small ${st && st.mode === m ? 'on' : ''}" data-act="endw-call" data-car="${esc(carId)}" data-type="mode" data-v="${m}">${m === 'push' ? 'Push' : m === 'save' ? 'Save' : 'Standard'}</button>`).join('')}</span>
+      ${st && st.damage ? `<span class="end-call"><button class="btn" data-act="endw-call" data-car="${esc(carId)}" data-type="repair" data-v="now">Repair now</button><button class="btn" data-act="endw-call" data-car="${esc(carId)}" data-type="repair" data-v="later">Carry on</button></span>` : ''}</div>
+      <p class="muted small">Calls reach the car at the race clock now (${fmt((w.race || {}).clock || 0)}) and count from the next time it moves on.</p>
+      ${endCalls(w.id).filter(x => x.carId === carId).length ? `<p class="small">Calls so far: ${endCalls(w.id).filter(x => x.carId === carId).sort((a, b) => a.t - b.t).slice(-8).map(x => `${fmt(x.t)} ${esc(x.type === 'pit' ? 'box' : x.type === 'mode' ? x.value : x.type === 'driver' ? 'next driver: ' + ((car.crew[Number(x.value)] || {}).name || '') : x.type === 'repair' ? (x.value === 'now' ? 'repair now' : 'carry on') : x.type === 'plan' ? `plan: ${x.value.k}` : 'tyres: ' + x.value)}`).join(' · ')}</p>` : ''}</section>` : '';
+  return `${!S.isGm && ch ? involveBarHtml(ch, true) : ''}${pick}<h2>${carNo(car.num)} ${esc(car.team)}</h2>${status}${cond}${advice}${practice}${calls}${strat}`;
 };
 
 /* start-up: every part has registered its routes, drawers and actions */

@@ -25,6 +25,43 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v1.7.0: Endurance Phase 7, strategy depth
+
+13 November 2026. Build `f1sim-1.7.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Tyre compounds | Soft, medium and hard slicks, each best in its own range of track temperature (soft for a cool track, hard for heat); outside it a tyre is slower and wears faster. Track temperature follows each venue's climate and the time of day, peaking mid-afternoon and dropping at night and in rain. Crews choose a compound for the race (or leave it to the track temperature) and can call a compound for the next stop. |
+| Tyre allowance | Each car has a set number of new slicks per race (5 for 4 hours, 7 for 6, 10 for 8 and 10 hours, 16 for 24); wets are unlimited. Out of sets means the tyres have to last. Fresh tyres every stop is quickest on track but costs time in every stop and uses the allowance. |
+| Fuel | The last stop is a short fill: just the fuel needed to finish, so it is quicker. Save mode stretches each stint by a lap, push shortens it. |
+| Driver fatigue | Effort builds while a driver is in the car, faster at night and in heat; after about two hours they get slower and more likely to make a mistake, until someone else takes over. Long stints save stops but tire the driver. |
+| Damage decisions | Contact damage makes the car slower each lap (shown as a percentage) until it is repaired; the crew can Repair now or Carry on, and the race engineer works out how many laps to go make a repair worth it. |
+| Weather and yellow policies | When it rains: wets at once, wait and see (three laps), or stay on slicks unless it's heavy; and back to slicks as it dries. Under yellows: pit if within 3 laps of the stop, within 6, or never change the plan. |
+| Strategy presets | Aggressive (push, fresh tyres every stop, pit early under yellows), Balanced, and Conservative (save, triple stints, wait and see on rain), as one click, then adjustable. |
+| The pit wall | Class position with the gaps to the cars ahead and behind; who's driving and how tired they are; laps of fuel left; compound, tyre age and new sets left; pace; damage. Conditions: track temperature now and in an hour, day or night, and a rain radar for the next 90 minutes. Your race engineer reads the race: when to box, a cheaper stop under a yellow, rain coming, the compound that suits the track, sets running low, a tiring driver, a repair worth making, a pass within reach. The timing screen shows each car's compound and tyre age. |
+| Plans that respect the past | Each car's plan is frozen when the race starts; any change after that is a timed call that counts from that moment, so moving the clock on never rewrites what has already happened. |
+| Fairer luck | Every car now has its own run of luck in the engine, so one crew's decisions change only their own race (and any yellows they cause), not everybody else's. Strategy choices can be judged on their merits. (Races run from now on differ from before for the same seed.) |
+| Roadmap | Phase 7 (strategy depth) is on the roadmap and done. |
+
+---
+
+## v1.6.0: Endurance Phase 6, championships, posts, reports and records
+
+13 November 2026. Build `f1sim-1.6.0`. **No database update.** With this, all six planned phases of the endurance simulator are in place.
+
+| Area | What it does |
+| --- | --- |
+| Points | Each finished endurance race scores by its series' system. WEC: 25, 18, 15, 12, 10, 8, 6, 4, 2, 1 for 6-hour races; 38, 27, 23, 18, 15, 12, 9, 6, 3, 2 for 8 and 10-hour races (the Qatar 1812 km and Bahrain); 50, 36, 30, 24, 20, 16, 12, 8, 4, 2 at Le Mans; and 1 for pole. ELMS: the 6-hour scale with 1 for pole. IMSA (lighter): 350, 320, 300, 280, 260 and down, race points only. Only championship entries score: Le Mans-only cars are left out and those behind them move up. In the WEC, Hypercar and LMGT3 have championships; LMP2 races at Le Mans for the result only. |
+| Championships | In Endurance, Championship shows each class's drivers' championship (every driver who drove the car scores its points), teams' championship (each car) and, for Hypercar and GTP, manufacturers' championship (the two best-placed cars of each make in the WEC, the best car in IMSA), with every round's class position and points. Career: every championship opens the history views for endurance. |
+| Discord | Post the result to Discord on a finished race posts a results card (the top six of each class, with crews and gaps) to the series' results channel; Post … standings to Discord on the Championship page posts the class's drivers' standings. Channels follow the usual order: DISCORD_WEBHOOK_WEC_RESULTS (or _ELMS_, _IMSA_), then DISCORD_WEBHOOK_RESULTS or _STANDINGS, then the default. |
+| Race report | Download the race report on a finished race: every class's classification with crews, time at the wheel and points, the race hour by hour, and the full race log, as a text file. |
+| Records | Characters and real drivers who have raced in endurance get an Endurance results section on their page (races, class wins and podiums, and each race with class, car, result and time at the wheel). Endurance seasons appear in the Timeline and Calendar history views, with champions once a season is complete. |
+| Home | In Endurance, Home shows the open weekend (stage, race clock and, for crews, where their car is and who is driving) with a button to the pit wall, or the next round. |
+| Development and money | Endurance uses Balance of Performance instead of development points, and has no money, like GP since v1.0.3. |
+| Roadmap | All six phases are done. |
+
+---
+
 ## v1.5.0: Endurance Phase 5, Le Mans and the other events
 
 13 November 2026. Build `f1sim-1.5.0`. **No database update.**
