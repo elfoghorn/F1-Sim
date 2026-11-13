@@ -1,4 +1,4 @@
-/* F1 SIM v1.7.0 (build f1sim-1.7.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
+/* F1 SIM v1.8.0 (build f1sim-1.8.0): a Formula 1 league. Race engine, Formula Racing V3.0 adapter, app core, the grid and race weekends, the paddock. */
 /* =====================================================================
    F1 SIM race engine.
    Pure and deterministic, in the same pattern as CombatEngine: a seed,
@@ -3777,6 +3777,9 @@ ACTIONS['season-start'] = () => {
   const s = curSeries(), prev = curSeason(), f = S.ui.form.newSeason || {}, name = String(f.name || '').trim() || String((Number(prev.name) || 2026) + 1);
   if (prev.status !== 'archived') { toast('Catalogue the current season first.', true); return; }
   const n = Number(String(prev.id).split('-').pop()) + 1, id = `${s.id}-${n}`, carry = Number(f.carry == null ? 0.5 : f.carry), keep = f.keepSeats !== false;
+  /* What the cars and seats were before this start, so deleting the new season can put them back exactly. */
+  const undo = { teams: Object.fromEntries(F1.teams().map(t => [t.id, Object.fromEntries(['carPace', 'topSpeed', 'cornering', 'reliability', 'tyreLife', 'pitSpeed'].filter(k => t[k] != null).map(k => [k, t[k]]))])),
+    seats: Object.fromEntries(F1.seats().filter(x => x.holderCharId).map(x => [x.id, { holderCharId: x.holderCharId, holderName: x.holderName || null, holderSince: x.holderSince || null }])) };
   run(async () => {
     /* Car development carries over in part: each team's base moves towards where its car finished the season. */
     if (carry > 0 && s.development) for (const t of F1.teams()) {
@@ -3787,7 +3790,7 @@ ACTIONS['season-start'] = () => {
     }
     if (!keep) for (const seat of F1.seats().filter(x => x.holderCharId)) await Data.put('f1_seats', seat.id, Object.assign(clone(S.store.f1_seats[seat.id]), { holderCharId: null, holderName: null, holderSince: null }));
     const pe = engineConfig(s.id, prev.id), nf = ENGINE_FORMULAS[f.engine] ? f.engine : pe.formula;
-    await Data.put('f1_seasons', id, { seriesId: s.id, name, status: 'active', startedAt: nowIso(), carry, keptSeats: keep, engine: { formula: nf, teams: pe.teams, ratings: nf === pe.formula ? pe.ratings : {}, seed: 0 } });
+    await Data.put('f1_seasons', id, { seriesId: s.id, name, status: 'active', startedAt: nowIso(), carry, keptSeats: keep, undo, prevId: prev.id, engine: { formula: nf, teams: pe.teams, ratings: nf === pe.formula ? pe.ratings : {}, seed: 0 } });
     await Data.put('f1_series', s.id, Object.assign(get('f1_series', s.id) ? clone(S.store.f1_series[s.id]) : { template: s.id }, { activeSeason: id }));
     await Data.audit('season.start', `${s.name} ${name} season started`);
     S.ui.form.newSeason = {};
@@ -9694,6 +9697,170 @@ endPitWallHtml = function (w) {
       ${endCalls(w.id).filter(x => x.carId === carId).length ? `<p class="small">Calls so far: ${endCalls(w.id).filter(x => x.carId === carId).sort((a, b) => a.t - b.t).slice(-8).map(x => `${fmt(x.t)} ${esc(x.type === 'pit' ? 'box' : x.type === 'mode' ? x.value : x.type === 'driver' ? 'next driver: ' + ((car.crew[Number(x.value)] || {}).name || '') : x.type === 'repair' ? (x.value === 'now' ? 'repair now' : 'carry on') : x.type === 'plan' ? `plan: ${x.value.k}` : 'tyres: ' + x.value)}`).join(' · ')}</p>` : ''}</section>` : '';
   return `${!S.isGm && ch ? involveBarHtml(ch, true) : ''}${pick}<h2>${carNo(car.num)} ${esc(car.team)}</h2>${status}${cond}${advice}${practice}${calls}${strat}`;
 };
+
+/* =====================================================================
+   F1 SIM — deleting and reopening seasons (Race Control).
+   Delete the current season (started by mistake, say): its weekends,
+   results, plans, calls, runs and team development go, and the season
+   before it becomes current again, reopened and in progress. Seasons
+   started from v1.7.1 on also put the cars' numbers and the seats back
+   exactly as they were. Reopen a catalogued season that was catalogued
+   too early. Delete a past season from the archive, with its races.
+   ===================================================================== */
+'use strict';
+
+const seasonNo = id => Number(String(id).split('-').pop()) || 1;
+function seasonFootprint(sid, seaId) {
+  const gp = list('f1_weekends').filter(w => wSeries(w) === sid && wSeason(w) === seaId), end = list('f1_endw').filter(w => w.seriesId === sid && w.seasonId === seaId), wids = new Set(gp.concat(end).map(w => w.id));
+  return { gp, end, plans: list('f1_plans').filter(x => wids.has(x.weekendId)), calls: list('f1_calls').filter(x => wids.has(x.weekendId)), runs: list('f1_runs').filter(x => wids.has(x.weekendId)),
+    dev: list('f1_dev').filter(x => x.seasonId === seaId), races: gp.filter(w => w.status === 'finished' && w.session === 'gp').length + end.filter(w => w.status === 'finished').length,
+    live: gp.some(w => w.status !== 'finished') || end.some(w => w.status !== 'finished') };
+}
+ACTIONS['season-del-open'] = d => { if (!S.isGm) return; S.ui.seaDel = { id: d.id, typed: '' }; openDrawer('seadel'); };
+DRAWERS.seadel = function () {
+  const x = S.ui.seaDel || {}, s = curSeries(), sea = seasonDoc(x.id), cur = curSeasonId(), isCur = x.id === cur, fp = seasonFootprint(s.id, x.id), prevId = sea.prevId || `${s.id}-${seasonNo(x.id) - 1}`, prev = seasonNo(x.id) > 1 ? seasonDoc(prevId) : null;
+  const goes = [[fp.gp.length + fp.end.length, plural(fp.gp.length + fp.end.length, 'race weekend') + (fp.races ? `, ${plural(fp.races, 'finished race')} and their results` : '')], [fp.plans.length + fp.calls.length + fp.runs.length, 'crews’ plans, calls and runs for those weekends'], [fp.dev.length, plural(fp.dev.length, 'team development spend')]].filter(g => g[0]);
+  return `<header><div><h2>Delete the ${esc(sea.name)} season</h2><p>${esc(s.name)}. This can’t be undone.</p></div><button class="btn ghost" data-act="close-drawer">Close</button></header>
+    <div class="body">${fp.live ? '<div class="card notice warn"><p><b>A weekend of this season is open.</b> Finish or cancel it first.</p></div>' : ''}
+    <p>Deleting removes the season${goes.length ? ', and:' : '. It has no races yet.'}</p>${goes.length ? `<ul>${goes.map(g => `<li>${esc(g[1])}</li>`).join('')}</ul>` : ''}
+    ${isCur ? (prev ? `<p><b>${esc(prev.name)}</b> becomes the current season again, reopened and in progress, so you can carry on where you were.${sea.undo ? ' The cars’ numbers and the seats go back to how they were before this season started.' : ' This season started before v1.7.1, so any car development carried over and any seats emptied at its start stay as they are now.'}</p>`
+      : '<p>It’s the series’ first season: it starts again from scratch, with no races.</p>') : '<p>It’s a catalogued season: it leaves the archive, and the current season is unaffected.</p>'}
+    <p class="muted small">Characters keep their ratings; anything they earned only from these races (development points, wins on their record) goes with the races.</p>
+    <label class="field"><span>Type <b>${esc(sea.name)}</b> to confirm</span><input id="seadel-typed" type="text" autocomplete="off" data-bind="ui/seaDel/typed" value="${esc(x.typed || '')}"></label>
+    <div class="btn-row"><button class="btn danger" data-act="season-del-run" ${fp.live ? 'disabled' : ''}>Delete the season</button></div></div>`;
+};
+ACTIONS['season-del-run'] = () => {
+  const x = S.ui.seaDel || {}, s = curSeries(), sea = seasonDoc(x.id); if (!S.isGm || !x.id) return;
+  const typed = String((document.getElementById('seadel-typed') || {}).value || x.typed || '').trim();
+  if (typed.toLowerCase() !== String(sea.name).trim().toLowerCase()) { toast(`Type ${sea.name} exactly to confirm.`, true); return; }
+  const fp = seasonFootprint(s.id, x.id); if (fp.live) { toast('Finish or cancel the open weekend first.', true); return; }
+  const isCur = x.id === curSeasonId(), prevId = sea.prevId || `${s.id}-${seasonNo(x.id) - 1}`, hasPrev = seasonNo(x.id) > 1, undo = sea.undo;
+  run(async () => {
+    for (const w of fp.gp) await Data.remove('f1_weekends', w.id);
+    for (const w of fp.end) await Data.remove('f1_endw', w.id);
+    for (const [col, rows] of [['f1_plans', fp.plans], ['f1_calls', fp.calls], ['f1_runs', fp.runs], ['f1_dev', fp.dev]]) for (const r of rows) await Data.remove(col, r.id);
+    if (get('f1_seasons', x.id)) await Data.remove('f1_seasons', x.id);
+    if (isCur && hasPrev) {
+      if (undo) {
+        for (const [tid, vals] of Object.entries(undo.teams || {})) if (get('f1_teams', tid)) await Data.put('f1_teams', tid, Object.assign(clone(S.store.f1_teams[tid]), vals));
+        for (const seat of list('f1_seats').filter(z => (get('f1_teams', z.teamId) || {}).seriesId === s.id || (!(get('f1_teams', z.teamId) || {}).seriesId && s.id === 'f1'))) {
+          const was = (undo.seats || {})[seat.id], now = { holderCharId: seat.holderCharId || null, holderName: seat.holderName || null, holderSince: seat.holderSince || null };
+          const want = was || { holderCharId: null, holderName: null, holderSince: null };
+          if (JSON.stringify(now) !== JSON.stringify(want) && (!want.holderCharId || get('characters', want.holderCharId))) await Data.put('f1_seats', seat.id, Object.assign(clone(S.store.f1_seats[seat.id]), want));
+        }
+      }
+      const p = get('f1_seasons', prevId) ? clone(S.store.f1_seasons[prevId]) : { seriesId: s.id, name: seasonDoc(prevId).name };
+      delete p.endedAt; delete p.archive; p.status = 'active';
+      await Data.put('f1_seasons', prevId, p);
+      await Data.put('f1_series', s.id, Object.assign(get('f1_series', s.id) ? clone(S.store.f1_series[s.id]) : { template: s.id }, { activeSeason: prevId }));
+    }
+    await Data.audit('season.delete', `${s.name} ${sea.name} season deleted${isCur && hasPrev ? `; ${seasonDoc(prevId).name} reopened` : ''}`);
+    closeDrawer(); S.ui.seaDel = null;
+  }, isCur && hasPrev ? `${sea.name} deleted. ${seasonDoc(prevId).name} is the current season again.` : `${sea.name} deleted.`);
+};
+ACTIONS['season-reopen'] = () => { const s = curSeries(), sea = curSeason(); if (!S.isGm || sea.status !== 'archived') return;
+  askConfirm(`Reopen ${s.name}’s ${sea.name} season? It comes out of the archive and is in progress again, so weekends can be opened. Its races so far stay.`, 'Reopen it', () => run(async () => {
+    const p = get('f1_seasons', sea.id) ? clone(S.store.f1_seasons[sea.id]) : { seriesId: s.id, name: sea.name }; delete p.endedAt; delete p.archive; p.status = 'active';
+    await Data.put('f1_seasons', sea.id, p); await Data.audit('season.reopen', `${s.name} ${sea.name} reopened`); }, `${sea.name} is in progress again.`)); };
+
+/* ---------------------------------------------------------------- the buttons on the Seasons page */
+const _archiveHtmlDel = archiveHtml;
+archiveHtml = function (season) { const h = _archiveHtmlDel(season); if (!S.isGm) return h; const i = h.lastIndexOf('</section>');
+  return h.slice(0, i) + `<div class="btn-row"><button class="btn small ghost" data-act="season-del-open" data-id="${esc(season.id)}">Delete this season</button></div>` + h.slice(i); };
+const _seasonsViewDel = ROUTES.seasons.view;
+ROUTES.seasons.view = function () {
+  let h = _seasonsViewDel.apply(this, arguments); if (!S.isGm) return h; const sea = curSeason();
+  if (sea.status !== 'archived') h = h.replace('<button class="btn" data-act="season-end">Catalogue the season</button>', `<button class="btn" data-act="season-end">Catalogue the season</button><button class="btn ghost" data-act="season-del-open" data-id="${esc(sea.id)}">Delete this season</button>`);
+  else h = h.replace('<section class="card"><h2>Between seasons</h2>', `<section class="card"><h2>Between seasons</h2><div class="btn-row"><button class="btn" data-act="season-reopen">Reopen ${esc(sea.name)}</button><span class="muted small">Catalogued too early? Reopen it and carry on.</span></div>`);
+  return h;
+};
+
+/* =====================================================================
+   F1 SIM — weekend announcements on Discord.
+   As a race weekend opens and moves through its stages, a post goes to
+   the announcements channel (DISCORD_WEBHOOK_<SERIES>_ANNOUNCEMENTS, then
+   DISCORD_WEBHOOK_ANNOUNCEMENTS, then the default) telling players what
+   to do now: set up their character and car while practice is open,
+   lock in for qualifying, set their race plan before the start. Works
+   for GP and endurance weekends. Each stage is announced once (the
+   weekend records what it has announced), from Race Control's tab,
+   where weekends move on. Weekends opened before this was switched on
+   aren't announced.
+   ===================================================================== */
+'use strict';
+
+const annSettings = () => Object.assign({ on: true, mention: 'none' }, get('f1_settings', 'announce') || {});
+const STAGE_ORDER = ['open', 'fp1', 'fp2', 'fp3', 'fp4', 'fp5', 'quali', 'grid', 'race', 'done'];
+/* The stage a weekend has reached, as a key. */
+function gpStage(w) { const n = ((w.practice || {}).done || []).length;
+  return w.status === 'finished' ? 'done' : w.status === 'running' ? 'race' : w.status === 'grid' ? 'grid' : w.status === 'quali' ? 'quali' : n ? `fp${n}` : 'open'; }
+function endStage(w) { const n = ((w.practice || {}).done || []).length;
+  return w.status === 'finished' ? 'done' : w.status === 'race' ? ((w.race || {}).clock > 0 ? 'race' : 'grid') : w.status === 'quali' ? 'quali' : n ? `fp${n}` : 'open'; }
+function annMessage(w, kind, stage) {
+  const s = seriesDoc(kind === 'end' ? w.seriesId : wSeries(w)), sea = seasonDoc(kind === 'end' ? w.seasonId : wSeason(w)).name;
+  const ev = kind === 'end' ? w.event : ((F1.track(w.trackId) || get('f1_tracks', w.trackId) || {}).name || 'The race weekend');
+  const head = `Round ${w.round || '?'} of the ${s.name} ${sea} season`, n = Number(stage.slice(2)) || 0;
+  const fpName = kind === 'end' && typeof endSessionName === 'function' ? endSessionName(w, n) : `Practice ${n}`;
+  const total = kind === 'end' ? (w.practice || {}).sessions || 1 : (typeof sessionsOf === 'function' ? sessionsOf(w) : 3);
+  if (stage === 'open') return [`🟢 ${ev}: the weekend is open`, `${head}.\n\n**Practice is open.** Now is the time to get ready:\n• Check your character and update anything you want to change.\n• ${kind === 'end' ? 'Crews: choose your practice focus and qualifying driver, and set your stint plan and strategy on the pit wall.' : 'Drivers and race engineers: send your practice plans and set-up.'}\n• Check your involvement level (hands-off, set-up only or full).`];
+  if (stage.indexOf('fp') === 0) return [`⏱️ ${ev}: ${fpName} is done`, `${head}.\n\n${n < total ? `**Next: ${kind === 'end' && typeof endSessionName === 'function' ? endSessionName(w, n + 1) : `Practice ${n + 1}`}.** ` : '**Next: qualifying.** '}${kind === 'end' ? 'Adjust your focus for the next session if you want to.' : 'Use the feedback to fine-tune your set-up.'}`];
+  if (stage === 'quali') return kind === 'end' ? [`🏁 ${ev}: practice is over`, `${head}.\n\n**Qualifying and Hyperpole are next.** Hypercar and LMP2 crews: confirm your qualifying driver now.`]
+    : [`⏱️ ${ev}: qualifying is under way`, `${head}.\n\n**Set-ups are locked for qualifying.** Race plans and strategy are next: be ready to set yours before the start.`];
+  if (stage === 'grid' && kind !== 'end') { const r0 = ((w.quali || {}).results || [])[0], pole = r0 ? (r0.name || (F1.person(r0.personId) || {}).name || '') : '';
+    return [`🏁 ${ev}: the grid is set`, `${head}.\n\n${pole ? `**Pole position:** ${pole}\n\n` : ''}**Set your race plan and strategy now, before the start.** During the race, make your calls from the pit wall.`]; }
+  if (stage === 'grid') { const q = w.quali && w.quali.classes ? Object.entries(w.quali.classes).map(([k, v]) => { const p = (v.q || []).find(x => x.carId === (v.order || [])[0]) || (v.hp || [])[0]; return p ? `${(WEC_CLASSES[k] || [k])[0]}: ${p.num ? '#' + p.num + ' ' : ''}${p.team}` : ''; }).filter(Boolean).join('\n') : '';
+    return [`🏁 ${ev}: the grid is set`, `${head}.\n\n${q ? `**Pole positions**\n${q}\n\n` : ''}**Set your stint plan and strategy before the start.** During the race, make your calls from the pit wall.`]; }
+  if (stage === 'race') return kind === 'end' ? [`🚦 ${ev}: the race is under way`, `${head}.\n\nFollow it on live timing, and make your calls from the pit wall: box, the next driver, tyres, push or save.`]
+    : [`🚦 ${ev}: lights out`, `${head}.\n\nThe grid is set and the race is under way. Follow it live and make your calls from the pit wall.`];
+  if (stage === 'done') { const res = kind === 'end' ? ((w.results || {}).results || []) : (w.results || []);
+    const win = kind === 'end' ? [...new Set(res.map(r => r.cls))].map(k => { const r = res.find(x => x.cls === k && x.classPosition === 1); return r ? `${(WEC_CLASSES[k] || [k])[0]}: ${r.num ? '#' + r.num + ' ' : ''}${r.team} (${r.crew.map(c => c.name).join(', ')})` : ''; }).filter(Boolean).join('\n')
+      : (r => r ? `${r.name}${r.teamId ? `, ${(get('f1_teams', r.teamId) || {}).name || ''}` : ''}` : '')(res.find(r => r.position === 1));
+    return [`🏆 ${ev}: chequered flag`, `${head}.\n\n${win ? `**${kind === 'end' ? 'Class winners' : 'Winner'}**\n${win}\n\n` : ''}Results and standings are on the site.`]; }
+  return null;
+}
+async function annPost(sid, title, body, test) {
+  const a = annSettings(), api = await window.claude.use('discord'), chans = await discordChannels().catch(() => ['default']), ch = pickChannel('announcements', sid, chans);
+  const ping = a.mention === 'everyone' ? '@everyone ' : a.mention === 'here' ? '@here ' : '';
+  await api.post({ channel: ch, payload: { content: ping.trim() || undefined, embeds: [{ title, description: `${body}\n\n${location.origin}`.slice(0, 3900), color: 0xE10600, footer: { text: `F1 SIM · ${seriesDoc(sid).name}` } }] } });
+  return ch;
+}
+let annBusy = false, annTimer = null;
+async function annCheck() {
+  if (annBusy || !S.isGm || S.phase !== 'ready') return; const a = annSettings(); if (!a.on) return;
+  annBusy = true;
+  try {
+    if (!a.since) { await Data.put('f1_settings', 'announce', Object.assign({}, a, { since: nowIso() })); return; }
+    const recent = w => w.status !== 'finished' || String(w.finishedAt || '') > new Date(Date.now() - 6 * 3600e3).toISOString();
+    const todo = list('f1_weekends').filter(w => String(w.createdAt) >= a.since && recent(w)).map(w => ['gp', w]).concat(list('f1_endw').filter(w => String(w.createdAt) >= a.since && recent(w)).map(w => ['end', w]));
+    for (const [kind, w] of todo) {
+      const stage = kind === 'end' ? endStage(w) : gpStage(w), done = w.announced || {}; if (done[stage]) continue;
+      /* this stage and every one before it count as announced, so a quick run through several stages posts only the latest */
+      const mark = Object.assign({}, done); STAGE_ORDER.slice(0, STAGE_ORDER.indexOf(stage) + 1).forEach(k => { mark[k] = true; });
+      const col = kind === 'end' ? 'f1_endw' : 'f1_weekends'; if (!S.store[col][w.id]) continue;
+      await Data.put(col, w.id, Object.assign(clone(S.store[col][w.id]), { announced: mark }));
+      const msg = annMessage(w, kind, stage); if (!msg) continue;
+      try { const ch = await annPost(kind === 'end' ? w.seriesId : wSeries(w), msg[0], msg[1]); await Data.audit('discord.announce', `${msg[0]} (posted to #${ch})`); }
+      catch (e) { toast(`The announcement didn’t post: ${e.message || e}`, true); }
+    }
+  } finally { annBusy = false; }
+}
+const _renderAnn = render;
+render = function () { const r = _renderAnn.apply(this, arguments); if (S.isGm) { clearTimeout(annTimer); annTimer = setTimeout(annCheck, 1500); } return r; };
+
+/* ---------------------------------------------------------------- settings, with the other Discord settings */
+CHANGES['ann-on'] = (v, d, el) => { const on = !!(el && el.checked); run(async () => { await Data.put('f1_settings', 'announce', Object.assign({}, annSettings(), { on, since: on ? nowIso() : annSettings().since })); }, on ? 'Weekend announcements are on.' : 'Weekend announcements are off.'); };
+CHANGES['ann-mention'] = v => run(async () => { await Data.put('f1_settings', 'announce', Object.assign({}, annSettings(), { mention: v })); }, 'Saved.');
+ACTIONS['ann-test'] = () => { if (!S.isGm) return; run(async () => { const ch = await annPost(curSeriesId(), '📣 Test announcement', 'This is where F1 SIM announces each stage of a race weekend: when it opens, after each practice session, qualifying, the start and the finish.', true); toast(`Test posted to #${ch}.`); }); };
+function annCardHtml() {
+  const a = annSettings();
+  return `<section class="card"><h2>Weekend announcements</h2><p class="muted small">Posts to the announcements channel as each race weekend opens and moves on (GP and endurance): the weekend opening, each practice session, qualifying, the grid and the start, and the finish, each telling players what to do now. Uses DISCORD_WEBHOOK_&lt;SERIES&gt;_ANNOUNCEMENTS, then DISCORD_WEBHOOK_ANNOUNCEMENTS, then the default channel.</p>
+    <label class="small"><input type="checkbox" data-change="ann-on" ${a.on ? 'checked' : ''}> Announce race weekends on Discord</label>
+    <label class="field" style="max-width:320px;margin-top:8px">Ping<select data-change="ann-mention">${[['none', 'Nobody (just post)'], ['here', '@here (people online)'], ['everyone', '@everyone']].map(([k, l]) => `<option value="${k}" ${a.mention === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+    <div class="btn-row"><button class="btn" data-act="ann-test">Post a test announcement</button></div>
+    <p class="muted small">Announcements go out from Race Control’s browser as the weekend moves on, once per stage. Weekends opened before announcements were switched on aren’t announced.</p></section>`;
+}
+const _leaguePanelAnn = leaguePanelHtml;
+leaguePanelHtml = function () { return _leaguePanelAnn.apply(this, arguments) + annCardHtml(); };
 
 /* start-up: every part has registered its routes, drawers and actions */
 init();

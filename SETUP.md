@@ -79,6 +79,7 @@ Race Control can post race results, timing exports, announcements and driver car
 | `DISCORD_WEBHOOK_STANDINGS` | Drivers' and constructors' championship standings. |
 | `DISCORD_WEBHOOK_APPROVALS` | Acceptance cards when Race Control approves a character, @mentioning the player. |
 | `DISCORD_WEBHOOK_TRANSFERS` | Transfer cards when Race Control moves a character to another team, @mentioning the player. |
+| `DISCORD_WEBHOOK_ANNOUNCEMENTS` | Race Control announcements, including each race weekend's stages as they happen (switch these on or off on the Race Control page). Any series can have its own: `DISCORD_WEBHOOK_WEC_ANNOUNCEMENTS`, `DISCORD_WEBHOOK_F2_ANNOUNCEMENTS`. Covers race weekend stages too. |
 | `DISCORD_WEBHOOK_GRID` | The grid: one post that Race Control keeps up to date (it's edited in place as seats change). Each series' grid goes to `DISCORD_WEBHOOK_<SERIES>_GRID` if set, else that series' teams channel (`DISCORD_WEBHOOK_F1_TEAMS`, `_F2_TEAMS`, `_F3_TEAMS`), else `DISCORD_WEBHOOK_GRID`, else `DISCORD_WEBHOOK_TEAMS`, else the default. `_TEAM` and `_TEAMS` both work. |
 | `DISCORD_WEBHOOK_TEAMS` | Team cards from the Teams pages ("Export the team card" and "Post every team"). |
 | `DISCORD_WEBHOOK_F2_TEAMS`, `DISCORD_WEBHOOK_F3_TEAMS` | Team cards for Formula 2 or Formula 3 teams only. Any series works: `DISCORD_WEBHOOK_<SERIES>_TEAMS`. |

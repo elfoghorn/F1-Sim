@@ -25,6 +25,32 @@ Optionally, tag the commit with the version too (`v0.9.1`), so GitHub lists ever
 
 ---
 
+## v1.8.0: race weekends announced on Discord
+
+13 November 2026. Build `f1sim-1.8.0`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Weekend announcements | As each race weekend opens and moves on, F1 SIM posts to the announcements channel, telling players what to do now. GP: the weekend is open (check your character, send practice plans and set-up, check your involvement level), each practice session done (what's next), qualifying under way (set-ups locked), the grid is set (pole position; set your race plan and strategy now), lights out, and the chequered flag (the winner). Endurance: the weekend is open (practice focus, qualifying driver, stint plan and strategy), each practice session done (including Test Day and the night session at Le Mans), practice over (confirm your qualifying driver), the grid is set (pole in each class; set your stint plan and strategy), the race under way, and the chequered flag (class winners). Each post links to the site. |
+| Channels | Each series posts to its own announcements channel if it has one (DISCORD_WEBHOOK_WEC_ANNOUNCEMENTS, DISCORD_WEBHOOK_F2_ANNOUNCEMENTS…), then DISCORD_WEBHOOK_ANNOUNCEMENTS, then the default. |
+| Settings | Race Control page → Weekend announcements: switch them on or off, choose the ping (nobody, @here or @everyone), and post a test announcement. |
+| Once each | Each stage is announced once; if several stages pass quickly, only the latest is posted. Announcements go out from Race Control's browser, where weekends move on. Weekends opened before this version aren't announced. |
+
+---
+
+## v1.7.1: delete or reopen a season
+
+13 November 2026. Build `f1sim-1.7.1`. **No database update.**
+
+| Area | What it does |
+| --- | --- |
+| Delete the current season | Seasons → Delete this season (Race Control; type the season's name to confirm). For a season started by mistake: it removes the season and everything in it (its race weekends and results, GP and endurance, crews' plans, calls and runs for those weekends, and team development spends), and the season before it becomes the current season again, reopened and in progress. Seasons started from this version on also put the cars' numbers and the seats back exactly as they were before the start (car development carried over, seats emptied when players didn't keep them). For seasons started earlier, those stay as they are now; the panel says so. Deleting a series' first season starts it again from scratch. |
+| Reopen a catalogued season | Between seasons, Reopen <season> takes a season catalogued too early out of the archive and puts it back in progress, with its races. |
+| Delete a past season | Each catalogued season in the archive has Delete this season: it and its races leave the record; the current season is unaffected. |
+| Starting a season | Starting a season now records the cars' numbers and who holds each seat, so it can be undone cleanly. |
+
+---
+
 ## v1.7.0: Endurance Phase 7, strategy depth
 
 13 November 2026. Build `f1sim-1.7.0`. **No database update.**
